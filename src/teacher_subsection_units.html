@@ -1,0 +1,92 @@
+    <div class="card">
+      <h2>📚 単元一覧</h2>
+      <div class="unit-list-top">
+        <p style="font-size:12px;color:var(--muted);margin:0;">一覧から探しつつ、右のボタンで新規追加欄へすぐ移動できます。</p>
+        <button class="btn-jump-add" type="button" onclick="scrollToUnitForm()">➕ 新しい単元を追加</button>
+      </div>
+      <div class="unit-list-filters">
+        <select class="inp" id="unitListSubjectFilter" onchange="renderUnitList()">
+          <option value="">全教科</option>
+        </select>
+        <input class="inp" id="unitListSearch" type="search" placeholder="単元名で検索…" oninput="renderUnitList()">
+        <select class="inp" id="unitListSort" onchange="renderUnitList()">
+          <option value="subject_group">教科ごとに表示</option>
+          <option value="created_desc">新しい順</option>
+          <option value="created_asc">古い順</option>
+          <option value="subject_name">教科順</option>
+          <option value="name">単元名順</option>
+        </select>
+      </div>
+      <div id="unitList"><span class="spinner"></span></div>
+    </div>
+    <div class="card" id="unitFormCard">
+      <h2 id="unitFormTitle">➕ 新しい単元を追加</h2>
+      <input type="hidden" id="editUnitId">
+      <div class="form-grid">
+        <div><label class="fl">単元名</label><input class="inp" id="fName" placeholder="例：わり算のしくみ"></div>
+        <div>
+          <label class="fl">教科</label>
+          <select class="inp" id="fSubject" onchange="onSubjectChange()">
+            <option>算数</option><option>国語</option><option>理科</option>
+            <option>社会</option><option>生活</option><option>体育</option>
+            <option>図工</option><option>音楽</option><option>道徳</option>
+            <option>総合</option><option>外国語活動</option>
+          </select>
+        </div>
+        <div><label class="fl">最大時間数（0=無制限）</label><input class="inp" type="number" id="fMax" value="10" min="0" max="99"></div>
+      </div>
+
+      <div style="margin-top:14px;">
+        <h3 style="font-size:14px;font-weight:bold;color:var(--navy);margin-bottom:8px;">📋 この単元の記入項目</h3>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:10px;">
+          プリセットをワンクリックで追加、オン/オフや並び順も変更できます。
+        </p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+          <button class="btn-update" type="button" style="margin-top:0;" onclick="autoTagUnitFields()">観点タグをおすすめ設定</button>
+        </div>
+        <div id="presetBtns"></div>
+        <div class="field-list" id="fieldList"></div>
+        <div class="field-panel">
+          <h4>➕ カスタム項目を追加</h4>
+          <input type="hidden" id="cfEditIndex" value="">
+          <div class="custom-add-grid">
+            <input class="inp" id="cfLabel" placeholder="項目名">
+            <select class="inp" id="cfType">
+              <option value="text">自由記述</option>
+              <option value="select">選択肢</option>
+              <option value="radio">ラジオ</option>
+              <option value="review">ふりかえり</option>
+            </select>
+            <input class="inp" id="cfEmoji" placeholder="絵文字" value="🆕">
+            <textarea class="inp" id="cfOptions" placeholder="選択肢（1行に1つ。カンマ区切りでも可）"></textarea>
+          </div>
+          <div class="emoji-palette">
+            <button class="emoji-pick" type="button" onclick="pickEmoji('cfEmoji','🆕')">🆕</button>
+            <button class="emoji-pick" type="button" onclick="pickEmoji('cfEmoji','🎯')">🎯</button>
+            <button class="emoji-pick" type="button" onclick="pickEmoji('cfEmoji','🔧')">🔧</button>
+            <button class="emoji-pick" type="button" onclick="pickEmoji('cfEmoji','📝')">📝</button>
+            <button class="emoji-pick" type="button" onclick="pickEmoji('cfEmoji','🤔')">🤔</button>
+            <button class="emoji-pick" type="button" onclick="pickEmoji('cfEmoji','💬')">💬</button>
+            <button class="emoji-pick" type="button" onclick="pickEmoji('cfEmoji','🔍')">🔍</button>
+            <button class="emoji-pick" type="button" onclick="pickEmoji('cfEmoji','💡')">💡</button>
+          </div>
+          <div class="field-help">選択肢は 1 行に 1 つずつ入力できます。カンマ区切りでも読み取ります。</div>
+          <div class="field-help" id="cfEditMeta">既存項目を編集するときは、一覧の「編集」ボタンから読み込めます。項目キーは保持されるので、既存記録は消えません。</div>
+          <input class="inp" id="cfPlaceholder" placeholder="入力ヒント" style="margin-top:8px;">
+          <div class="category-checks" id="cfCategoryChecks">
+            <label class="category-check"><input type="checkbox" value="knowledge">知識・技能</label>
+            <label class="category-check"><input type="checkbox" value="thinking">思考・判断・表現</label>
+            <label class="category-check"><input type="checkbox" value="attitude">主体的態度</label>
+          </div>
+          <div class="field-panel-actions">
+            <button class="btn-primary" type="button" id="cfSubmitBtn" onclick="saveCustomField()">この項目を追加</button>
+            <button class="btn-cancel" type="button" id="cfEditCancelBtn" style="display:none;" onclick="resetCustomFieldEditor()">編集中止</button>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;">
+        <button class="btn-primary" id="unitSaveBtn" onclick="saveUnit()">保存する</button>
+        <button class="btn-cancel" id="unitCancelBtn" style="display:none;" onclick="cancelEdit()">キャンセル</button>
+      </div>
+    </div>

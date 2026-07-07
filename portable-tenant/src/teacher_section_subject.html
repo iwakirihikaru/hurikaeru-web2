@@ -1,0 +1,47 @@
+  <!-- ④ 教科デフォルト -->
+  <div class="section" id="sec-subject">
+    <div class="card">
+      <h2>🏫 教科ごとのデフォルト項目</h2>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:12px;">
+        単元作成時にこの設定が引き継がれます。
+      </p>
+      <div class="subject-tabs" id="subjectTabs"></div>
+      <div id="subjectFieldEditor">教科を選択してください</div>
+      <div class="field-panel" style="margin-top:10px;">
+        <h4>➕ この教科のカスタム項目を追加</h4>
+        <div class="custom-add-grid">
+          <input class="inp" id="sfLabel" placeholder="項目名">
+          <select class="inp" id="sfType">
+            <option value="text">自由記述</option>
+            <option value="select">選択肢</option>
+            <option value="radio">ラジオ</option>
+            <option value="review">ふりかえり</option>
+          </select>
+          <input class="inp" id="sfEmoji" placeholder="絵文字" value="🆕">
+          <textarea class="inp" id="sfOptions" placeholder="選択肢（1行に1つ。カンマ区切りでも可）"></textarea>
+        </div>
+        <div class="emoji-palette">
+          <button class="emoji-pick" type="button" onclick="pickEmoji('sfEmoji','🆕')">🆕</button>
+          <button class="emoji-pick" type="button" onclick="pickEmoji('sfEmoji','🎯')">🎯</button>
+          <button class="emoji-pick" type="button" onclick="pickEmoji('sfEmoji','🔧')">🔧</button>
+          <button class="emoji-pick" type="button" onclick="pickEmoji('sfEmoji','📝')">📝</button>
+          <button class="emoji-pick" type="button" onclick="pickEmoji('sfEmoji','🤔')">🤔</button>
+          <button class="emoji-pick" type="button" onclick="pickEmoji('sfEmoji','💬')">💬</button>
+          <button class="emoji-pick" type="button" onclick="pickEmoji('sfEmoji','🔍')">🔍</button>
+          <button class="emoji-pick" type="button" onclick="pickEmoji('sfEmoji','💡')">💡</button>
+        </div>
+        <div class="field-help">選択肢は 1 行に 1 つずつ入力できます。カンマ区切りでも読み取ります。</div>
+        <input class="inp" id="sfPlaceholder" placeholder="入力ヒント" style="margin-top:8px;">
+        <div class="category-checks" id="sfCategoryChecks">
+          <label class="category-check"><input type="checkbox" value="knowledge">知識・技能</label>
+          <label class="category-check"><input type="checkbox" value="thinking">思考・判断・表現</label>
+          <label class="category-check"><input type="checkbox" value="attitude">主体的態度</label>
+        </div>
+        <button class="btn-primary" type="button" onclick="addSubjectCustomField()">この教科に追加</button>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+        <button class="btn-update" style="margin-top:0;" type="button" onclick="autoTagSubjectFields()">この教科の観点タグをおすすめ設定</button>
+      </div>
+      <button class="btn-primary" style="margin-top:10px;" onclick="saveSubjectDefault()">この教科のデフォルトを保存</button>
+    </div>
+  </div>

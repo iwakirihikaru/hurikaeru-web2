@@ -1,0 +1,41 @@
+{
+  "ok": true,
+  "latestVersion": "305",
+  "latestBuild": "shell-config-phase2-2026-07-05-1730",
+  "maintenanceMode": false,
+  "featureToggles": {
+    "allowUpdateRequest": true,
+    "showAiSettings": true,
+    "showUpdateTab": true,
+    "showNoticeBanner": true
+  },
+  "endpoints": {
+    "primaryShellConfigUrl": "https://iwakirihikaru.github.io/hurikaeru/shell-config.json",
+    "fallbackShellConfigUrl": "https://script.google.com/macros/s/AKfycbyIxBewjHHF2JLlGbI6yuDfdMM7l_AkvY1QRlclIM0uR_nOGa_NXNcAZXY9Jl_g973G/exec?mode=shellConfig",
+    "primaryMaintenanceUrl": "https://iwakirihikaru.github.io/hurikaeru/maintenance-status.json",
+    "fallbackMaintenanceUrl": "https://script.google.com/macros/s/AKfycbyIxBewjHHF2JLlGbI6yuDfdMM7l_AkvY1QRlclIM0uR_nOGa_NXNcAZXY9Jl_g973G/exec?mode=maintenanceStatus"
+  },
+  "labels": {
+    "appName": "じぶんまとめ",
+    "teacherUpdateCta": "更新を確認"
+  },
+  "questionTemplates": {},
+  "aiPrompts": {
+    "prompt_comment": "",
+    "prompt_score": "",
+    "prompt_portfolio": "",
+    "prompt_unit_summary": "",
+    "prompt_assessment": ""
+  },
+  "noticeBanner": {
+    "enabled": false,
+    "level": "info",
+    "title": "",
+    "message": "",
+    "linkUrl": "",
+    "linkLabel": ""
+  },
+  "checkedAt": "2026-07-05T14:01:28.176Z",
+  "configVersion": "shell-config-phase2",
+  "source": "sheet"
+}

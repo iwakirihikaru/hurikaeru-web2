@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <title>ふりカエルLite MVP 児童画面</title>
+    <style>
+      :root{
+        --sky:#29B6F6;--green:#66BB6A;--yellow:#FFD54F;--coral:#FF7043;
+        --purple:#AB47BC;--ink:#1A237E;--muted:#78909C;
+        --bg:#E8F5E9;--card:#fff;--r:16px;--sh:0 3px 12px rgba(0,0,0,.10);
+        --font:'Hiragino Maru Gothic ProN','BIZ UDPGothic',sans-serif;
+      }
+      *{box-sizing:border-box;margin:0;padding:0;}
+      html,body{min-height:100%;font-family:var(--font);background:var(--bg);color:var(--ink);}
+      body{background:linear-gradient(180deg,#F4FBF6 0%,var(--bg) 100%);}
+      .app-header{
+        background:linear-gradient(135deg,var(--sky),#0288D1);color:#fff;
+        padding:10px 14px;display:flex;align-items:center;justify-content:space-between;
+        box-shadow:0 2px 6px rgba(0,0,0,.2);position:sticky;top:0;z-index:20;
+      }
+      .app-header h1{font-size:15px;letter-spacing:.03em;}
+      .app-header .meta{font-size:11px;opacity:.85;margin-top:1px;}
+      main{max-width:980px;margin:0 auto;padding:12px;display:flex;flex-direction:column;gap:12px;}
+      .split{display:flex;gap:12px;align-items:flex-start;}
+      .pane-tl{
+        width:36%;flex-shrink:0;overflow:auto;padding:12px;border-radius:16px;
+        background:#F0F7FF;box-shadow:var(--sh);max-height:calc(100vh - 92px);
+      }
+      .pane-form{flex:1;display:flex;flex-direction:column;gap:10px;}
+      .pane-label{
+        font-size:11px;font-weight:bold;color:var(--muted);letter-spacing:.06em;
+        margin-bottom:8px;display:flex;align-items:center;gap:6px;
+      }
+      .live-dot{width:7px;height:7px;border-radius:50%;background:var(--coral);animation:blink 1.4s ease-in-out infinite;}
+      @keyframes blink{0%,100%{opacity:1;}50%{opacity:.2;}}
+      .card{background:var(--card);border-radius:var(--r);padding:14px 15px;box-shadow:var(--sh);}
+      .card-title{font-size:12px;font-weight:bold;color:var(--muted);margin-bottom:7px;}
+      .warning-banner{
+        background:linear-gradient(135deg,#FFF8E1,#FFF3E0);border:2px solid #FFCC80;
+        border-radius:var(--r);padding:14px 15px;box-shadow:var(--sh);
+      }
+      .warning-banner strong{display:block;font-size:13px;color:#E65100;margin-bottom:4px;}
+      .warning-banner p{font-size:12px;line-height:1.8;color:#6D4C41;}
+      .field-wrap{margin-bottom:10px;}
+      .field-label{font-size:13px;font-weight:bold;margin-bottom:5px;display:block;}
+      input.f,textarea.f{
+        width:100%;border:2px solid #CFD8DC;border-radius:9px;padding:9px 11px;
+        font-family:var(--font);font-size:15px;color:var(--ink);background:#F9FAFB;
+      }
+      input.f:focus,textarea.f:focus{outline:none;border-color:var(--sky);background:#fff;}
+      textarea.f{min-height:140px;resize:vertical;line-height:1.7;}
+      .tips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;}
+      .tip{
+        font-size:11px;padding:3px 9px;border-radius:12px;background:#E3F2FD;
+        color:var(--sky);border:1.5px solid var(--sky);cursor:pointer;
+      }
+      .btn-row{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;}
+      .btn{
+        flex:1;border:none;border-radius:11px;padding:13px;font-size:15px;font-weight:bold;
+        cursor:pointer;box-shadow:var(--sh);font-family:var(--font);letter-spacing:.03em;
+      }
+      .btn:disabled{opacity:.45;cursor:default;}
+      .btn-submit{background:linear-gradient(135deg,var(--green),#388E3C);color:#fff;}
+      .btn-retry{background:linear-gradient(135deg,#FFB74D,var(--coral));color:#fff;}
+      .status{min-height:24px;font-size:12px;font-weight:bold;line-height:1.6;margin-top:8px;}
+      .status[data-tone="info"]{color:var(--muted);}
+      .status[data-tone="success"]{color:#2E7D32;}
+      .status[data-tone="error"]{color:#C62828;}
+      .submit-note{font-size:11px;color:var(--muted);margin-top:5px;text-align:center;}
+      .success-box{
+        background:linear-gradient(135deg,#FFF8E1,#FFF3CD);border:2px solid var(--yellow);
+        border-radius:var(--r);padding:13px;display:block;
+      }
+      .success-label{font-size:11px;font-weight:bold;color:#E65100;margin-bottom:5px;}
+      .success-text{font-size:14px;line-height:1.7;}
+      .tl-list{display:flex;flex-direction:column;gap:8px;list-style:none;}
+      .tl-card{
+        background:#fff;border-radius:10px;padding:9px 11px;box-shadow:0 2px 6px rgba(0,0,0,.07);
+        border-left:4px solid #B0BEC5;
+      }
+      .tl-card.submitted{border-left-color:var(--green);}
+      .tl-top{display:flex;align-items:center;gap:6px;margin-bottom:4px;}
+      .tl-num{
+        min-width:26px;height:26px;border-radius:50%;background:var(--sky);color:#fff;
+        font-size:12px;font-weight:bold;display:flex;align-items:center;justify-content:center;flex-shrink:0;
+      }
+      .tl-name{font-size:11px;color:var(--muted);}
+      .tl-text{font-size:12px;line-height:1.5;word-break:break-all;color:#37474F;}
+      .tl-empty{text-align:center;color:var(--muted);font-size:12px;padding:14px;}
+      .top-links{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;}
+      .top-link{
+        border:none;background:#E3F2FD;color:#4E6F8B;font-size:11px;font-weight:bold;
+        padding:8px 12px;border-radius:999px;text-decoration:none;
+      }
+      .hint-line{font-size:11px;color:var(--muted);line-height:1.7;margin:4px 0 8px;}
+      @media(max-width:700px){
+        .split{flex-direction:column;}
+        .pane-tl{width:100%;max-height:none;}
+      }
+    </style>
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <h1>ふりカエルLite</h1>
+        <p class="meta">児童提出 MVP</p>
+      </div>
+      <div class="top-links">
+        <a class="top-link" href="./setup.html">設定</a>
+        <a class="top-link" href="./teacher.html">先生画面</a>
+      </div>
+    </header>
+
+    <main>
+      <section class="warning-banner" hidden id="setup-required-notice">
+        <strong>設定がまだです</strong>
+        <p data-role="message"></p>
+      </section>
+
+      <div class="split">
+        <aside class="pane-tl">
+          <p class="pane-label"><span class="live-dot"></span>送信ルール</p>
+          <div class="tl-card submitted">
+            <div class="tl-top">
+              <span class="tl-num">1</span>
+              <span class="tl-name">入力は自動保存</span>
+            </div>
+            <p class="tl-text">書いている途中でも、この端末の下書きは残ります。</p>
+          </div>
+          <div class="tl-card submitted">
+            <div class="tl-top">
+              <span class="tl-num">2</span>
+              <span class="tl-name">送信中は待つ</span>
+            </div>
+            <p class="tl-text">すぐに完了表示せず、「送信中...」のまま通信が終わるまで待ちます。</p>
+          </div>
+          <div class="tl-card submitted">
+            <div class="tl-top">
+              <span class="tl-num">3</span>
+              <span class="tl-name">失敗しても消えない</span>
+            </div>
+            <p class="tl-text">通信失敗時は入力内容を残したまま再送できます。</p>
+          </div>
+        </aside>
+
+        <section class="pane-form">
+          <form class="card" id="student-form">
+            <p class="card-title">この時間のふりかえり</p>
+
+            <div class="field-wrap">
+              <label class="field-label" for="student-class">クラス名</label>
+              <input class="f" id="student-class" placeholder="例: 4年1組" type="text" />
+              <p class="hint-line" id="student-class-hint">先生画面でクラス設定を保存すると、ここに既定値が入ります。</p>
+            </div>
+
+            <div class="field-wrap">
+              <label class="field-label" for="student-date">日付</label>
+              <input class="f" id="student-date" type="date" />
+            </div>
+
+            <div class="field-wrap">
+              <label class="field-label" for="student-id">出席番号</label>
+              <input class="f" id="student-id" placeholder="例: 12" type="text" />
+            </div>
+
+            <div class="field-wrap">
+              <label class="field-label" for="student-name">名前</label>
+              <input class="f" id="student-name" placeholder="例: たなか みなと" type="text" />
+            </div>
+
+            <div class="field-wrap">
+              <label class="field-label">名簿から選ぶ</label>
+              <div class="tips" id="student-roster-list"></div>
+            </div>
+
+            <div class="field-wrap">
+              <label class="field-label" for="student-reflection">ふりかえり</label>
+              <div class="tips">
+                <button class="tip" data-append="きょう分かったことは " type="button">分かったこと</button>
+                <button class="tip" data-append="つぎにやってみたいことは " type="button">次にやりたいこと</button>
+                <button class="tip" data-append="友だちの考えでなるほどと思ったのは " type="button">友だちから学んだこと</button>
+              </div>
+              <textarea class="f" id="student-reflection" placeholder="きょうの学習をふりかえって書きましょう。"></textarea>
+            </div>
+
+            <div class="btn-row">
+              <button class="btn btn-submit" id="student-submit" type="submit">提出する</button>
+              <button class="btn btn-retry" hidden id="student-retry" type="button">再送する</button>
+            </div>
+            <p class="submit-note">送信時に 0〜5 秒のランダム待機を入れて、同時提出スパイクを分散します。</p>
+            <p class="status" data-tone="info" id="student-status">入力内容は自動で保存されます。</p>
+          </form>
+
+          <section hidden class="success-box" id="student-success">
+            <p class="success-label">提出できました</p>
+            <p class="success-text">この端末の下書きは削除されました。必要なら先生画面で反映を確認できます。</p>
+          </section>
+        </section>
+      </div>
+    </main>
+
+    <script src="./app.js"></script>
+    <script>
+      document.addEventListener("DOMContentLoaded", function () {
+        Array.prototype.forEach.call(document.querySelectorAll(".tip"), function (button) {
+          button.addEventListener("click", function () {
+            var textarea = document.getElementById("student-reflection");
+            var value = textarea.value;
+            var append = button.getAttribute("data-append") || "";
+            textarea.value = value ? value + "\n" + append : append;
+            textarea.dispatchEvent(new Event("input", { bubbles: true }));
+            textarea.focus();
+          });
+        });
+      });
+    </script>
+  </body>
+</html>

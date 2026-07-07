@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>先生画面</title>
+<style>
+:root{
+  --navy:#1A237E;--sky:#1976D2;--green:#388E3C;--red:#C62828;
+  --yellow:#F9A825;--purple:#6A1B9A;--orange:#E65100;--teal:#00695C;
+  --bg:#F5F5F5;--card:#fff;--muted:#78909C;
+  --r:10px;--sh:0 2px 8px rgba(0,0,0,.10);
+  --font:'Hiragino Maru Gothic ProN','BIZ UDPGothic',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:var(--font);background:var(--bg);color:#212121;}
+
+.nav{background:var(--navy);color:#fff;display:flex;align-items:center;
+  padding:0 16px;height:50px;position:sticky;top:0;z-index:100;
+  box-shadow:0 2px 6px rgba(0,0,0,.3);gap:2px;overflow-x:auto;}
+.nav h1{font-size:14px;margin-right:14px;white-space:nowrap;}
+.tab{padding:0 12px;height:50px;border:none;background:transparent;
+  color:rgba(255,255,255,.7);font-size:13px;cursor:pointer;white-space:nowrap;
+  border-bottom:3px solid transparent;transition:.2s;font-family:var(--font);}
+.tab.active{color:#fff;border-bottom-color:var(--yellow);}
+
+.container{max-width:1000px;margin:0 auto;padding:16px;}
+.section{display:none;}.section.active{display:block;}
+
+.card{background:var(--card);border-radius:var(--r);padding:18px;box-shadow:var(--sh);margin-bottom:14px;}
+.card h2{font-size:15px;font-weight:bold;margin-bottom:12px;color:var(--navy);display:flex;align-items:center;gap:6px;}
+
+/* バナー */
+.lesson-banner{background:linear-gradient(135deg,#E8F5E9,#C8E6C9);border:2px solid var(--green);
+  border-radius:var(--r);padding:14px;margin-bottom:14px;}
+.lesson-banner .lbl{font-size:12px;color:var(--green);font-weight:bold;margin-bottom:3px;}
+.lesson-banner .name{font-size:19px;font-weight:bold;color:var(--navy);}
+.lesson-banner .meta{font-size:12px;color:var(--muted);margin-top:2px;}
+.btn-end{padding:7px 16px;border:2px solid var(--red);border-radius:7px;
+  background:#fff;color:var(--red);font-size:12px;font-weight:bold;cursor:pointer;font-family:var(--font);margin-top:8px;}
+
+/* start panel */
+.start-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;}
+.start-row select,.start-row input{
+  padding:7px 10px;border:1.5px solid #CFD8DC;border-radius:7px;font-size:13px;font-family:var(--font);}
+.btn-start{padding:9px 18px;border:none;border-radius:8px;
+  background:linear-gradient(135deg,var(--green),#2E7D32);
+  color:#fff;font-size:14px;font-weight:bold;cursor:pointer;font-family:var(--font);}
+.btn-reset{padding:9px 14px;border:none;border-radius:8px;background:#CFD8DC;
+  color:#37474F;font-size:13px;cursor:pointer;font-family:var(--font);}
+
+/* stats */
+.stat-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;}
+.stat-box{background:#fff;border-radius:9px;padding:10px 14px;box-shadow:var(--sh);text-align:center;min-width:76px;}
+.stat-num{font-size:26px;font-weight:bold;color:var(--sky);}
+.stat-lbl{font-size:11px;color:var(--muted);}
+
+/* table */
+.tbl{width:100%;border-collapse:collapse;font-size:13px;}
+.tbl th{background:var(--navy);color:#fff;padding:7px 9px;text-align:left;}
+.tbl td{padding:7px 9px;border-bottom:1px solid #e0e0e0;}
+.tbl tr:hover td{background:#F5F5F5;}
+.rank-chip{display:inline-block;padding:2px 9px;border-radius:10px;font-weight:bold;font-size:11px;color:#fff;}
+.r-C{background:#B0BEC5;}.r-Cp{background:#90A4AE;}
+.r-B{background:#64B5F6;}.r-Bp{background:#42A5F5;}
+.r-A{background:#66BB6A;}.r-Ap{background:#43A047;}
+.r-S{background:var(--purple);}.r-Sp{background:linear-gradient(135deg,#6A1B9A,#E91E63);}
+.medal-num{display:inline-flex;align-items:center;justify-content:center;
+  width:20px;height:20px;border-radius:50%;color:#fff;font-size:11px;font-weight:bold;}
+
+/* unit list */
+.unit-row{display:flex;align-items:center;gap:8px;padding:11px 13px;
+  border-radius:9px;border:2px solid #e0e0e0;background:#fff;margin-bottom:7px;transition:.2s;}
+.unit-row.active-unit{border-color:var(--sky);background:#E3F2FD;}
+.unit-badge{min-width:42px;padding:2px 8px;border-radius:14px;font-size:11px;
+  font-weight:bold;color:#fff;background:var(--muted);text-align:center;}
+.unit-row.active-unit .unit-badge{background:var(--sky);}
+.unit-name{font-weight:bold;font-size:14px;}
+.unit-meta{font-size:11px;color:var(--muted);}
+.unit-actions{margin-left:auto;display:flex;gap:5px;}
+.btn-sm{padding:5px 11px;border-radius:7px;font-size:12px;cursor:pointer;
+  font-family:var(--font);border:none;font-weight:bold;}
+.btn-edit{background:#E3F2FD;color:var(--sky);}
+.btn-fields{background:#E8F5E9;color:var(--green);}
+.btn-del{background:#FFEBEE;color:var(--red);}
+
+/* form */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+@media(max-width:540px){.form-grid{grid-template-columns:1fr;}}
+label.fl{display:block;font-size:12px;font-weight:bold;margin-bottom:3px;}
+input.inp,select.inp,textarea.inp{
+  width:100%;border:1.5px solid #CFD8DC;border-radius:7px;
+  padding:7px 10px;font-size:13px;font-family:var(--font);}
+textarea.inp{resize:vertical;min-height:70px;}
+.btn-primary{padding:9px 18px;border:none;border-radius:8px;
+  background:var(--green);color:#fff;font-size:13px;font-weight:bold;cursor:pointer;font-family:var(--font);margin-top:8px;}
+.btn-update{padding:9px 18px;border:none;border-radius:8px;
+  background:var(--sky);color:#fff;font-size:13px;font-weight:bold;cursor:pointer;font-family:var(--font);margin-top:8px;}
+.btn-cancel{padding:7px 16px;border:1.5px solid #CFD8DC;border-radius:7px;
+  background:#fff;color:#37474F;font-size:13px;cursor:pointer;font-family:var(--font);}
+
+/* ========= フィールドエディタ ========= */
+.field-panel{border:1.5px solid #e0e0e0;border-radius:9px;padding:14px;margin-bottom:10px;background:#fff;}
+.field-panel h4{font-size:13px;font-weight:bold;color:var(--navy);margin-bottom:10px;
+  display:flex;align-items:center;gap:6px;}
+
+/* プリセットボタン群 */
+.preset-btns{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;}
+.preset-btn{
+  padding:7px 13px;border-radius:20px;border:2px solid var(--sky);
+  background:#fff;color:var(--sky);font-size:12px;font-weight:bold;cursor:pointer;
+  font-family:var(--font);transition:.15s;white-space:nowrap;
+}
+.preset-btn:hover{background:var(--sky);color:#fff;}
+.preset-btn.active-preset{background:var(--sky);color:#fff;}
+
+/* フィールドリスト（ドラッグ順序変更） */
+.field-list{display:flex;flex-direction:column;gap:8px;margin-bottom:10px;}
+.field-item{
+  display:flex;align-items:center;gap:8px;padding:9px 12px;
+  background:#F5F5F5;border-radius:8px;border:1.5px solid #e0e0e0;
+}
+.field-item.enabled{background:#E8F5E9;border-color:var(--green);}
+.field-item .drag-handle{color:#B0BEC5;cursor:grab;font-size:16px;flex-shrink:0;}
+.field-item .f-emoji{font-size:16px;flex-shrink:0;}
+.field-item .f-label{font-size:13px;font-weight:bold;flex:1;}
+.field-item .f-type{font-size:11px;color:var(--muted);}
+.toggle-btn{
+  padding:4px 12px;border-radius:14px;border:none;font-size:12px;font-weight:bold;
+  cursor:pointer;font-family:var(--font);white-space:nowrap;
+}
+.toggle-on{background:var(--green);color:#fff;}
+.toggle-off{background:#CFD8DC;color:#37474F;}
+.btn-remove{padding:4px 8px;border:none;border-radius:6px;background:#FFEBEE;
+  color:var(--red);font-size:12px;cursor:pointer;font-family:var(--font);}
+.btn-edit-field{padding:4px 8px;border:none;border-radius:6px;background:#E3F2FD;
+  color:var(--sky);font-size:12px;cursor:pointer;font-family:var(--font);}
+
+/* 教科デフォルト */
+.subject-tabs{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:12px;}
+.stab{padding:6px 12px;border-radius:16px;border:1.5px solid #CFD8DC;
+  background:#fff;font-size:12px;cursor:pointer;font-family:var(--font);font-weight:bold;transition:.15s;}
+.stab.active{background:var(--sky);border-color:var(--sky);color:#fff;}
+
+/* aggregate */
+.agg-toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center;}
+.agg-toolbar select{padding:6px 10px;border:1.5px solid #CFD8DC;border-radius:7px;
+  font-size:13px;font-family:var(--font);}
+.btn-ai{padding:8px 16px;border:none;border-radius:8px;
+  background:linear-gradient(135deg,var(--purple),#AD1457);
+  color:#fff;font-size:13px;font-weight:bold;cursor:pointer;font-family:var(--font);}
+.ai-report{white-space:pre-wrap;font-size:13px;line-height:1.8;
+  background:#F3E5F5;border-radius:9px;padding:14px;
+  border-left:4px solid var(--purple);margin-top:12px;display:none;}
+
+/* modal */
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);
+  z-index:500;align-items:center;justify-content:center;}
+.modal-bg.show{display:flex;}
+.modal{background:#fff;border-radius:14px;padding:22px;
+  width:92%;max-width:500px;box-shadow:0 8px 32px rgba(0,0,0,.2);}
+.modal h3{font-size:16px;font-weight:bold;margin-bottom:14px;color:var(--navy);}
+.modal-btns{display:flex;gap:8px;margin-top:14px;justify-content:flex-end;}
+
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid #CFD8DC;
+  border-top-color:var(--sky);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+/* prompt */
+.prompt-box{margin-bottom:10px;}
+.prompt-box .plbl{font-size:12px;font-weight:bold;color:var(--orange);margin-bottom:4px;display:block;}
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <h1>📊 先生画面</h1>
+  <button class="tab active" onclick="switchTab('status')">📡 授業状況</button>
+  <button class="tab" onclick="switchTab('units')">📚 単元設定</button>
+  <button class="tab" onclick="switchTab('subject')">🏫 教科デフォルト</button>
+  <button class="tab" onclick="switchTab('prompts')">🤖 プロンプト</button>
+  <button class="tab" onclick="switchTab('aggregate')">📋 単元集約</button>
+</div>
+
+<div class="container">
+
+  <!-- ① 授業状況 -->
+  <div class="section active" id="sec-status">
+    <div id="activeBanner"></div>
+    <div class="card">
+      <h2>▶️ 授業を開始する</h2>
+      <div class="start-row">
+        <select id="startUnit" onchange="updatePeriodSelect()"><option value="">単元を選択…</option></select>
+        <select id="startPeriod"><option value="">時間目を選択…</option></select>
+        <button class="btn-start" onclick="startLesson()">▶️ 授業開始</button>
+        <button class="btn-reset" onclick="resetLesson()">児童に選ばせる</button>
+      </div>
+    </div>
+    <div class="stat-row">
+      <div class="stat-box"><div class="stat-num" id="statTotal">-</div><div class="stat-lbl">全員</div></div>
+      <div class="stat-box"><div class="stat-num" id="statWritten">-</div><div class="stat-lbl">記入中</div></div>
+      <div class="stat-box"><div class="stat-num" id="statSubmitted">-</div><div class="stat-lbl">提出済</div></div>
+      <div class="stat-box"><div class="stat-num" id="statAI">-</div><div class="stat-lbl">AI完了</div></div>
+    </div>
+    <div class="card" style="overflow-x:auto;">
+      <table class="tbl">
+        <thead><tr><th>#</th><th>なまえ</th><th>ふりかえり</th><th>ランク</th><th>メダル</th><th>状態</th></tr></thead>
+        <tbody id="statusBody"><tr><td colspan="6" style="text-align:center;padding:18px;"><span class="spinner"></span></td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ② 単元設定 -->
+  <div class="section" id="sec-units">
+    <div class="card">
+      <h2>📚 単元一覧</h2>
+      <div id="unitList"><span class="spinner"></span></div>
+    </div>
+    <div class="card" id="unitFormCard">
+      <h2 id="unitFormTitle">➕ 新しい単元を追加</h2>
+      <input type="hidden" id="editUnitId">
+      <div class="form-grid">
+        <div><label class="fl">単元名</label><input class="inp" id="fName" placeholder="例：わり算のしくみ"></div>
+        <div>
+          <label class="fl">教科</label>
+          <select class="inp" id="fSubject" onchange="onSubjectChange()">
+            <option>算数</option><option>国語</option><option>理科</option>
+            <option>社会</option><option>生活</option><option>体育</option>
+            <option>図工</option><option>音楽</option><option>道徳</option>
+            <option>総合</option><option>外国語活動</option>
+          </select>
+        </div>
+        <div><label class="fl">最大時間数（0=無制限）</label><input class="inp" type="number" id="fMax" value="10" min="0" max="99"></div>
+      </div>
+
+      <!-- 項目設定（単元ごと） -->
+      <div style="margin-top:14px;">
+        <h3 style="font-size:14px;font-weight:bold;color:var(--navy);margin-bottom:8px;">📋 この単元の記入項目</h3>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:10px;">
+          プリセットをワンクリックで追加、オン/オフや並び順も変更できます。
+        </p>
+        <!-- プリセットボタン -->
+        <div class="preset-btns" id="presetBtns"></div>
+        <!-- 現在の項目リスト -->
+        <div class="field-list" id="fieldList"></div>
+      </div>
+
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;">
+        <button class="btn-primary" id="unitSaveBtn" onclick="saveUnit()">保存する</button>
+        <button class="btn-cancel" id="unitCancelBtn" style="display:none;" onclick="cancelEdit()">キャンセル</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ③ 教科デフォルト -->
+  <div class="section" id="sec-subject">
+    <div class="card">
+      <h2>🏫 教科ごとのデフォルト項目</h2>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:12px;">
+        単元作成時にこの設定が引き継がれます。
+      </p>
+      <div class="subject-tabs" id="subjectTabs"></div>
+      <div id="subjectFieldEditor">教科を選択してください</div>
+      <button class="btn-primary" style="margin-top:10px;" onclick="saveSubjectDefault()">この教科のデフォルトを保存</button>
+    </div>
+  </div>
+
+  <!-- ④ プロンプト -->
+  <div class="section" id="sec-prompts">
+    <div class="card">
+      <h2>🤖 AIプロンプト・メダル設定</h2>
+      <div class="prompt-box">
+        <span class="plbl">💬 コメント生成プロンプト</span>
+        <textarea class="inp" id="pComment" rows="5"></textarea>
+      </div>
+      <div class="prompt-box">
+        <span class="plbl">📊 スコア評価基準</span>
+        <textarea class="inp" id="pScore" rows="5"></textarea>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <label class="fl" style="margin:0;">メダル上位人数：</label>
+        <input class="inp" type="number" id="pMedal" min="1" max="5" style="width:70px;">
+        <button class="btn-primary" onclick="savePrompts()">保存する</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ⑤ 単元集約 -->
+  <div class="section" id="sec-aggregate">
+    <div class="card">
+      <h2>📋 単元集約・AI評価</h2>
+      <div class="agg-toolbar">
+        <select id="aggUnit" onchange="filterAgg()"><option value="">単元を選択…</option></select>
+        <select id="aggPeriod" onchange="filterAgg()"><option value="">全時間</option></select>
+        <button class="btn-ai" onclick="genSummary()">🤖 AI評価レポートを生成</button>
+      </div>
+      <div class="ai-report" id="aiReport"></div>
+      <div style="overflow-x:auto;margin-top:10px;">
+        <table class="tbl">
+          <thead><tr><th>単元</th><th>時間</th><th>#</th><th>なまえ</th><th>日付</th><th>ふりかえり</th><th>ランク</th></tr></thead>
+          <tbody id="aggBody"><tr><td colspan="7" style="text-align:center;padding:14px;"><span class="spinner"></span></td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /container -->
+
+<!-- 削除確認モーダル -->
+<div class="modal-bg" id="delModal">
+  <div class="modal">
+    <h3>🗑️ 削除しますか？</h3>
+    <p id="delMsg" style="font-size:13px;color:#555;"></p>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeModal()">キャンセル</button>
+      <button style="padding:8px 18px;border:none;border-radius:8px;background:var(--red);color:#fff;font-size:13px;font-weight:bold;cursor:pointer;" onclick="confirmDelete()">削除する</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// =====================================
+//  State
+// =====================================
+let allUnits       = [];
+let allPresets     = [];
+let subjectDefaults= {};
+let activeUnitId   = null;
+let activePeriod   = 0;
+let statusTimer    = null;
+let delTargetId    = null;
+let allAggData     = [];
+
+// 編集中の項目リスト（単元フォーム用）
+let editingFields  = [];
+let currentSubject = '算数';
+
+// =====================================
+//  タブ切替
+// =====================================
+function switchTab(name){
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('sec-'+name).classList.add('active');
+  event.target.classList.add('active');
+  clearInterval(statusTimer);
+  if(name==='status')    {loadInit();startStatusPoll();}
+  if(name==='units')     {loadInit();renderUnitList();}
+  if(name==='subject')   loadSubjectEditor();
+  if(name==='prompts')   loadPrompts();
+  if(name==='aggregate') loadAgg();
+}
+
+// =====================================
+//  初期ロード
+// =====================================
+function loadInit(){
+  google.script.run.withSuccessHandler(d=>{
+    allUnits        = d.units||[];
+    allPresets      = d.presets||[];
+    subjectDefaults = d.subjectDefaults||{};
+    activeUnitId    = d.active?.unitId||null;
+    activePeriod    = d.active?.period||0;
+    renderActiveBanner(d.active);
+    populateUnitSelects();
+    renderUnitList();
+    renderPresetBtns();
+  }).teacherInit();
+}
+
+function populateUnitSelects(){
+  const sel=document.getElementById('startUnit');
+  const cur=sel.value;
+  sel.innerHTML='<option value="">単元を選択…</option>'+
+    allUnits.map(u=>`<option value="${u.id}" ${u.id==activeUnitId?'selected':''}>${esc(u.subject)}：${esc(u.name)}</option>`).join('');
+  if(cur) sel.value=cur;
+  updatePeriodSelect();
+
+  const ag=document.getElementById('aggUnit');
+  const agCur=ag.value;
+  ag.innerHTML='<option value="">単元を選択…</option>'+
+    allUnits.map(u=>`<option value="${u.id}">${esc(u.subject)}：${esc(u.name)}</option>`).join('');
+  if(agCur) ag.value=agCur;
+}
+
+function updatePeriodSelect(){
+  const unitId=document.getElementById('startUnit').value;
+  const unit=allUnits.find(u=>u.id==unitId);
+  const max=unit?(unit.maxPeriod===0||unit.maxPeriod>20?20:unit.maxPeriod):10;
+  const sel=document.getElementById('startPeriod');
+  sel.innerHTML='<option value="">時間目を選択…</option>'+
+    Array.from({length:max},(_,i)=>i+1)
+      .map(i=>`<option value="${i}" ${i==activePeriod?'selected':''}>${i}じかんめ</option>`).join('');
+}
+
+// =====================================
+//  アクティブバナー
+// =====================================
+function renderActiveBanner(active){
+  const el=document.getElementById('activeBanner');
+  if(active?.unit&&active?.period>0){
+    el.innerHTML=`<div class="lesson-banner">
+      <div class="lbl">✅ 授業中</div>
+      <div class="name">${esc(active.unit.subject)}：${esc(active.unit.name)}</div>
+      <div class="meta">${active.period}じかんめ</div>
+      <button class="btn-end" onclick="endLesson()">🔚 授業終了</button>
+    </div>`;
+  } else {
+    el.innerHTML='<div style="font-size:13px;color:var(--muted);margin-bottom:10px;">現在アクティブな授業はありません。</div>';
+  }
+}
+
+// =====================================
+//  授業開始・終了
+// =====================================
+function startLesson(){
+  const unitId=document.getElementById('startUnit').value;
+  const period=document.getElementById('startPeriod').value;
+  if(!unitId||!period){alert('単元と時間目を選択してください');return;}
+  google.script.run
+    .withSuccessHandler(()=>{loadInit();alert('授業を開始しました！');})
+    .teacherStartLesson(unitId,parseInt(period));
+}
+function endLesson(){
+  google.script.run.withSuccessHandler(()=>loadInit()).teacherEndLesson();
+}
+function resetLesson(){
+  google.script.run.withSuccessHandler(()=>{loadInit();alert('児童選択モードにしました');}).teacherEndLesson();
+}
+
+// =====================================
+//  授業状況
+// =====================================
+function startStatusPoll(){clearInterval(statusTimer);loadStatus();statusTimer=setInterval(loadStatus,8000);}
+function loadStatus(){
+  if(!activeUnitId||!activePeriod) return;
+  google.script.run.withSuccessHandler(renderStatus).getLessonStatus(activeUnitId,activePeriod);
+}
+function renderStatus(d){
+  const st=d.students||[];
+  document.getElementById('statTotal').textContent    =st.length;
+  document.getElementById('statWritten').textContent  =st.filter(s=>s.review).length;
+  document.getElementById('statSubmitted').textContent=st.filter(s=>s.submitted).length;
+  document.getElementById('statAI').textContent       =st.filter(s=>s.rank).length;
+  document.getElementById('statusBody').innerHTML=st.map(s=>`
+    <tr>
+      <td>${s.num}</td>
+      <td>${esc(s.name)||s.num+'ばん'}</td>
+      <td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(s.review)}</td>
+      <td>${s.rank?`<span class="rank-chip r-${s.rank.replace('+','p')}">${s.rank}</span>`:'-'}</td>
+      <td>${renderMedal(s.medal,s.medalColor)}</td>
+      <td>${s.submitted?'✅提出済':s.review?'✍️記入中':''}</td>
+    </tr>`).join('');
+}
+
+// =====================================
+//  単元一覧
+// =====================================
+function renderUnitList(){
+  const el=document.getElementById('unitList');
+  if(!allUnits.length){el.innerHTML='<p style="color:#999">単元がありません</p>';return;}
+  el.innerHTML=allUnits.map(u=>`
+    <div class="unit-row ${u.id==activeUnitId?'active-unit':''}">
+      <span class="unit-badge">${esc(u.subject)}</span>
+      <span class="unit-name">${esc(u.name)}</span>
+      <span class="unit-meta">最大${u.maxPeriod===0?'無制限':u.maxPeriod+'時間'}・項目${(u.fields||[]).filter(f=>f.enabled!==false).length}つ</span>
+      <div class="unit-actions">
+        <button class="btn-sm btn-edit"   onclick="editUnit(${u.id})">編集</button>
+        <button class="btn-sm btn-del"    onclick="askDelete(${u.id},'${esc(u.name)}')">削除</button>
+      </div>
+    </div>`).join('');
+}
+
+// =====================================
+//  プリセットボタン
+// =====================================
+function renderPresetBtns(){
+  const container=document.getElementById('presetBtns');
+  container.innerHTML=allPresets.map(p=>{
+    const active=editingFields.some(f=>f.key===p.key&&f.enabled!==false);
+    return `<button class="preset-btn ${active?'active-preset':''}"
+      onclick="togglePreset('${p.key}')" data-key="${p.key}">
+      ${p.emoji} ${esc(p.label)}</button>`;
+  }).join('');
+}
+
+function togglePreset(key){
+  const preset=allPresets.find(p=>p.key===key);
+  if(!preset) return;
+  const idx=editingFields.findIndex(f=>f.key===key);
+  if(idx>=0){
+    // 既にある → enabled切替
+    editingFields[idx].enabled=!editingFields[idx].enabled;
+  } else {
+    // 追加
+    editingFields.push({...preset, enabled:true});
+  }
+  renderFieldList();
+  renderPresetBtns();
+}
+
+// =====================================
+//  フィールドリスト
+// =====================================
+function renderFieldList(){
+  const list=document.getElementById('fieldList');
+  if(!editingFields.length){
+    list.innerHTML='<p style="color:#999;font-size:12px;">上のボタンから項目を追加してください</p>';
+    return;
+  }
+  list.innerHTML=editingFields.map((f,i)=>`
+    <div class="field-item ${f.enabled!==false?'enabled':''}" data-i="${i}">
+      <span class="drag-handle">⠿</span>
+      <span class="f-emoji">${f.emoji||'📌'}</span>
+      <div style="flex:1;min-width:0;">
+        <div class="f-label">${esc(f.label)}</div>
+        <div class="f-type">${typeLabel(f.type)}</div>
+      </div>
+      <button class="toggle-btn ${f.enabled!==false?'toggle-on':'toggle-off'}"
+        onclick="toggleField(${i})">
+        ${f.enabled!==false?'ON':'OFF'}</button>
+      <button class="btn-remove" onclick="removeField(${i})">✕</button>
+    </div>`).join('');
+}
+
+function typeLabel(t){
+  return {text:'自由記述',select:'選択肢',radio:'ラジオ',review:'ふりかえり（ヒント付き）',number:'数値'}[t]||t;
+}
+
+function toggleField(i){
+  editingFields[i].enabled=!editingFields[i].enabled;
+  renderFieldList();renderPresetBtns();
+}
+
+function removeField(i){
+  editingFields.splice(i,1);
+  renderFieldList();renderPresetBtns();
+}
+
+// =====================================
+//  教科変更 → デフォルト引き継ぎ
+// =====================================
+function onSubjectChange(){
+  const subject=document.getElementById('fSubject').value;
+  if(editingFields.length>0) return; // 既に設定済みなら変更しない
+  applySubjectDefault(subject);
+}
+
+function applySubjectDefault(subject){
+  const keys=subjectDefaults[subject]||['goal','summary','eval','review'];
+  editingFields=keys
+    .map(k=>allPresets.find(p=>p.key===k))
+    .filter(Boolean)
+    .map(p=>({...p,enabled:true}));
+  renderFieldList();renderPresetBtns();
+}
+
+// =====================================
+//  単元 保存・編集・削除
+// =====================================
+function editUnit(id){
+  const u=allUnits.find(u=>u.id==id);
+  if(!u) return;
+  document.getElementById('editUnitId').value=id;
+  document.getElementById('fName').value=u.name;
+  document.getElementById('fSubject').value=u.subject;
+  document.getElementById('fMax').value=u.maxPeriod;
+  editingFields=(u.fields||[]).map(f=>({...f}));
+  renderFieldList();renderPresetBtns();
+  document.getElementById('unitFormTitle').textContent='✏️ 単元を編集';
+  document.getElementById('unitSaveBtn').textContent='更新する';
+  document.getElementById('unitCancelBtn').style.display='inline-block';
+  document.getElementById('unitFormCard').scrollIntoView({behavior:'smooth'});
+}
+
+function cancelEdit(){
+  document.getElementById('editUnitId').value='';
+  document.getElementById('fName').value='';
+  document.getElementById('fMax').value='10';
+  editingFields=[];
+  renderFieldList();renderPresetBtns();
+  document.getElementById('unitFormTitle').textContent='➕ 新しい単元を追加';
+  document.getElementById('unitSaveBtn').textContent='保存する';
+  document.getElementById('unitCancelBtn').style.display='none';
+}
+
+function saveUnit(){
+  const id     =document.getElementById('editUnitId').value;
+  const name   =document.getElementById('fName').value.trim();
+  const subject=document.getElementById('fSubject').value;
+  const max    =parseInt(document.getElementById('fMax').value)||10;
+  if(!name){alert('単元名を入力してください');return;}
+
+  if(id){
+    google.script.run
+      .withSuccessHandler(()=>{cancelEdit();loadInit();})
+      .updateUnit(id,name,subject,max,editingFields);
+  } else {
+    // 新規：項目を付けて保存
+    google.script.run
+      .withSuccessHandler(res=>{
+        if(editingFields.length>0){
+          // 項目もあわせて保存
+          google.script.run
+            .withSuccessHandler(()=>{cancelEdit();loadInit();})
+            .updateUnit(res.id,name,subject,max,editingFields);
+        } else {
+          cancelEdit();loadInit();
+        }
+      })
+      .addUnit(name,subject,max);
+  }
+}
+
+function askDelete(id,name){
+  delTargetId=id;
+  document.getElementById('delMsg').textContent=`「${name}」を削除します。授業データは残ります。`;
+  document.getElementById('delModal').classList.add('show');
+}
+function confirmDelete(){
+  google.script.run.withSuccessHandler(()=>{closeModal();loadInit();}).deleteUnit(delTargetId);
+}
+function closeModal(){document.getElementById('delModal').classList.remove('show');}
+
+// =====================================
+//  教科デフォルト編集
+// =====================================
+function loadSubjectEditor(){
+  google.script.run.withSuccessHandler(d=>{
+    subjectDefaults=d.subjectDefaults||{};
+    allPresets     =d.presets||[];
+    renderSubjectTabs();
+    selectSubjectTab(Object.keys(subjectDefaults)[0]||'算数');
+  }).teacherInit();
+}
+
+function renderSubjectTabs(){
+  const container=document.getElementById('subjectTabs');
+  container.innerHTML=Object.keys(subjectDefaults).map(s=>
+    `<div class="stab ${s===currentSubject?'active':''}" onclick="selectSubjectTab('${esc(s)}')">${esc(s)}</div>`
+  ).join('');
+}
+
+function selectSubjectTab(subject){
+  currentSubject=subject;
+  document.querySelectorAll('.stab').forEach(t=>{
+    t.classList.toggle('active',t.textContent===subject);
+  });
+  const keys=subjectDefaults[subject]||[];
+  const el=document.getElementById('subjectFieldEditor');
+  el.innerHTML=`<p style="font-size:12px;color:var(--muted);margin-bottom:8px;">「${subject}」のデフォルト項目：</p>`+
+    allPresets.map(p=>{
+      const on=keys.includes(p.key);
+      return `<label style="display:flex;align-items:center;gap:8px;padding:8px;border-radius:8px;
+        background:${on?'#E8F5E9':'#F5F5F5'};margin-bottom:6px;cursor:pointer;">
+        <input type="checkbox" value="${p.key}" ${on?'checked':''} onchange="rerenderSubject()">
+        ${p.emoji} <span style="font-weight:bold;">${esc(p.label)}</span>
+        <span style="font-size:11px;color:var(--muted);">${typeLabel(p.type)}</span>
+      </label>`;
+    }).join('');
+}
+
+function rerenderSubject(){
+  // チェック状態を更新してデフォルト配列を構築
+  const checks=document.querySelectorAll('#subjectFieldEditor input[type=checkbox]');
+  const keys=Array.from(checks).filter(c=>c.checked).map(c=>c.value);
+  subjectDefaults[currentSubject]=keys;
+  selectSubjectTab(currentSubject);
+}
+
+function saveSubjectDefault(){
+  const checks=document.querySelectorAll('#subjectFieldEditor input[type=checkbox]');
+  const keys=Array.from(checks).filter(c=>c.checked).map(c=>c.value);
+  google.script.run
+    .withSuccessHandler(()=>alert(`「${currentSubject}」のデフォルトを保存しました！`))
+    .updateSubjectDefault(currentSubject,keys);
+}
+
+function typeLabel(t){
+  return {text:'自由記述',select:'選択肢',radio:'ラジオ',review:'ふりかえり',number:'数値'}[t]||t;
+}
+
+// =====================================
+//  プロンプト
+// =====================================
+function loadPrompts(){
+  google.script.run.withSuccessHandler(d=>{
+    const cfg=d.globalCfg||{};
+    document.getElementById('pComment').value=cfg.prompt_comment||'';
+    document.getElementById('pScore').value  =cfg.prompt_score||'';
+    document.getElementById('pMedal').value  =cfg.medal_top||'5';
+  }).teacherInit();
+}
+function savePrompts(){
+  google.script.run
+    .withSuccessHandler(()=>alert('プロンプトを保存しました！'))
+    .saveGlobalSettings(
+      document.getElementById('pMedal').value,
+      document.getElementById('pComment').value,
+      document.getElementById('pScore').value
+    );
+}
+
+// =====================================
+//  単元集約
+// =====================================
+function loadAgg(){
+  google.script.run.withSuccessHandler(d=>{allUnits=d.units||[];populateUnitSelects();}).teacherInit();
+  google.script.run.withSuccessHandler(data=>{allAggData=data;filterAgg();}).getAggregateData(null);
+}
+function filterAgg(){
+  const unitId=document.getElementById('aggUnit').value;
+  const period=document.getElementById('aggPeriod').value;
+  const unit=allUnits.find(u=>u.id==unitId);
+
+  const rows=allAggData.filter(r=>{
+    if(unitId&&(!unit||r.unitName!==unit.name)) return false;
+    if(period&&r.period!=period) return false;
+    return true;
+  });
+
+  const periods=[...new Set(allAggData
+    .filter(r=>!unitId||r.unitName===unit?.name)
+    .map(r=>r.period))].sort((a,b)=>a-b);
+  const pSel=document.getElementById('aggPeriod');
+  const pCur=pSel.value;
+  pSel.innerHTML='<option value="">全時間</option>'+
+    periods.map(p=>`<option value="${p}" ${p==pCur?'selected':''}>${p}じかんめ</option>`).join('');
+
+  const body=document.getElementById('aggBody');
+  if(!rows.length){
+    body.innerHTML='<tr><td colspan="7" style="text-align:center;color:#999;padding:14px;">データがありません</td></tr>';
+    return;
+  }
+  body.innerHTML=rows.map(r=>`
+    <tr>
+      <td>${esc(r.unitName)}</td><td>${r.period}時間目</td>
+      <td>${r.num}</td><td>${esc(r.name)}</td><td>${esc(r.date)}</td>
+      <td style="max-width:260px;">${esc(r.review)}</td>
+      <td>${r.rank?`<span class="rank-chip r-${r.rank.replace('+','p')}">${r.rank}</span>`:'-'}</td>
+    </tr>`).join('');
+}
+
+function genSummary(){
+  const unitId=document.getElementById('aggUnit').value;
+  if(!unitId){alert('単元を選択してください');return;}
+  const box=document.getElementById('aiReport');
+  box.style.display='block';box.textContent='🤖 AI分析中…';
+  google.script.run
+    .withSuccessHandler(res=>{
+      if(!res.ok){box.textContent='エラー:'+res.error;return;}
+      box.textContent=`【${res.unitName}】AI評価レポート\n\n`+res.summary;
+    })
+    .generateUnitSummary(unitId);
+}
+
+// =====================================
+//  util
+// =====================================
+function renderMedal(medal,color){
+  if(!medal) return '';
+  if(['🥇','🥈','🥉'].includes(medal)) return `<span style="font-size:18px;">${medal}</span>`;
+  return `<span class="medal-num" style="background:${color||'#999'}">${medal.replace('th','')}</span>`;
+}
+function esc(s){
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// 初期ロード
+loadInit();startStatusPoll();
+</script>
+</body>
+</html>

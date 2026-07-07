@@ -1,0 +1,6 @@
+{
+  "scriptId": "YOUR_SCRIPT_ID",
+  "rootDir": "src",
+  "webappDeploymentId": "YOUR_WEBAPP_DEPLOYMENT_ID",
+  "descriptionPrefix": "jibun-matome"
+}

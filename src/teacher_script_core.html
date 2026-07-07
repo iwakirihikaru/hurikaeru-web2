@@ -1,0 +1,1457 @@
+<script>
+// =====================================
+//  State
+// =====================================
+let allUnits       = [];
+let allPresets     = [];
+let subjectDefaults= {};
+let allSubjects    = [];
+let activeUnitId   = null;
+let activePeriod   = 0;
+let statusTimer    = null;
+let delTargetId    = null;
+let allAggData     = [];
+let rosterEntries  = [];
+let portfolioRows  = [];
+let teacherBuild   = '';
+let teacherHelpData = null;
+let teacherHelpLoading = false;
+let teacherHelpAutoChecked = false;
+let teacherShellRefreshQueued = false;
+let unitProgressByUnitId = {};
+let teacherDataEpoch = 0;
+let lastTeacherStartAtMs = 0;
+let teacherEndingLesson = false;
+let teacherActiveDebug = '';
+const TEACHER_CLIENT_BUILD = 'client-20260704-1035';
+let teacherBootstrapApplied = false;
+const UI_STATE_KEY = 'jibun-matome-teacher-ui';
+const AGG_PRESET_LABELS = {
+  standard:'ふりかえり中心',
+  knowledge:'知識・技能',
+  thinking:'思考・判断・表現',
+  attitude:'主体的態度',
+  all:'記入記録をまとめて表示',
+};
+const AGG_CATEGORY_ORDER = ['knowledge','thinking','attitude'];
+const FIELD_CATEGORY_LABELS = {
+  knowledge:'知識・技能',
+  thinking:'思考・判断・表現',
+  attitude:'主体的態度',
+};
+const TEACHER_ASSESS_LEVELS = ['','A','B','C'];
+const nativeAlert = window.alert.bind(window);
+
+function uniqueValues(list){
+  const out=[];
+  const seen=Object.create(null);
+  (list||[]).forEach(value=>{
+    const key=typeof value+':'+String(value);
+    if(seen[key]) return;
+    seen[key]=true;
+    out.push(value);
+  });
+  return out;
+}
+
+function getTeacherReviewField_(fields){
+  return (fields||[]).find(field=>field&&field.type==='review') || null;
+}
+
+function getTeacherReviewHintLabels_(field){
+  return String(field&&field.hints||'')
+    .split(',')
+    .map(function(text){ return String(text||'').trim(); })
+    .filter(Boolean);
+}
+
+function teacherEscapeRegex_(text){
+  return String(text||'').replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+}
+
+function renderTeacherInlineChipText_(text, labels){
+  const source=String(text||'');
+  const normalized=(labels||[]).map(function(label){ return String(label||'').trim(); }).filter(Boolean);
+  if(!normalized.length) return esc(source).replace(/\n/g,'<br>');
+  const unique=uniqueValues(normalized).sort(function(a,b){ return b.length-a.length; });
+  const labelMap=Object.create(null);
+  unique.forEach(function(label){ labelMap[label]=true; });
+  const pattern=new RegExp('(' + unique.map(teacherEscapeRegex_).join('|') + ')','g');
+  return source
+    .split(pattern)
+    .map(function(part){
+      return labelMap[part] ? '<span class="inline-chip">'+esc(part)+'</span>' : esc(part).replace(/\n/g,'<br>');
+    })
+    .join('');
+}
+
+function extractTeacherReviewChipLabels_(text, field){
+  const source=String(text||'');
+  return getTeacherReviewHintLabels_(field).filter(function(label){
+    return label && source.indexOf(label)>=0;
+  }).slice(0,6);
+}
+
+function renderTeacherReviewText_(text, fields){
+  const reviewField=getTeacherReviewField_(fields);
+  return renderTeacherInlineChipText_(text, extractTeacherReviewChipLabels_(text, reviewField));
+}
+
+function showFatalTeacherError(message){
+  if(window.showFatalTeacherError && window.showFatalTeacherError !== showFatalTeacherError){
+    window.showFatalTeacherError(message);
+    return;
+  }
+  const text=String(message||'').trim();
+  if(!text) return;
+  const box=document.getElementById('teacherFatalError');
+  if(box){
+    box.style.display='block';
+    box.textContent=`画面エラー: ${text}`;
+  }
+}
+
+window.addEventListener('error', function(event){
+  const msg=(event && event.message) || 'unknown error';
+  showFatalTeacherError(msg);
+});
+
+window.addEventListener('unhandledrejection', function(event){
+  const reason=event && event.reason;
+  const msg=(reason && reason.message) || String(reason||'promise rejection');
+  showFatalTeacherError(msg);
+});
+
+function inferToastTone(message){
+  const text=String(message||'');
+  if(/失敗|エラー|重複|選択してください|入力してください|ありません/.test(text)) return 'error';
+  if(/しました|完了|保存|コピー|発表/.test(text)) return 'success';
+  return 'info';
+}
+
+function showToast(message, options){
+  const text=String(message==null?'':message).trim();
+  if(!text) return;
+  const stack=document.getElementById('toastStack');
+  if(!stack){
+    nativeAlert(text);
+    return;
+  }
+  const toast=document.createElement('div');
+  toast.className=`toast ${options && options.tone ? options.tone : inferToastTone(text)}`;
+  toast.textContent=text;
+  stack.appendChild(toast);
+  requestAnimationFrame(()=>toast.classList.add('show'));
+  const close=()=>{
+    toast.classList.remove('show');
+    setTimeout(()=>toast.remove(),180);
+  };
+  window.setTimeout(close, Number(options && options.duration || 2600));
+}
+
+window.alert=function(message){
+  showToast(message);
+};
+
+// 編集中の項目リスト（単元フォーム用）
+let editingFields  = [];
+let subjectEditingFields = [];
+let currentSubject = '算数';
+let recentCustomPresets = [];
+const preloadCache = {
+  roster:null,
+  editor:null,
+  prompts:null,
+  rosterLoading:false,
+  editorLoading:false,
+  promptsLoading:false,
+  started:false,
+};
+const TEACHER_PRELOAD_CACHE_KEY = 'jibun-matome-teacher-preload';
+const TEACHER_PRELOAD_TTL_MS = 5 * 60 * 1000;
+hydrateTeacherPreloadCache_();
+
+// =====================================
+//  タブ切替
+// =====================================
+function switchTab(name, el){
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('sec-'+name).classList.add('active');
+  if(el) el.classList.add('active');
+  clearInterval(statusTimer);
+  if(name==='status')    {loadStatusInit({ startPolling:true });}
+  if(name==='curriculum'){loadCurriculumTab();}
+  if(name==='roster')    {loadRosterEditor();}
+  if(name==='records')   {loadRecordsTab();}
+  if(name==='prompts')   {loadPromptsTab();}
+  if(name==='help')      {loadHelpTab();}
+  if(name==='logs')      {loadAiLogs();}
+}
+
+// =====================================
+//  初期ロード
+// =====================================
+function loadInit(){
+  const requestEpoch=teacherDataEpoch;
+  applyEmbeddedTeacherBootstrap_();
+  google.script.run
+    .withSuccessHandler(d=>{
+      if(requestEpoch!==teacherDataEpoch) return;
+      applyTeacherInitData(d, { includeRoster:true, renderUnitList:true, schedulePreload:true, source:'teacherInit' });
+    })
+    .withFailureHandler(err=>{
+      if(requestEpoch!==teacherDataEpoch) return;
+      handleTeacherInitFailure_(err, 'teacherInit');
+    })
+    .teacherInit();
+}
+
+function loadCurriculumTab(){
+  loadInit();
+  loadSubjectEditor();
+  switchCurriculumSubtab(readUiState().curriculumSubtab||'units');
+}
+
+function loadRecordsTab(){
+  switchRecordSubtab(readUiState().recordSubtab||'aggregate');
+}
+
+function loadPromptsTab(){
+  loadPrompts();
+  switchPromptSubtab(readUiState().promptSubtab||'ai');
+}
+
+function loadStatusInit(options){
+  const opts=options||{};
+  const requestEpoch=teacherDataEpoch;
+  applyEmbeddedTeacherBootstrap_();
+  const runner=google.script.run
+      .withSuccessHandler(d=>{
+        if(requestEpoch!==teacherDataEpoch) return;
+        applyTeacherInitData(d, { includeRoster:false, renderUnitList:false, schedulePreload:true, source:'teacherStatusInit' });
+      if(d && d.status){
+        renderStatus(d.status);
+      }else{
+        const statusSection=document.getElementById('sec-status');
+        if(statusSection && statusSection.classList.contains('active')){
+        loadStatus();
+        }
+      }
+      if(opts.startPolling){
+        startStatusPoll(Boolean(d && d.status));
+      }
+    })
+    .withFailureHandler(err=>{
+      if(requestEpoch!==teacherDataEpoch) return;
+      handleTeacherInitFailure_(err, 'teacherStatusInit');
+      if(opts.startPolling){
+        startStatusPoll(false);
+        }
+      })
+  if(opts.lightweight !== false && Array.isArray(allUnits) && allUnits.length){
+    runner.teacherStatusSnapshot();
+    return;
+  }
+  runner.teacherStatusInit();
+}
+
+function invalidateTeacherDataRequests_(){
+  teacherDataEpoch += 1;
+}
+
+function buildResolvedActiveState_(incomingActive){
+  const active=incomingActive||{};
+  const unitId=active && active.unitId || null;
+  const period=Number(active && active.period || 0);
+  const currentUnit=(activeUnitId!=null && activePeriod>0)
+    ? (allUnits.find(u=>String(u.id)===String(activeUnitId))||null)
+    : null;
+  const resolvedUnit=active && active.unit
+    ? active.unit
+    : (unitId!=null ? (allUnits.find(u=>String(u.id)===String(unitId))||null) : null);
+  const resolvedFields=Array.isArray(active && active.fields) && active.fields.length
+    ? active.fields
+    : (resolvedUnit && Array.isArray(resolvedUnit.fields) ? resolvedUnit.fields : []);
+  const canPreserveCurrent = activeUnitId!=null
+    && activePeriod>0
+    && (Date.now() - lastTeacherStartAtMs) < 30000;
+  if(unitId!=null && period>0){
+    return {
+      unitId: unitId,
+      period: period,
+      unit: resolvedUnit,
+      fields: resolvedFields,
+      timelineFieldKey: active && active.timelineFieldKey || '',
+    };
+  }
+  if(activeUnitId!=null && activePeriod>0 && !teacherEndingLesson && currentUnit){
+    return {
+      unitId: activeUnitId,
+      period: activePeriod,
+      unit: currentUnit,
+      fields: Array.isArray(currentUnit.fields) ? currentUnit.fields : [],
+      timelineFieldKey: '',
+    };
+  }
+  if(canPreserveCurrent && currentUnit){
+    return {
+      unitId: activeUnitId,
+      period: activePeriod,
+      unit: currentUnit,
+      fields: Array.isArray(currentUnit.fields) ? currentUnit.fields : [],
+      timelineFieldKey: '',
+    };
+  }
+  return active;
+}
+
+function applyTeacherInitData(d, options){
+  d=d||{};
+  const opts=options||{};
+  const previousUnitId=activeUnitId;
+  const previousPeriod=activePeriod;
+  if(Array.isArray(d.units)) allUnits = d.units;
+  if(d.active !== undefined){
+    const rawActive=d.active||{};
+    d.active = buildResolvedActiveState_(d.active);
+    activeUnitId = d.active && d.active.unitId || null;
+    activePeriod = d.active && d.active.period || 0;
+    teacherActiveDebug=`${opts.source||'unknown'} raw=${rawActive && rawActive.unitId || ''}/${rawActive && rawActive.period || 0} resolved=${activeUnitId || ''}/${activePeriod || 0}`;
+    if(previousUnitId!=null && previousPeriod>0 && !(rawActive && rawActive.unitId) && !teacherEndingLesson){
+      teacherActiveDebug += ' preserve-current';
+    }
+    if(teacherEndingLesson && (!activeUnitId || !activePeriod)){
+      teacherEndingLesson = false;
+    }
+  }
+  if(d.unitProgress && typeof d.unitProgress === 'object') unitProgressByUnitId = d.unitProgress;
+  if(d.build) teacherBuild = d.build;
+  if(opts.includeRoster){
+    if(Array.isArray(d.roster)){
+      rosterEntries = d.roster.filter(row=>row.active!==false);
+      preloadCache.roster = { roster:d.roster };
+      persistTeacherPreloadCache_();
+    }
+  }
+  applySavedUiState();
+  renderBuildBar();
+  renderActiveBanner(d.active);
+  populateUnitSelects();
+  renderTimelineFieldSelect(d.active);
+  if(opts.renderUnitList) renderUnitList();
+  if(opts.schedulePreload) scheduleTeacherPreload();
+  if(Array.isArray(d.errors) && d.errors.length){
+    showTeacherLoadWarning_(d.errors.join(' / '));
+  }
+}
+
+function applyEmbeddedTeacherBootstrap_(){
+  if(teacherBootstrapApplied) return false;
+  const data=window.__TEACHER_BOOTSTRAP__;
+  if(!data || typeof data!=='object') return false;
+  teacherBootstrapApplied = true;
+  applyTeacherInitData(data, { includeRoster:true, renderUnitList:true, schedulePreload:false, source:'bootstrap' });
+  return true;
+}
+
+function showTeacherLoadWarning_(message){
+  const text=String(message||'').trim();
+  if(!text) return;
+  const box=document.getElementById('teacherFatalError');
+  if(box){
+    box.style.display='block';
+    box.textContent='一部の読み込みに失敗しました: '+text;
+  }
+  showToast('一部の読み込みに失敗しました。画面上部のメッセージを確認してください。',{tone:'warn'});
+}
+
+function handleTeacherInitFailure_(err, source){
+  const message=(err&&err.message)?err.message:String(err||'unknown error');
+  teacherBuild='error';
+  renderBuildBar();
+  showTeacherLoadWarning_(`${source}: ${message}`);
+}
+
+function scheduleTeacherPreload(){
+  if(preloadCache.started) return;
+  preloadCache.started = true;
+  const runner = ()=> {
+    ensureRosterPreload();
+    ensureEditorPreload();
+    ensurePromptPreload();
+    preloadTeacherHelpInfo();
+  };
+  if(typeof requestIdleCallback === 'function'){
+    requestIdleCallback(runner,{timeout:1500});
+  } else {
+    setTimeout(runner,700);
+  }
+}
+
+function hydrateTeacherPreloadCache_(){
+  try{
+    const raw=localStorage.getItem(TEACHER_PRELOAD_CACHE_KEY);
+    if(!raw) return;
+    const parsed=JSON.parse(raw);
+    if(!parsed || (Date.now()-Number(parsed.savedAt||0))>TEACHER_PRELOAD_TTL_MS){
+      localStorage.removeItem(TEACHER_PRELOAD_CACHE_KEY);
+      return;
+    }
+    if(parsed.roster) preloadCache.roster=parsed.roster;
+    if(parsed.editor) preloadCache.editor=parsed.editor;
+    if(parsed.prompts) preloadCache.prompts=parsed.prompts;
+  }catch(_err){}
+}
+
+function persistTeacherPreloadCache_(){
+  try{
+    localStorage.setItem(TEACHER_PRELOAD_CACHE_KEY, JSON.stringify({
+      savedAt:Date.now(),
+      roster:preloadCache.roster||null,
+      editor:preloadCache.editor||null,
+      prompts:preloadCache.prompts||null,
+    }));
+  }catch(_err){}
+}
+
+function readUiState(){
+  try{
+    const raw=localStorage.getItem(UI_STATE_KEY);
+    return raw?JSON.parse(raw):{};
+  }catch(_err){
+    return {};
+  }
+}
+
+function saveUiState(patch){
+  try{
+    const next={...readUiState(),...patch};
+    localStorage.setItem(UI_STATE_KEY, JSON.stringify(next));
+  }catch(_err){}
+}
+
+function applySavedUiState(){
+  const state=readUiState();
+  setControlValue('startSubjectFilter', state.startSubjectFilter||'');
+  setControlValue('startUnitSearch', state.startUnitSearch||'');
+  setControlValue('unitListSubjectFilter', state.unitListSubjectFilter||'');
+  setControlValue('unitListSearch', state.unitListSearch||'');
+  setControlValue('unitListSort', state.unitListSort||'recent_activity');
+}
+
+function switchCurriculumSubtab(name, el){
+  const next=String(name||'units');
+  document.querySelectorAll('.curriculum-pane').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('[data-curriculum-tab]').forEach(btn=>btn.classList.remove('active'));
+  const pane=document.getElementById('curriculum-pane-'+next);
+  if(pane) pane.classList.add('active');
+  if(el) el.classList.add('active');
+  else {
+    const btn=document.querySelector(`[data-curriculum-tab="${next}"]`);
+    if(btn) btn.classList.add('active');
+  }
+  saveUiState({ curriculumSubtab: next });
+  if(next==='units') loadInit();
+  if(next==='subject') loadSubjectEditor();
+}
+
+function switchRecordSubtab(name, el){
+  const next=String(name||'aggregate');
+  document.querySelectorAll('.record-pane').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('[data-record-tab]').forEach(btn=>btn.classList.remove('active'));
+  const pane=document.getElementById('record-pane-'+next);
+  if(pane) pane.classList.add('active');
+  if(el) el.classList.add('active');
+  else {
+    const btn=document.querySelector(`[data-record-tab="${next}"]`);
+    if(btn) btn.classList.add('active');
+  }
+  saveUiState({ recordSubtab: next });
+  if(next==='aggregate') loadAgg();
+  if(next==='portfolio') loadPortfolioTab();
+  if(next==='grading') loadAgg();
+}
+
+function switchPromptSubtab(name, el){
+  const next=String(name||'ai');
+  document.querySelectorAll('.prompt-pane').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('[data-prompt-tab]').forEach(btn=>btn.classList.remove('active'));
+  const pane=document.getElementById('prompt-pane-'+next);
+  if(pane) pane.classList.add('active');
+  if(el) el.classList.add('active');
+  else {
+    const btn=document.querySelector(`[data-prompt-tab="${next}"]`);
+    if(btn) btn.classList.add('active');
+  }
+  saveUiState({ promptSubtab: next });
+  if(next==='update') ensureTeacherHelpLoaded();
+}
+
+function hasTeacherAiFlagOnClient_(){
+  const cfg=((preloadCache.prompts||{}).globalCfg)||{};
+  return Object.prototype.hasOwnProperty.call(cfg,'teacher_ai_enabled');
+}
+
+function isTeacherAiReadyOnClient_(){
+  const cfg=((preloadCache.prompts||{}).globalCfg)||{};
+  const apiReady=Boolean(cfg.api_key_configured);
+  if(hasTeacherAiFlagOnClient_()){
+    return Boolean(cfg.teacher_ai_enabled) && apiReady;
+  }
+  return apiReady;
+}
+
+function setButtonDisabledState_(id, disabled){
+  const btn=document.getElementById(id);
+  if(btn) btn.disabled=Boolean(disabled);
+}
+
+function syncTeacherAiUi_(){
+  const ready=isTeacherAiReadyOnClient_();
+  setButtonDisabledState_('aggSummaryAiBtn', !ready);
+  setButtonDisabledState_('portfolioSummaryAiBtn', !ready);
+  setButtonDisabledState_('gradingDraftAiBtn', !ready);
+  const note=ready ? '' : 'AI未設定です。プロンプトタブでAPIキーを保存すると、先生AIの生成ボタンが使えるようになります。';
+  const portfolioDebug=document.getElementById('portfolioDebug');
+  const gradeDebug=document.getElementById('gradeDebug');
+  if(portfolioDebug && !String(portfolioDebug.dataset.baseText||'').trim()){
+    portfolioDebug.dataset.baseText=portfolioDebug.textContent||'';
+  }
+  if(gradeDebug && !String(gradeDebug.dataset.baseText||'').trim()){
+    gradeDebug.dataset.baseText=gradeDebug.textContent||'';
+  }
+  if(portfolioDebug && !ready && !String((document.getElementById('pfStudent')||{}).value||'').trim()){
+    portfolioDebug.textContent=note;
+  }else if(portfolioDebug && ready && portfolioDebug.dataset.baseText){
+    portfolioDebug.textContent=portfolioDebug.dataset.baseText;
+  }
+  if(gradeDebug && !ready && /^評定に使う記録の取得状況/.test(String(gradeDebug.dataset.baseText||gradeDebug.textContent||''))){
+    gradeDebug.textContent=note;
+  }else if(gradeDebug && ready && gradeDebug.dataset.baseText && /^AI未設定です。/.test(String(gradeDebug.textContent||''))){
+    gradeDebug.textContent=gradeDebug.dataset.baseText;
+  }
+}
+
+function setControlValue(id, value){
+  const el=document.getElementById(id);
+  if(el) el.value=value;
+}
+
+function ensureRosterPreload(force){
+  if(preloadCache.roster || preloadCache.rosterLoading) return;
+  preloadCache.rosterLoading = true;
+  google.script.run
+    .withSuccessHandler(d=>{
+      preloadCache.rosterLoading = false;
+      preloadCache.roster = d||{ roster:[] };
+      persistTeacherPreloadCache_();
+    })
+    .withFailureHandler(()=>{
+      preloadCache.rosterLoading = false;
+    })
+    .teacherRosterInit();
+}
+
+function ensureEditorPreload(force){
+  if(preloadCache.editor || preloadCache.editorLoading) return;
+  preloadCache.editorLoading = true;
+  google.script.run
+    .withSuccessHandler(d=>{
+      preloadCache.editorLoading = false;
+      preloadCache.editor = d||{ presets:[], subjectDefaults:{}, subjects:[], recentCustomPresets:[] };
+      persistTeacherPreloadCache_();
+    })
+    .withFailureHandler(()=>{
+      preloadCache.editorLoading = false;
+    })
+    .teacherEditorInit();
+}
+
+function ensurePromptPreload(force){
+  if(preloadCache.prompts || preloadCache.promptsLoading) return;
+  preloadCache.promptsLoading = true;
+  google.script.run
+    .withSuccessHandler(d=>{
+      preloadCache.promptsLoading = false;
+      preloadCache.prompts = d||{ globalCfg:{}, aiQueue:null };
+      persistTeacherPreloadCache_();
+      syncTeacherAiUi_();
+    })
+    .withFailureHandler(()=>{
+      preloadCache.promptsLoading = false;
+      syncTeacherAiUi_();
+    })
+    .teacherPromptInit();
+}
+
+function renderBuildBar(){
+  const el=document.getElementById('buildBar');
+  if(!el) return;
+  el.textContent=`build: ${teacherBuild||'unknown'} / ${TEACHER_CLIENT_BUILD}`;
+}
+
+function populateUnitSelects(){
+  populateStatusSubjectFilter();
+  populateUnitListSubjectFilter();
+  const sel=document.getElementById('startUnit');
+  const cur=sel.value;
+  let visibleStartUnits=sortUnitsByLatestActivity(getFilteredStatusUnits());
+  if(!visibleStartUnits.length && allUnits.length){
+    const subjectSel=document.getElementById('startSubjectFilter');
+    const searchInput=document.getElementById('startUnitSearch');
+    const hadFilter=Boolean((subjectSel&&subjectSel.value)||String((searchInput&&searchInput.value)||'').trim());
+    if(hadFilter){
+      setControlValue('startSubjectFilter','');
+      setControlValue('startUnitSearch','');
+      saveUiState({
+        startSubjectFilter:'',
+        startUnitSearch:'',
+      });
+      visibleStartUnits=sortUnitsByLatestActivity(getFilteredStatusUnits());
+    }
+  }
+  sel.innerHTML='<option value="">単元を選択…</option>'+
+    visibleStartUnits.map(u=>`<option value="${u.id}" ${u.id==activeUnitId?'selected':''}>${esc(u.subject)}：${esc(u.name)}</option>`).join('');
+  if(cur && visibleStartUnits.some(u=>String(u.id)===String(cur))){
+    sel.value=cur;
+  } else {
+    const suggestedUnit=getSuggestedStartUnit(visibleStartUnits);
+    if(suggestedUnit) sel.value=String(suggestedUnit.id);
+  }
+  updatePeriodSelect();
+
+  const subjectSel=document.getElementById('aggSubject');
+  if(subjectSel){
+    const subjectCur=subjectSel.value;
+    const subjects=uniqueValues(allUnits.map(u=>u.subject).filter(Boolean));
+    subjectSel.innerHTML='<option value="">全教科</option>'+
+      subjects.map(subject=>`<option value="${esc(subject)}">${esc(subject)}</option>`).join('');
+    if(subjectCur) subjectSel.value=subjectCur;
+  }
+
+  const ag=document.getElementById('aggUnit');
+  if(ag) populateAggUnitSelect();
+}
+
+function populateStatusSubjectFilter(){
+  const subjectSel=document.getElementById('startSubjectFilter');
+  if(!subjectSel) return;
+  const cur=subjectSel.value;
+  const subjects=uniqueValues(allUnits.map(u=>u.subject).filter(Boolean));
+  subjectSel.innerHTML='<option value="">全教科</option>'+
+    subjects.map(subject=>`<option value="${esc(subject)}">${esc(subject)}</option>`).join('');
+  if(cur && subjects.includes(cur)) subjectSel.value=cur;
+}
+
+function getFilteredStatusUnits(){
+  const subject=(document.getElementById('startSubjectFilter')||{}).value||'';
+  const keyword=((document.getElementById('startUnitSearch')||{}).value||'').trim().toLowerCase();
+  return allUnits.filter(unit=>{
+    const subjectOk=!subject||String(unit.subject||'')===String(subject);
+    const keywordOk=!keyword||String(unit.name||'').toLowerCase().includes(keyword);
+    return subjectOk&&keywordOk;
+  });
+}
+
+function getSuggestedStartUnit(units){
+  const list=Array.isArray(units)?units.slice():[];
+  if(!list.length) return null;
+  return list.sort(compareSuggestedStartUnit_)[0]||null;
+}
+
+function getUnitRecentSortValue_(unit){
+  const progress=unitProgressByUnitId[String(unit && unit.id || '')]||{};
+  const activityValue=Date.parse(String(progress.latestActivityAt||''))||0;
+  const createdValue=Number(unit && unit.createdAtValue || 0) || toUnitCreatedAtValue(unit);
+  return Math.max(activityValue, createdValue);
+}
+
+function buildQrImageUrl(text){
+  const value=String(text||'').trim();
+  if(!value) return '';
+  return `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(value)}`;
+}
+
+function buildQrFallbackUrl(text){
+  const value=String(text||'').trim();
+  if(!value) return '';
+  return `https://quickchart.io/qr?size=240&text=${encodeURIComponent(value)}`;
+}
+
+function applyQrImage(id, url){
+  const el=document.getElementById(id);
+  if(!el) return;
+  if(!url){
+    el.removeAttribute('src');
+    el.style.display='none';
+    return;
+  }
+  el.style.display='block';
+  el.onerror=function(){
+    const fallback=buildQrFallbackUrl(url);
+    if(!fallback || el.dataset.qrFallbackApplied==='1'){
+      el.style.display='none';
+      return;
+    }
+    el.dataset.qrFallbackApplied='1';
+    el.src=fallback;
+  };
+  el.dataset.qrFallbackApplied='';
+  el.src=buildQrImageUrl(url);
+}
+
+function applyTeacherHelpData(data){
+  teacherHelpData=data||{};
+  const links=teacherHelpData.links||{};
+  const shell=teacherHelpData.shell||{};
+  const teacherUrl=String(links.teacherUrl||'').trim();
+  const registrationUrl=String(links.registrationUrl||'').trim();
+  const studentUrl=String(links.studentUrl||'').trim();
+  const idsToValues=[
+    ['statusTeacherUrl', teacherUrl],
+    ['teacherPageUrl', teacherUrl],
+    ['registrationPageUrl', registrationUrl],
+    ['helpRegistrationUrl', registrationUrl],
+    ['statusStudentUrl', studentUrl],
+    ['studentPageUrl', studentUrl],
+    ['helpStudentUrl', studentUrl],
+  ];
+  idsToValues.forEach(([id, value])=>{
+    const el=document.getElementById(id);
+    if(el) el.value=value;
+  });
+  applyQrImage('registrationQrImage', registrationUrl);
+  applyQrImage('studentQrImage', studentUrl);
+  applyTeacherHelpShellContent_(shell);
+  renderTeacherHelpUpdateInfo(teacherHelpData.app||{});
+  const app=teacherHelpData.app||{};
+  if(app.shellCacheStale && !teacherShellRefreshQueued){
+    teacherShellRefreshQueued = true;
+    setTimeout(()=>{
+      fetchTeacherHelpData_({
+        force:true,
+        onSuccess:()=>{ teacherShellRefreshQueued = false; },
+        onFailure:()=>{ teacherShellRefreshQueued = false; },
+      });
+    }, 10);
+  }
+}
+
+function setTextIfPresent_(id, value){
+  const el=document.getElementById(id);
+  if(el && String(value||'').trim()) el.textContent=String(value||'').trim();
+}
+
+function applyTeacherHelpShellContent_(shell){
+  const labels=shell && shell.labels && typeof shell.labels==='object' ? shell.labels : {};
+  const toggles=shell && shell.featureToggles && typeof shell.featureToggles==='object' ? shell.featureToggles : {};
+  const textMap=[
+    ['helpIntroText', labels.helpIntro],
+    ['helpStep1Title', labels.helpStep1Title],
+    ['helpStep1Item1', labels.helpStep1Item1],
+    ['helpStep1Item2', labels.helpStep1Item2],
+    ['helpStep1Item3', labels.helpStep1Item3],
+    ['helpStep1Item4', labels.helpStep1Item4],
+    ['helpStep2Title', labels.helpStep2Title],
+    ['helpStep2Item1', labels.helpStep2Item1],
+    ['helpStep2Item2', labels.helpStep2Item2],
+    ['helpStep2Item3', labels.helpStep2Item3],
+    ['helpStep2Item4', labels.helpStep2Item4],
+    ['helpStep2Item5', labels.helpStep2Item5],
+    ['helpStudentCardTitle', labels.helpStudentCardTitle],
+    ['helpRegistrationCardTitle', labels.helpRegistrationCardTitle],
+    ['helpStudentQrTitle', labels.helpStudentQrTitle],
+    ['helpRegistrationQrTitle', labels.helpRegistrationQrTitle],
+      ['helpDistributionNote', labels.helpDistributionNote],
+      ['helpStep3Title', labels.helpStep3Title],
+      ['helpStep4Title', labels.helpStep4Title],
+      ['helpStep5Title', labels.helpStep5Title],
+      ['helpStep5Item1', labels.helpStep5Item1],
+      ['helpStep5Item2', labels.helpStep5Item2],
+      ['helpStep5Item3', labels.helpStep5Item3],
+    ];
+  textMap.forEach(([id, value])=>setTextIfPresent_(id, value));
+  setTextIfPresent_('helpStudentOpenBtn', labels.helpOpenLabel);
+  setTextIfPresent_('helpRegistrationOpenBtn', labels.helpOpenLabel);
+  setTextIfPresent_('helpStudentCopyBtn', labels.helpCopyLabel);
+  setTextIfPresent_('helpRegistrationCopyBtn', labels.helpCopyLabel);
+  setTextIfPresent_('helpApiStudioBtn', labels.helpApiStudioLabel);
+  setTextIfPresent_('helpOpenUpdateBtn', labels.helpOpenUpdateLabel);
+
+  const registrationCard=document.getElementById('helpRegistrationCard');
+  if(registrationCard){
+    registrationCard.style.display=toggles.showRegistrationLink===false ? 'none' : '';
+  }
+  const updateGuideCard=document.getElementById('helpUpdateGuideCard');
+  if(updateGuideCard){
+    updateGuideCard.style.display=toggles.showHelpUpdateGuide===false ? 'none' : '';
+  }
+}
+
+function fetchTeacherHelpData_(options){
+  const opts=options||{};
+  if(teacherHelpLoading && !opts.force) return;
+  teacherHelpLoading = true;
+  const runner = google.script.run
+    .withSuccessHandler(d=>{
+      teacherHelpLoading = false;
+      teacherHelpAutoChecked = true;
+      applyTeacherHelpData(d);
+      if(typeof opts.onSuccess==='function') opts.onSuccess(teacherHelpData);
+    })
+    .withFailureHandler(err=>{
+      teacherHelpLoading = false;
+      teacherHelpAutoChecked = true;
+      if(typeof opts.onFailure==='function'){
+        opts.onFailure(err);
+      }
+    });
+  if(opts.force){
+    runner.teacherHelpInit({ forceRefresh:true });
+    return;
+  }
+  runner.teacherHelpInit();
+}
+
+function ensureTeacherHelpLoaded(callback){
+  if(teacherHelpData){
+    if(typeof callback==='function') callback(teacherHelpData);
+    return;
+  }
+  fetchTeacherHelpData_({
+    onSuccess:data=>{
+      if(typeof callback==='function') callback(data);
+    },
+  });
+}
+
+function preloadTeacherHelpInfo(){
+  if(teacherHelpData || teacherHelpLoading || teacherHelpAutoChecked) return;
+  fetchTeacherHelpData_({});
+}
+
+function loadHelpTab(){
+  ensureTeacherHelpLoaded();
+}
+
+function switchToHelpTab(){
+  const tabBtn=document.querySelector(".tab[onclick*=\"'help'\"]");
+  switchTab('help', tabBtn||null);
+}
+
+function openStudentQrGuide(){
+  switchToHelpTab();
+  setTimeout(()=>{
+    const qrCard=document.getElementById('studentQrImage');
+    if(qrCard && typeof qrCard.scrollIntoView === 'function'){
+      qrCard.scrollIntoView({ behavior:'smooth', block:'center' });
+    }
+  }, 80);
+}
+
+function openUpdateSettingsTab(){
+  const tabBtn=document.querySelector(".tab[onclick*=\"'prompts'\"]");
+  switchTab('prompts', tabBtn||null);
+  switchPromptSubtab('update');
+}
+
+function openHelpLink(kind){
+  ensureTeacherHelpLoaded(data=>{
+    const links=(data && data.links)||{};
+    const urlMap={
+      registration:links.registrationUrl||'',
+      student:links.studentUrl||'',
+      teacher:links.teacherUrl||'',
+      apiKey:links.apiKeyGuideUrl||'',
+    };
+    const url=String(urlMap[kind]||'').trim();
+    if(!url){
+      alert('URLを取得できませんでした。');
+      return;
+    }
+    window.open(url, '_blank', 'noopener,noreferrer');
+  });
+}
+
+function copyHelpLink(kind){
+  ensureTeacherHelpLoaded(data=>{
+    const links=(data && data.links)||{};
+    const urlMap={
+      registration:links.registrationUrl||'',
+      student:links.studentUrl||'',
+      teacher:links.teacherUrl||'',
+      apiKey:links.apiKeyGuideUrl||'',
+    };
+    const url=String(urlMap[kind]||'').trim();
+    if(!url){
+      alert('URLを取得できませんでした。');
+      return;
+    }
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(url)
+        .then(()=>alert('URLをコピーしました。'))
+        .catch(()=>alert('コピーに失敗しました。'));
+      return;
+    }
+    try{
+        const temp=document.createElement('input');
+        temp.value=url;
+        document.body.appendChild(temp);
+        temp.select();
+        document.execCommand('copy');
+        temp.remove();
+      alert('URLをコピーしました。');
+    }catch(_err){
+      alert('コピーに失敗しました。');
+    }
+  });
+}
+
+function renderTeacherHelpUpdateInfo(app){
+  const data=app||{};
+  const status=String(data.status||'unknown').trim();
+  const statusMap={
+    update_available:'更新あり',
+    up_to_date:'最新版',
+    current_only:'確認のみ',
+    unknown:'確認失敗',
+  };
+  const statusEl=document.getElementById('helpUpdateStatus');
+  const summaryEl=document.getElementById('helpUpdateSummary');
+  const latestEl=document.getElementById('helpUpdateLatest');
+  const currentEl=document.getElementById('helpUpdateCurrent');
+  const maintenanceEl=document.getElementById('helpUpdateMaintenance');
+  const bannerEl=document.getElementById('helpUpdateBanner');
+  const cacheEl=document.getElementById('helpUpdateCache');
+  const versionControlEl=document.getElementById('helpUpdateVersionControl');
+  const lastResultEl=document.getElementById('helpUpdateLastResult');
+  const reasonEl=document.getElementById('helpUpdateReason');
+  const messageEl=document.getElementById('helpUpdateMessage');
+  const actionBtn=document.getElementById('helpUpdateActionBtn');
+  const rollbackBtn=document.getElementById('helpRollbackBtn');
+  const latestBuild=String(data.latestBuild||'').trim();
+  const latestVersion=String(data.latestVersion||'').trim();
+  const currentBuild=String(data.currentBuild||'').trim();
+  const deploymentId=String(data.deploymentId||'').trim();
+  const checkedAt=String(data.checkedAt||'').trim();
+  const lastStatus=String(data.selfUpdateLastStatus||'').trim();
+  const lastBuild=String(data.selfUpdateLastBuild||'').trim();
+  const lastAt=String(data.selfUpdateLastAt||'').trim();
+  const lastError=String(data.selfUpdateLastError||'').trim();
+  const reason=String(data.selfUpdateReason||'').trim();
+  const actionMode=String(data.updateActionMode||'disabled').trim();
+  const currentDeploymentVersion=Number(data.currentDeploymentVersion||0);
+  const previousDeploymentVersion=Number(data.previousDeploymentVersion||0);
+  const rollbackReason=String(data.rollbackReason||'').trim();
+  const recentVersions=Array.isArray(data.recentDeploymentVersions) ? data.recentDeploymentVersions : [];
+  const maintenanceMode=Boolean(data.maintenanceMode);
+  const noticeBanner=data.noticeBanner||{};
+  const shellCacheFetchedAt=String(data.shellCacheFetchedAt||'').trim();
+    const shellFetchError=String(data.shellFetchError||'').trim();
+    const shellConfigVersion=String(data.shellConfigVersion||'').trim();
+    const shellConfigSource=String(data.shellConfigSource||'').trim();
+    const shellMaintenanceSource=String(data.shellMaintenanceSource||'').trim();
+    const shellLabels=(data.shell && data.shell.labels) || {};
+    const getShellLabel=(key, fallback)=>{
+      const value=String(shellLabels && shellLabels[key] != null ? shellLabels[key] : '').trim();
+      return value || fallback;
+    };
+    const describeShellSource=(source, kind)=>{
+      if(source==='cdn_primary') return `${kind} ${getShellLabel('teacherShellSourceCdnLabel','CDN配信')}`;
+      if(source==='gas_fallback') return `${kind} ${getShellLabel('teacherShellSourceGasLabel','GAS予備経路')}`;
+      if(source==='cache') return `${kind} ${getShellLabel('teacherShellSourceCacheLabel','ローカルキャッシュ')}`;
+      if(source==='default') return `${kind} ${getShellLabel('teacherShellSourceDefaultLabel','既定値')}`;
+      return source ? `${kind} ${source}` : '';
+    };
+  if(statusEl) statusEl.textContent=statusMap[status]||'確認失敗';
+  if(summaryEl){
+    if(maintenanceMode){
+      summaryEl.textContent='中央から緊急停止が出ています。保守案内を優先してください。';
+    }else if(status==='update_available'){
+      summaryEl.textContent='このアプリは最新版より古い可能性があります。';
+    }else if(status==='up_to_date'){
+      summaryEl.textContent='このアプリは最新の配布版です。';
+    }else{
+      summaryEl.textContent='最新版情報を確認できます。';
+    }
+    }
+    if(latestEl){
+      const latestPrefix=getShellLabel('teacherLatestPrefix','最新版:');
+      latestEl.textContent=latestBuild
+        ? `${latestPrefix} ${latestBuild}${latestVersion ? ` / version ${latestVersion}` : ''}`
+        : `${latestPrefix} 取得できませんでした`;
+    }
+    if(currentEl){
+      const currentPrefix=getShellLabel('teacherCurrentPrefix','このアプリ:');
+      currentEl.textContent=currentBuild
+        ? `${currentPrefix} ${currentBuild}${deploymentId ? ` / deployment ${deploymentId}` : ''}${checkedAt ? ` / 確認 ${checkedAt}` : ''}`
+        : `${currentPrefix} 取得できませんでした`;
+    }
+    if(maintenanceEl){
+      maintenanceEl.textContent=maintenanceMode
+        ? getShellLabel('teacherMaintenanceOnLabel','緊急停止: ON この個体は保守表示を優先します')
+        : getShellLabel('teacherMaintenanceOffLabel','緊急停止: OFF');
+    }
+    if(bannerEl){
+      const bannerText=[String(noticeBanner.title||'').trim(), String(noticeBanner.message||'').trim()]
+        .filter(Boolean)
+        .join(' / ');
+      const noticePrefix=getShellLabel('teacherNoticePrefix','お知らせ:');
+      bannerEl.textContent=bannerText ? `${noticePrefix} ${bannerText}` : getShellLabel('teacherNoticeEmptyLabel','お知らせ: なし');
+    }
+    if(cacheEl){
+      const parts=[
+        data.shellCacheFresh
+          ? getShellLabel('teacherShellCacheFreshLabel','設定キャッシュ: 新しい')
+          : getShellLabel('teacherShellCacheStaleLabel','設定キャッシュ: 古いキャッシュ使用中'),
+        describeShellSource(shellConfigSource,getShellLabel('teacherShellSourceConfigLabel','設定')),
+        describeShellSource(shellMaintenanceSource,getShellLabel('teacherShellSourceMaintenanceLabel','保守')),
+        shellCacheFetchedAt ? `取得 ${shellCacheFetchedAt}` : '',
+        shellConfigVersion ? `config ${shellConfigVersion}` : '',
+        shellFetchError ? `更新失敗 ${shellFetchError}` : '',
+      ].filter(Boolean);
+      cacheEl.textContent=parts.join(' / ') || getShellLabel('teacherShellCacheEmptyLabel','設定キャッシュ: 取得前');
+    }
+  if(versionControlEl){
+    if(currentDeploymentVersion>0){
+      versionControlEl.textContent=`版管理: 現在 ${currentDeploymentVersion}${previousDeploymentVersion>0 ? ` / 1つ前 ${previousDeploymentVersion}` : ''}${recentVersions.length ? ` / 履歴 ${recentVersions.join(', ')}` : ''}`;
+    }else{
+      versionControlEl.textContent=`版管理: ${rollbackReason || '取得できませんでした'}`;
+    }
+  }
+    if(lastResultEl){
+      const updateLastPrefix=getShellLabel('teacherUpdateLastPrefix','前回更新:');
+      if(lastStatus==='updated'){
+        lastResultEl.textContent=`${updateLastPrefix} 成功${lastBuild ? ` / ${lastBuild}` : ''}${lastAt ? ` / ${lastAt}` : ''}`;
+      }else if(lastStatus==='rolled_back'){
+        lastResultEl.textContent=`${updateLastPrefix} 版戻し${lastAt ? ` / ${lastAt}` : ''}`;
+      }else if(lastStatus==='error'){
+        lastResultEl.textContent=`${updateLastPrefix} 失敗${lastAt ? ` / ${lastAt}` : ''}${lastError ? ` / ${lastError}` : ''}`;
+      }else{
+        lastResultEl.textContent=`${updateLastPrefix} 未実行`;
+      }
+    }
+    if(reasonEl){
+      reasonEl.textContent=`${getShellLabel('teacherUpdateConditionPrefix','更新条件:')} ${reason || (data.canSelfUpdate ? '更新実行できます。' : '確認中です。')}`;
+    }
+  if(messageEl && !String(messageEl.dataset.busy||'').trim()){
+      if(maintenanceMode){
+        messageEl.textContent=String(noticeBanner.message||'').trim() || '現在メンテナンス中です。少し待ってから開き直してください。';
+      }else if(status==='update_available'){
+        messageEl.textContent=String(data.updateAvailableMessage||'').trim() || '新しい版があります。必要なら更新依頼を出してください。';
+      }else if(status==='up_to_date'){
+        messageEl.textContent=rollbackReason && !currentDeploymentVersion
+          ? `今のところ更新は不要です。版管理は未取得です: ${rollbackReason}`
+          : '今のところ更新は不要です。';
+    }else{
+      messageEl.textContent='「更新を確認」で中央の最新版情報を取り直せます。';
+    }
+  }
+    if(actionBtn){
+      actionBtn.textContent=String(data.updateActionLabel||'更新操作').trim() || '更新操作';
+      actionBtn.disabled=maintenanceMode || !(data.canSelfUpdate || data.canRequestUpdate);
+      actionBtn.dataset.actionMode=actionMode || 'disabled';
+      actionBtn.title=maintenanceMode
+        ? 'メンテナンス中は更新依頼を止めています。'
+        : ((data.canSelfUpdate || data.canRequestUpdate) ? '' : (reason || '更新条件が足りません。'));
+    }
+  if(rollbackBtn){
+    rollbackBtn.disabled=!data.canRollbackDeployment;
+    rollbackBtn.title=data.canRollbackDeployment ? '' : (rollbackReason || '1つ前の版へ戻せません。');
+  }
+}
+
+function refreshTeacherUpdateInfo(){
+  const messageEl=document.getElementById('helpUpdateMessage');
+  if(messageEl){
+    messageEl.dataset.busy='1';
+    messageEl.textContent='最新版情報を確認しています...';
+  }
+  fetchTeacherHelpData_({
+    force:true,
+    onSuccess:data=>{
+      if(messageEl) messageEl.dataset.busy='';
+      if(messageEl){
+        const app=(data && data.app)||{};
+        if(String(app.status||'')==='update_available'){
+          messageEl.textContent=String(app.updateAvailableMessage||'').trim() || '新しい版があります。';
+        }else if(String(app.status||'')==='up_to_date'){
+          messageEl.textContent='このアプリは最新版です。';
+        }else{
+          messageEl.textContent='最新版情報を更新しました。';
+        }
+      }
+    },
+    onFailure:err=>{
+      if(messageEl){
+        messageEl.dataset.busy='';
+        messageEl.textContent=`更新確認に失敗しました: ${err && err.message ? err.message : err}`;
+      }
+    },
+  });
+}
+
+function requestTeacherUpdateFromHelp(){
+  const button=document.getElementById('helpUpdateActionBtn');
+  const messageEl=document.getElementById('helpUpdateMessage');
+  const reasonEl=document.getElementById('helpUpdateReason');
+  if(button) button.disabled=true;
+  if(messageEl){
+    messageEl.dataset.busy='1';
+    messageEl.textContent='更新依頼を送信しています...';
+  }
+  if(reasonEl) reasonEl.textContent='更新条件: 更新依頼を送信中です...';
+  google.script.run
+    .withSuccessHandler(result=>{
+      if(button) button.disabled=false;
+      if(messageEl){
+        messageEl.dataset.busy='';
+        messageEl.textContent=(result && result.ok)
+          ? (result.message || '更新依頼を記録しました。')
+          : `更新依頼に失敗しました: ${result && result.error ? result.error : 'unknown_error'}`;
+      }
+      refreshTeacherUpdateInfo();
+    })
+    .withFailureHandler(err=>{
+      if(button) button.disabled=false;
+      if(messageEl){
+        messageEl.dataset.busy='';
+        messageEl.textContent=`更新依頼に失敗しました: ${err && err.message ? err.message : err}`;
+      }
+      if(reasonEl) reasonEl.textContent='更新条件: 依頼送信エラーが発生しました。';
+    })
+    .requestTeacherAppUpdate();
+}
+
+function runTeacherSelfUpdateFromHelp(){
+  const button=document.getElementById('helpUpdateActionBtn');
+  const messageEl=document.getElementById('helpUpdateMessage');
+  const reasonEl=document.getElementById('helpUpdateReason');
+  if(button) button.disabled=true;
+  if(messageEl){
+    messageEl.dataset.busy='1';
+    messageEl.textContent='このアプリを更新しています...';
+  }
+  if(reasonEl) reasonEl.textContent='更新条件: 更新実行中です...';
+  google.script.run
+    .withSuccessHandler(result=>{
+      if(button) button.disabled=false;
+      if(messageEl){
+        messageEl.dataset.busy='';
+        if(result && result.ok){
+          if(result.changed){
+            messageEl.textContent=`更新しました。${result.latestBuild ? ` build ${result.latestBuild}` : ''} 数秒後に再読み込みします。`;
+            setTimeout(()=>window.location.reload(), 4000);
+          }else{
+            messageEl.textContent=result.message||'このアプリは最新版です。';
+          }
+        }else{
+          messageEl.textContent=`更新に失敗しました: ${result && result.error ? result.error : 'unknown_error'}`;
+        }
+      }
+      refreshTeacherUpdateInfo();
+    })
+    .withFailureHandler(err=>{
+      if(button) button.disabled=false;
+      if(messageEl){
+        messageEl.dataset.busy='';
+        messageEl.textContent=`更新に失敗しました: ${err && err.message ? err.message : err}`;
+      }
+      if(reasonEl) reasonEl.textContent='更新条件: 実行エラーが発生しました。';
+    })
+    .runTeacherSelfUpdate();
+}
+
+function rollbackTeacherDeploymentFromHelp(){
+  const button=document.getElementById('helpRollbackBtn');
+  const messageEl=document.getElementById('helpUpdateMessage');
+  const reasonEl=document.getElementById('helpUpdateReason');
+  const versionControlEl=document.getElementById('helpUpdateVersionControl');
+  const text=String(versionControlEl ? versionControlEl.textContent || '' : '').trim();
+  if(!window.confirm(`このアプリを1つ前の版へ戻します。\n${text || ''}`.trim())){
+    return;
+  }
+  if(button) button.disabled=true;
+  if(messageEl){
+    messageEl.dataset.busy='1';
+    messageEl.textContent='1つ前の版へ戻しています...';
+  }
+  if(reasonEl) reasonEl.textContent='更新条件: 版戻しを実行中です...';
+  google.script.run
+    .withSuccessHandler(result=>{
+      if(button) button.disabled=false;
+      if(messageEl){
+        messageEl.dataset.busy='';
+        if(result && result.ok){
+          messageEl.textContent=result.message || '1つ前の版へ戻しました。';
+          if(result.changed){
+            setTimeout(()=>window.location.reload(), 4000);
+          }
+        }else{
+          messageEl.textContent=`版戻しに失敗しました: ${result && result.error ? result.error : 'unknown_error'}`;
+        }
+      }
+      refreshTeacherUpdateInfo();
+    })
+    .withFailureHandler(err=>{
+      if(button) button.disabled=false;
+      if(messageEl){
+        messageEl.dataset.busy='';
+        messageEl.textContent=`版戻しに失敗しました: ${err && err.message ? err.message : err}`;
+      }
+      if(reasonEl) reasonEl.textContent='更新条件: 版戻しエラーが発生しました。';
+    })
+    .rollbackTeacherDeployment();
+}
+
+function runTeacherUpdateActionFromHelp(){
+  const button=document.getElementById('helpUpdateActionBtn');
+  const actionMode=String(button && button.dataset ? button.dataset.actionMode || '' : '').trim();
+  if(actionMode==='self_update'){
+    runTeacherSelfUpdateFromHelp();
+    return;
+  }
+  if(actionMode==='request_update'){
+    requestTeacherUpdateFromHelp();
+    return;
+  }
+  const reasonEl=document.getElementById('helpUpdateReason');
+  const messageEl=document.getElementById('helpUpdateMessage');
+  if(reasonEl) reasonEl.textContent='更新条件: まだ更新操作できません。';
+  if(messageEl) messageEl.textContent='このアプリではまだ更新を実行できません。';
+}
+
+function sortUnitsByLatestActivity(units){
+  return (Array.isArray(units)?units.slice():[]).sort(compareSuggestedStartUnit_);
+}
+
+function compareSuggestedStartUnit_(a,b){
+  const recentCmp=getUnitRecentSortValue_(b)-getUnitRecentSortValue_(a);
+  if(recentCmp!==0) return recentCmp;
+  const progressA=unitProgressByUnitId[String(a && a.id || '')]||{};
+  const progressB=unitProgressByUnitId[String(b && b.id || '')]||{};
+  const countCmp=Number(progressB.lessonCount||0)-Number(progressA.lessonCount||0);
+  if(countCmp!==0) return countCmp;
+  const idCmp=Number(b && b.id || 0)-Number(a && a.id || 0);
+  if(idCmp!==0) return idCmp;
+  return String(b && b.createdAt || '').localeCompare(String(a && a.createdAt || ''));
+}
+
+function getSuggestedPeriodForUnit(unit){
+  if(!unit) return '';
+  const max=(unit.maxPeriod===0||unit.maxPeriod>20)?20:Number(unit.maxPeriod||10);
+  const progress=unitProgressByUnitId[String(unit.id||'')]||{};
+  const lastActivityPeriod=Math.max(0, Number(progress.lastActivityPeriod||0));
+  const next=Math.max(1, lastActivityPeriod>0 ? lastActivityPeriod+1 : 1);
+  return String(Math.min(next, max));
+}
+
+function onStatusUnitFilterChange(){
+  saveUiState({
+    startSubjectFilter:(document.getElementById('startSubjectFilter')||{}).value||'',
+    startUnitSearch:(document.getElementById('startUnitSearch')||{}).value||'',
+  });
+  populateUnitSelects();
+}
+
+function populateUnitListSubjectFilter(){
+  const subjectSel=document.getElementById('unitListSubjectFilter');
+  if(!subjectSel) return;
+  const cur=subjectSel.value;
+  const subjects=uniqueValues(allUnits.map(u=>u.subject).filter(Boolean));
+  subjectSel.innerHTML='<option value="">全教科</option>'+
+    subjects.map(subject=>`<option value="${esc(subject)}">${esc(subject)}</option>`).join('');
+  if(cur && subjects.includes(cur)) subjectSel.value=cur;
+}
+
+function populateAggUnitSelect(){
+  const ag=document.getElementById('aggUnit');
+  if(!ag) return;
+  const agCur=ag.value;
+  const selectedSubject=(document.getElementById('aggSubject')||{}).value||'';
+  let visibleUnits=sortUnitsByLatestActivity(allUnits.filter(u=>!selectedSubject||String(u.subject||'')===String(selectedSubject)));
+  if(!visibleUnits.length && allUnits.length && selectedSubject){
+    const subjectSel=document.getElementById('aggSubject');
+    if(subjectSel) subjectSel.value='';
+    visibleUnits=sortUnitsByLatestActivity(allUnits);
+  }
+  ag.innerHTML='<option value="">単元を選択…</option>'+
+    visibleUnits.map(u=>`<option value="${u.id}">${esc(u.subject)}：${esc(u.name)}</option>`).join('');
+  if(agCur && visibleUnits.some(u=>String(u.id)===String(agCur))) ag.value=agCur;
+}
+
+function updatePeriodSelect(){
+  const unitId=document.getElementById('startUnit').value;
+  const unit=allUnits.find(u=>u.id==unitId);
+  const max=unit?(unit.maxPeriod===0||unit.maxPeriod>20?20:unit.maxPeriod):10;
+  const sel=document.getElementById('startPeriod');
+  const suggested=unit?getSuggestedPeriodForUnit(unit):'';
+  sel.innerHTML='<option value="">時間目を選択…</option>'+
+    Array.from({length:max},(_,i)=>i+1)
+      .map(i=>`<option value="${i}" ${suggested && String(suggested)===String(i) ?'selected':''}>${i}じかんめ</option>`).join('');
+}
+
+// =====================================
+//  アクティブバナー
+// =====================================
+function renderActiveBanner(active){
+  const el=document.getElementById('activeBanner');
+  const period=Number(active && active.period || activePeriod || 0);
+  const unitId=String(active && active.unitId || activeUnitId || '').trim();
+  const unit=(active && active.unit) || allUnits.find(u=>String(u && u.id || '').trim()===unitId) || null;
+  if(unit && period>0){
+    el.innerHTML=`<div class="lesson-banner">
+      <div class="lesson-banner-top">
+        <div>
+          <div class="lbl">✅ 授業中</div>
+          <div class="name">${esc(unit.subject)}：${esc(unit.name)}</div>
+          <div class="meta">${period}じかんめ</div>
+        </div>
+        <div class="lesson-banner-actions">
+          <button class="btn-subtle lesson-action-btn" type="button" onclick="openLessonFieldEditor()">🕒 この時間だけ項目を編集</button>
+          <button class="btn-ai lesson-action-btn" type="button" onclick="genStatusSummary()">🤖 この時間のふりかえりレポート</button>
+          <button class="btn-end lesson-action-btn" type="button" onclick="endLesson()">🔚 授業終了</button>
+        </div>
+      </div>
+      <div class="stat-row lesson-banner-stats">
+        <div class="stat-box"><div class="stat-num" id="statTotal">-</div><div class="stat-lbl">全員</div></div>
+        <div class="stat-box"><div class="stat-num" id="statWritten">-</div><div class="stat-lbl">記入中</div></div>
+        <div class="stat-box"><div class="stat-num" id="statSubmitted">-</div><div class="stat-lbl">提出済</div></div>
+        <div class="stat-box"><div class="stat-num" id="statAI">-</div><div class="stat-lbl">AI完了</div></div>
+      </div>
+    </div>
+    <div class="ai-report" id="statusAiReport" style="display:none;"></div>`;
+  } else {
+    el.innerHTML=`<div class="lesson-banner" style="background:linear-gradient(135deg,#FAFAFA,#F1F5F9);border-color:#CFD8DC;">
+      <div class="lesson-banner-top">
+        <div>
+          <div class="lbl" style="color:#607D8B;">授業待機中</div>
+          <div class="name" style="font-size:16px;">現在アクティブな授業はありません。</div>
+          <div class="meta">単元と時間目を選んで授業を開始してください。</div>
+        </div>
+      </div>
+      <div class="stat-row lesson-banner-stats">
+        <div class="stat-box"><div class="stat-num" id="statTotal">0</div><div class="stat-lbl">全員</div></div>
+        <div class="stat-box"><div class="stat-num" id="statWritten">0</div><div class="stat-lbl">記入中</div></div>
+        <div class="stat-box"><div class="stat-num" id="statSubmitted">0</div><div class="stat-lbl">提出済</div></div>
+        <div class="stat-box"><div class="stat-num" id="statAI">0</div><div class="stat-lbl">AI完了</div></div>
+      </div>
+    </div>`;
+  }
+  const reportBox=document.getElementById('statusAiReport');
+  if(reportBox){
+    reportBox.textContent='';
+    reportBox.classList.remove('ready');
+    reportBox.style.display='none';
+  }
+}
+
+function renderTimelineFieldSelect(active){
+  const sel=document.getElementById('timelineFieldSelect');
+  if(!sel) return;
+  const unit=(active && active.unit)||allUnits.find(u=>u.id==activeUnitId)||null;
+  const fields=(((active && active.fields) || (unit && unit.fields) || [])).filter(f=>f.enabled!==false);
+  const current=active && active.timelineFieldKey || '';
+  sel.innerHTML='<option value="">自動（入力中にあわせる）</option>'+
+    fields.map(f=>`<option value="${esc(f.key||'')}" ${String(f.key||'')===String(current)?'selected':''}>${esc(f.emoji||'📌')} ${esc(f.label||f.key||'項目')}</option>`).join('');
+  sel.disabled=!unit||!activePeriod;
+}
+
+function saveTimelineFieldSelection(){
+  const sel=document.getElementById('timelineFieldSelect');
+  google.script.run.setActiveTimelineField(sel ? sel.value||'' : '');
+}
+
+// =====================================
+//  授業開始・終了
+// =====================================
+function startLesson(){
+  const unitId=document.getElementById('startUnit').value;
+  const period=document.getElementById('startPeriod').value;
+  if(!unitId||!period){alert('単元と時間目を選択してください');return;}
+  google.script.run
+    .withSuccessHandler(res=>{
+      invalidateTeacherDataRequests_();
+      lastTeacherStartAtMs = Date.now();
+      teacherEndingLesson = false;
+      if(res && res.active){
+        applyTeacherInitData({
+          active:res.active,
+          unitProgress:res.unitProgress||unitProgressByUnitId,
+        }, { includeRoster:false, renderUnitList:true, schedulePreload:false, source:'teacherStartLesson' });
+      }
+      if(res && res.status){
+        renderStatus(res.status);
+      }
+      loadStatusInit({ lightweight:false, startPolling:true });
+      showToast('授業を開始しました！',{tone:'success'});
+    })
+    .teacherStartLesson(unitId,parseInt(period));
+}
+
+function openUnitSettingsTab(){
+  const tabBtn=document.querySelector(".tab[onclick*='curriculum']");
+  switchTab('curriculum', tabBtn||null);
+  if(typeof switchCurriculumSubtab==='function'){
+    switchCurriculumSubtab('units');
+  }
+}
+
+function openLessonFieldEditor(){
+  if(!activeUnitId||!activePeriod){alert('先に授業を開始してください');return;}
+  google.script.run
+    .withSuccessHandler(cfg=>{
+      openUnitSettingsTab();
+      if(typeof startLessonFieldEditFromConfig_ === 'function'){
+        startLessonFieldEditFromConfig_(cfg);
+      }
+    })
+    .withFailureHandler(err=>{
+      alert(err && err.message ? err.message : 'この時間の項目設定を開けませんでした。');
+    })
+    .getLessonFieldConfig(activeUnitId,activePeriod);
+}
+function endLesson(){
+  teacherEndingLesson = true;
+  google.script.run.withSuccessHandler(()=>loadStatusInit({ startPolling:true })).teacherEndLesson();
+}
+function resetLesson(){
+  teacherEndingLesson = true;
+  google.script.run.withSuccessHandler(()=>{loadStatusInit({ startPolling:true });alert('児童選択モードにしました');}).teacherEndLesson();
+}
+function awardMedals(){
+  if(!activeUnitId||!activePeriod){alert('先に授業を開始してください');return;}
+  const btn = document.getElementById('awardMedalsBtn');
+  if(btn){
+    btn.disabled = true;
+    btn.textContent = '集計中...';
+  }
+  google.script.run
+    .withSuccessHandler(()=>{
+      if(btn){
+        btn.disabled = false;
+        btn.textContent = '🏅 メダル発表';
+      }
+      loadStatus();
+      alert('メダルを発表しました！');
+    })
+    .withFailureHandler(err=>{
+      if(btn){
+        btn.disabled = false;
+        btn.textContent = '🏅 メダル発表';
+      }
+      alert((err && err.message) ? err.message : 'メダル発表に失敗しました');
+    })
+    .teacherAwardMedals(activeUnitId,activePeriod);
+}
+
+// =====================================
+//  授業状況
+// =====================================
+function startStatusPoll(skipImmediate){
+  clearInterval(statusTimer);
+  if(!skipImmediate) loadStatus();
+  statusTimer=setInterval(loadStatus,8000);
+}
+</script>

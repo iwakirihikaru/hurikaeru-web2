@@ -1,0 +1,1213 @@
+<script>
+var __assign = (this && this.__assign) || function () {
+    __assign = Object.assign || function(t) {
+        for (var s, i = 1, n = arguments.length; i < n; i++) {
+            s = arguments[i];
+            for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p))
+                t[p] = s[p];
+        }
+        return t;
+    };
+    return __assign.apply(this, arguments);
+};
+function loadPortfolioTab() {
+    var body = document.getElementById('portfolioBody');
+    body.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:14px;"><span class="spinner"></span></td></tr>';
+    syncTeacherAiUi_();
+    ensurePromptPreload();
+    google.script.run
+        .withSuccessHandler(function (d) {
+        allUnits = d.units || [];
+        rosterEntries = (d.roster || []).filter(function (row) { return row.active !== false; });
+        teacherBuild = d.build || teacherBuild || '';
+        renderPortfolioSelectors();
+        loadPortfolioData();
+    })
+        .withFailureHandler(function (err) {
+        body.innerHTML = "<tr><td colspan=\"6\" style=\"text-align:center;padding:14px;color:#C62828;\">".concat(esc((err && err.message) || err || 'ポートフォリオの読み込みに失敗しました'), "</td></tr>");
+    })
+        .teacherInit();
+}
+function renderPortfolioSelectors() {
+    var studentSel = document.getElementById('pfStudent');
+    var studentCur = studentSel.value;
+    studentSel.innerHTML = '<option value="">児童を選択…</option>' +
+        rosterEntries.map(function (row) { return "<option value=\"".concat(row.number, "\">").concat(row.number, " ").concat(esc(row.name || ''), "</option>"); }).join('');
+    if (studentCur)
+        studentSel.value = studentCur;
+    var unitSel = document.getElementById('pfUnit');
+    var unitCur = unitSel.value;
+    unitSel.innerHTML = '<option value="">全単元</option>' +
+        sortUnitsByLatestActivity(allUnits).map(function (u) { return "<option value=\"".concat(u.id, "\">").concat(esc(u.subject), "\uFF1A").concat(esc(u.name), "</option>"); }).join('');
+    if (unitCur)
+        unitSel.value = unitCur;
+}
+function loadPortfolioData() {
+    var studentNumber = document.getElementById('pfStudent').value;
+    var unitId = document.getElementById('pfUnit').value;
+    var body = document.getElementById('portfolioBody');
+    var debugBox = document.getElementById('portfolioDebug');
+    if (debugBox && !String(debugBox.dataset.baseText || '').trim()) {
+        debugBox.dataset.baseText = '児童を選ぶと取得件数を表示します。';
+    }
+    document.getElementById('portfolioReport').style.display = 'none';
+    if (!studentNumber) {
+        body.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:14px;color:#999;">児童を選択してください</td></tr>';
+        debugBox.textContent = '児童を選ぶと取得件数を表示します。';
+        return;
+    }
+    body.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:14px;"><span class="spinner"></span></td></tr>';
+    debugBox.textContent = '取得状況を確認中…';
+    google.script.run
+        .withSuccessHandler(function (raw) {
+        var res = null;
+        try {
+            res = raw ? JSON.parse(raw) : null;
+        }
+        catch (e) {
+            debugBox.textContent = "JSON parse error: ".concat(e.message || e, " / raw=").concat(String(raw).slice(0, 280));
+            portfolioRows = [];
+            renderPortfolioRows();
+            return;
+        }
+        if (res && res.ok === false && res.error) {
+            debugBox.textContent = "portfolio error: ".concat(res.error, " / build=").concat(res.build || teacherBuild || 'unknown');
+            portfolioRows = [];
+            renderPortfolioRows();
+            return;
+        }
+        portfolioRows = res && res.rows || [];
+        if (res && res.debug) {
+            res.debug.build = res.build || '';
+            renderPortfolioDebug(res.debug);
+        }
+        else {
+            debugBox.textContent = formatPortfolioDebugFallback(res);
+        }
+        renderPortfolioRows();
+    })
+        .withFailureHandler(function (err) {
+        debugBox.textContent = 'デバッグ情報の取得に失敗しました。';
+        body.innerHTML = "<tr><td colspan=\"6\" style=\"text-align:center;padding:14px;color:#C62828;\">".concat(esc((err && err.message) || err || 'ポートフォリオデータの読み込みに失敗しました'), "</td></tr>");
+    })
+        .getStudentPortfolioDataJson(studentNumber, unitId || null);
+}
+function renderPortfolioDebug(debug) {
+    var box = document.getElementById('portfolioDebug');
+    if (!debug) {
+        box.innerHTML = "<div class=\"debug-summary\">\u53D6\u5F97\u4EF6\u6570\u3092\u8868\u793A\u3067\u304D\u307E\u305B\u3093\u3067\u3057\u305F\u3002</div><details><summary>\u8A73\u7D30\u3092\u898B\u308B</summary><code>teacherInit build=".concat(esc(teacherBuild || 'unknown'), "</code></details>");
+        return;
+    }
+    var sample = (debug.sampleMatchedRows || [])
+        .map(function (row, idx) { return "".concat(idx + 1, ". ").concat(row.subject, "/").concat(row.unitName, "/").concat(row.period, "\u6642\u9593\u76EE\n   ").concat(row.date, "\n   ").concat(row.preview); })
+        .join('\n\n');
+    var summary = "\u8A18\u9332 ".concat(debug.responseCount || 0, "\u4EF6 / \u5150\u7AE5\u4E00\u81F4 ").concat(debug.matchedStudentCount || 0, "\u4EF6 / \u5358\u5143\u4E00\u81F4 ").concat(debug.matchedUnitCount || 0, "\u4EF6");
+    var buildLine = "teacher=".concat(teacherBuild || 'unknown', " / portfolio=").concat(debug.build || 'unknown');
+    box.innerHTML =
+        "<div class=\"debug-summary\">".concat(esc(summary), "</div><details><summary>\u8A73\u7D30\u3092\u898B\u308B</summary><code>").concat(esc(buildLine)).concat(sample ? "\n\n".concat(sample) : '', "</code></details>");
+}
+function formatPortfolioDebugFallback(res) {
+    if (!res)
+        return "\u7A7A\u306E\u5FDC\u7B54\u3067\u3059\u3002teacherInit build=".concat(teacherBuild || 'unknown');
+    var keys = Object.keys(res || {});
+    var preview = JSON.stringify(res).slice(0, 280);
+    return "debug \u304C\u3042\u308A\u307E\u305B\u3093\u3002teacherInit build=".concat(teacherBuild || 'unknown', " / response keys=").concat(keys.join(',') || '(none)', " / response=").concat(preview);
+}
+function renderPortfolioRows() {
+    var body = document.getElementById('portfolioBody');
+    var cards = document.getElementById('portfolioCards');
+    if (!portfolioRows.length) {
+        body.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:14px;color:#999;">データがありません</td></tr>';
+        cards.innerHTML = '<div class="portfolio-empty">データがありません</div>';
+        return;
+    }
+    body.innerHTML = portfolioRows.map(function (row) { return "\n    <tr>\n      <td>".concat(esc(row.subject), "</td>\n      <td>").concat(esc(row.unitName), "</td>\n      <td>").concat(row.period, "\u6642\u9593\u76EE</td>\n      <td>").concat(esc(formatDisplayDate(row.date)), "</td>\n      <td style=\"max-width:320px;white-space:normal;word-break:break-word;\">").concat(renderTeacherReviewText_(row.review, row.fields || []), "</td>\n      <td>").concat(row.rank ? "<span class=\"rank-chip r-".concat(row.rank.replace('+', 'p'), "\">").concat(row.rank, "</span>") : '-', "</td>\n    </tr>\n  "); }).join('');
+    cards.innerHTML = portfolioRows.map(function (row) { return "\n    <div class=\"portfolio-card\">\n      <div class=\"portfolio-card-top\">\n        <div>\n          <div class=\"portfolio-card-title\">".concat(esc(row.subject), " / ").concat(esc(row.unitName), "</div>\n          <div class=\"portfolio-card-meta\">").concat(row.period, "\u6642\u9593\u76EE \u30FB ").concat(esc(formatDisplayDate(row.date)), "</div>\n        </div>\n        <div>").concat(row.rank ? "<span class=\"rank-chip r-".concat(row.rank.replace('+', 'p'), "\">").concat(row.rank, "</span>") : '-', "</div>\n      </div>\n      <div class=\"portfolio-card-block\">\n        <div class=\"portfolio-card-label\">\u3075\u308A\u304B\u3048\u308A</div>\n        <div class=\"portfolio-card-text\">").concat(renderTeacherReviewText_(row.review, row.fields || []), "</div>\n      </div>\n    </div>\n  "); }).join('');
+}
+function generatePortfolioSummary() {
+    if (!isTeacherAiReadyOnClient_()) {
+        showToast('AI未設定です。プロンプトタブでAPIキーを保存してください', { tone: 'error' });
+        return;
+    }
+    var studentNumber = document.getElementById('pfStudent').value;
+    var unitId = document.getElementById('pfUnit').value;
+    if (!studentNumber) {
+        showToast('児童を選択してください');
+        return;
+    }
+    var box = document.getElementById('portfolioReport');
+    box.style.display = 'block';
+    box.classList.add('ready');
+    box.textContent = '🤖 所見下書きを生成中…';
+    google.script.run
+        .withSuccessHandler(function (res) {
+        if (!res.ok) {
+            box.textContent = 'エラー: ' + res.error;
+            showToast('AI所見下書きの生成に失敗しました', { tone: 'error' });
+            return;
+        }
+        box.textContent = "\u3010".concat(res.studentName, "\u3011\u6240\u898B\u4E0B\u66F8\u304D\n\n").concat(res.summary);
+        showToast('AI所見下書きを生成しました', { tone: 'success' });
+    })
+        .withFailureHandler(function (err) {
+        box.textContent = 'エラー: ' + ((err && err.message) || err || '所見生成に失敗しました');
+        showToast('AI所見下書きの生成に失敗しました', { tone: 'error' });
+    })
+        .generateStudentPortfolioSummary(studentNumber, unitId || null);
+}
+// =====================================
+//  単元集約
+// =====================================
+function loadAgg() {
+    syncTeacherAiUi_();
+    ensurePromptPreload();
+    google.script.run.withSuccessHandler(function (d) {
+        allUnits = d.units || [];
+        rosterEntries = (d.roster || []).filter(function (row) { return row.active !== false; });
+        populateUnitSelects();
+        populateGradingSelects();
+    }).teacherInit();
+    google.script.run
+        .withSuccessHandler(function (raw) {
+        var res = null;
+        try {
+            res = raw ? JSON.parse(raw) : null;
+        }
+        catch (e) {
+            showToast('単元記録の読み込みに失敗しました', { tone: 'error' });
+            allAggData = [];
+            filterAgg();
+            return;
+        }
+        if (res && res.ok === false && res.error) {
+            showToast("\u5358\u5143\u8A18\u9332\u306E\u8AAD\u307F\u8FBC\u307F\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat(res.error), { tone: 'error', duration: 4200 });
+            allAggData = [];
+            filterAgg();
+            return;
+        }
+        allAggData = res && res.rows || [];
+        filterAgg();
+        filterGrading();
+    })
+        .withFailureHandler(function (err) {
+        showToast("\u5358\u5143\u8A18\u9332\u306E\u8AAD\u307F\u8FBC\u307F\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat((err && err.message) || err || 'unknown'), { tone: 'error', duration: 4200 });
+        var gradeDebug = document.getElementById('gradeDebug');
+        if (gradeDebug)
+            gradeDebug.textContent = "\u8A55\u5B9A\u30C7\u30FC\u30BF\u306E\u8AAD\u307F\u8FBC\u307F\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat((err && err.message) || err || 'unknown');
+        allAggData = [];
+        filterAgg();
+        filterGrading();
+    })
+        .getAggregateDataJson(null);
+}
+function filterAgg() {
+    populateAggUnitSelect();
+    var subject = document.getElementById('aggSubject').value;
+    var unitId = document.getElementById('aggUnit').value;
+    var period = document.getElementById('aggPeriod').value;
+    var preset = (document.getElementById('aggPreset') || {}).value || 'standard';
+    var showComment = Boolean((document.getElementById('aggShowComment') || {}).checked);
+    var rows = allAggData.filter(function (r) {
+        if (subject && String(r.subject || '') !== String(subject))
+            return false;
+        if (unitId && String(r.unitId || '') !== String(unitId))
+            return false;
+        if (period && r.period != period)
+            return false;
+        return true;
+    }).sort(function (a, b) {
+        var numDiff = (Number(a.num) || 0) - (Number(b.num) || 0);
+        if (numDiff !== 0)
+            return numDiff;
+        return String(a.name || '').localeCompare(String(b.name || ''), 'ja');
+    });
+    var periods = uniqueValues(allAggData
+        .filter(function (r) { return (!subject || String(r.subject || '') === String(subject)) && (!unitId || String(r.unitId || '') === String(unitId)); })
+        .map(function (r) { return r.period; })).sort(function (a, b) { return a - b; });
+    var pSel = document.getElementById('aggPeriod');
+    var pCur = pSel.value;
+    pSel.innerHTML = '<option value="">全時間</option>' +
+        periods.map(function (p) { return "<option value=\"".concat(p, "\" ").concat(p == pCur ? 'selected' : '', ">").concat(p, "\u3058\u304B\u3093\u3081</option>"); }).join('');
+    var body = document.getElementById('aggBody');
+    var cards = document.getElementById('aggCards');
+    var head = document.getElementById('aggHead');
+    var fieldMeta = resolveAggPresetFields(rows, preset, showComment);
+    head.innerHTML = buildAggHeaderHtml(fieldMeta);
+    if (!rows.length) {
+        renderAggSummary([]);
+        var emptyCols = (5 + fieldMeta.fields.length + 1);
+        body.innerHTML = "<tr><td colspan=\"".concat(emptyCols, "\" style=\"text-align:center;color:#999;padding:14px;\">\u30C7\u30FC\u30BF\u304C\u3042\u308A\u307E\u305B\u3093</td></tr>");
+        cards.innerHTML = '<div class="portfolio-empty">データがありません</div>';
+        return;
+    }
+    renderAggSummary(rows);
+    body.innerHTML = rows.map(function (r) { return "\n    <tr>\n      <td>".concat(esc(r.unitName), "</td><td>").concat(r.period, "\u6642\u9593\u76EE</td>\n      <td>").concat(r.num, "</td><td>").concat(esc(r.name), "</td><td>").concat(esc(formatDisplayDate(r.date)), "</td>\n      ").concat(fieldMeta.fields.map(function (field) { return "<td style=\"max-width:260px;white-space:normal;word-break:break-word;\">".concat(renderAggFieldValue(r, field), "</td>"); }).join(''), "\n      <td>").concat(r.rank ? "<span class=\"rank-chip r-".concat(r.rank.replace('+', 'p'), "\">").concat(r.rank, "</span>") : '-', "</td>\n    </tr>"); }).join('');
+    cards.innerHTML = rows.map(function (r) { return "\n    <div class=\"agg-card\">\n      <div class=\"agg-card-top\">\n        <div>\n          <div class=\"agg-card-title\">".concat(esc(r.unitName), "</div>\n          <div class=\"agg-card-meta\">").concat(r.period, "\u6642\u9593\u76EE \u30FB ").concat(r.num, " ").concat(esc(r.name || ''), " \u30FB ").concat(esc(formatDisplayDate(r.date)), "</div>\n        </div>\n        <div>").concat(r.rank ? "<span class=\"rank-chip r-".concat(r.rank.replace('+', 'p'), "\">").concat(r.rank, "</span>") : '-', "</div>\n      </div>\n      ").concat(fieldMeta.fields.map(function (field) {
+        var text = renderAggCardFieldValue(r, field);
+        if (!text)
+            return '';
+        var chips = renderAggFieldValueChips(r, field);
+        return "\n        <div class=\"agg-card-block\">\n          <div class=\"agg-card-label\">".concat(esc(field.label), "</div>\n          ").concat(chips, "\n          <div class=\"agg-card-text\">").concat(text, "</div>\n        </div>\n      ");
+    }).join(''), "\n    </div>\n  "); }).join('');
+}
+function populateGradingSelects() {
+    populateGradingUnitSelect();
+}
+function populateGradingUnitSelect() {
+    var mode = (document.getElementById('gradeMode') || {}).value || 'unit';
+    var subjectSel = document.getElementById('gradeSubject');
+    if (subjectSel) {
+        var cur_1 = subjectSel.value;
+        var subjects = uniqueValues(allUnits.map(function (u) { return u.subject; }).filter(Boolean));
+        subjectSel.innerHTML = '<option value="">全教科</option>' +
+            subjects.map(function (subject) { return "<option value=\"".concat(esc(subject), "\">").concat(esc(subject), "</option>"); }).join('');
+        if (cur_1)
+            subjectSel.value = cur_1;
+    }
+    var unitSel = document.getElementById('gradeUnit');
+    if (!unitSel)
+        return;
+    var cur = unitSel.value;
+    var subject = (document.getElementById('gradeSubject') || {}).value || '';
+    var visibleUnits = sortUnitsByLatestActivity(allUnits.filter(function (u) { return !subject || String(u.subject || '') === String(subject); }));
+    unitSel.innerHTML = '<option value="">単元を選択…</option>' +
+        visibleUnits.map(function (u) { return "<option value=\"".concat(u.id, "\">").concat(esc(u.subject), "\uFF1A").concat(esc(u.name), "</option>"); }).join('');
+    if (cur && visibleUnits.some(function (u) { return String(u.id) === String(cur); }))
+        unitSel.value = cur;
+    unitSel.disabled = (mode === 'subject');
+    var periodSel = document.getElementById('gradePeriod');
+    if (periodSel)
+        periodSel.disabled = (mode === 'subject');
+}
+function filterGrading() {
+    var gradeBody = document.getElementById('gradeBody');
+    var gradeCards = document.getElementById('gradeCards');
+    var gradeHead = document.getElementById('gradeHead');
+    var gradeDebug = document.getElementById('gradeDebug');
+    var gradingModeNote = document.getElementById('gradingModeNote');
+    if (!gradeBody || !gradeCards || !gradeHead)
+        return;
+    populateGradingUnitSelect();
+    var mode = (document.getElementById('gradeMode') || {}).value || 'unit';
+    var subject = (document.getElementById('gradeSubject') || {}).value || '';
+    var unitId = (document.getElementById('gradeUnit') || {}).value || '';
+    var period = (document.getElementById('gradePeriod') || {}).value || '';
+    var gradingCategory = (document.getElementById('gradeCategory') || {}).value || 'thinking';
+    var rows = allAggData.filter(function (r) {
+        if (subject && String(r.subject || '') !== String(subject))
+            return false;
+        if (unitId && String(r.unitId || '') !== String(unitId))
+            return false;
+        if (period && r.period != period)
+            return false;
+        return true;
+    }).sort(function (a, b) {
+        var numDiff = (Number(a.num) || 0) - (Number(b.num) || 0);
+        if (numDiff !== 0)
+            return numDiff;
+        return String(a.name || '').localeCompare(String(b.name || ''), 'ja');
+    });
+    var periods = uniqueValues(allAggData
+        .filter(function (r) { return (!subject || String(r.subject || '') === String(subject)) && (!unitId || String(r.unitId || '') === String(unitId)); })
+        .map(function (r) { return r.period; })).sort(function (a, b) { return a - b; });
+    var pSel = document.getElementById('gradePeriod');
+    var pCur = pSel.value;
+    pSel.innerHTML = '<option value="">全時間</option>' +
+        periods.map(function (p) { return "<option value=\"".concat(p, "\" ").concat(p == pCur ? 'selected' : '', ">").concat(p, "\u3058\u304B\u3093\u3081</option>"); }).join('');
+    if (gradingModeNote) {
+        gradingModeNote.textContent = mode === 'subject'
+            ? '教科内の各単元を横並びで入力できます。'
+            : '単元ごとの根拠を見ながら評定できます。';
+    }
+    if (mode === 'subject') {
+        renderGradingFieldChipsForSubject(subject, gradingCategory);
+        renderGradingSubjectMatrix(subject, gradingCategory);
+        return;
+    }
+    renderAggFieldChips({ fields: [] }, '', 'grading', gradingCategory, rows);
+    gradeHead.innerHTML = buildAggProcessingHeaderHtml(periods, gradingCategory);
+    if (gradeDebug) {
+        gradeDebug.textContent = unitId
+            ? "".concat(FIELD_CATEGORY_LABELS[gradingCategory], " \u306E\u8A55\u5B9A\u7528\u306B ").concat(rows.length, " \u4EF6\u306E\u8A18\u9332\u3092\u8868\u793A\u4E2D\u3067\u3059\u3002")
+            : '評定する単元を選択してください。';
+    }
+    if (!unitId) {
+        gradeBody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;padding:14px;">成績入力をするには単元を選択してください</td></tr>';
+        gradeCards.innerHTML = '<div class="portfolio-empty">成績入力をするには単元を選択してください</div>';
+        return;
+    }
+    if (!rows.length) {
+        gradeBody.innerHTML = "<tr><td colspan=\"".concat(3 + periods.length, "\" style=\"text-align:center;color:#999;padding:14px;\">\u30C7\u30FC\u30BF\u304C\u3042\u308A\u307E\u305B\u3093</td></tr>");
+        gradeCards.innerHTML = '<div class="portfolio-empty">データがありません</div>';
+        return;
+    }
+    var processedRows = buildAggProcessingRows(rows, periods, gradingCategory);
+    gradeBody.innerHTML = processedRows.map(function (r) { return "\n    <tr>\n      <td>".concat(r.num, "</td>\n      <td>").concat(esc(r.name), "</td>\n      <td>\n        ").concat(renderAggAssessmentSelect(r, gradingCategory), "\n        <div style=\"margin-top:8px;\">").concat(r.rank ? "<span class=\"rank-chip r-".concat(r.rank.replace('+', 'p'), "\">").concat(r.rank, "</span>") : '-', "</div>\n      </td>\n      ").concat(periods.map(function (currentPeriod) { return "<td class=\"agg-period-cell\">".concat(renderAggPeriodCell(r.periodMap[currentPeriod], gradingCategory), "</td>"); }).join(''), "\n    </tr>"); }).join('');
+    gradeCards.innerHTML = processedRows.map(function (r) { return "\n    <div class=\"agg-card\">\n      <div class=\"agg-card-top\">\n        <div>\n          <div class=\"agg-card-title\">".concat(r.num, " ").concat(esc(r.name || ''), " / ").concat(FIELD_CATEGORY_LABELS[gradingCategory], "</div>\n          <div class=\"agg-card-meta\">").concat(esc(r.unitName), " \u30FB ").concat(r.periodSummary || '-', "</div>\n        </div>\n        <div>").concat(r.rank ? "<span class=\"rank-chip r-".concat(r.rank.replace('+', 'p'), "\">").concat(r.rank, "</span>") : '-', "</div>\n      </div>\n      <div class=\"agg-processing-card-grid\">\n        <div class=\"agg-card-block\">\n          <div class=\"agg-card-label\">\u6700\u7D42\u8A55\u5B9A</div>\n          ").concat(renderAggAssessmentSelect(r, gradingCategory), "\n        </div>\n        ").concat(periods.map(function (currentPeriod) { return "\n          <div class=\"agg-card-block\">\n            <div class=\"agg-card-label\">".concat(currentPeriod, "\u6642\u9593\u76EE</div>\n            <div class=\"agg-card-text\">").concat(renderAggPeriodCardCell(r.periodMap[currentPeriod], gradingCategory), "</div>\n          </div>\n        "); }).join(''), "\n      </div>\n    </div>\n  "); }).join('');
+}
+function getGradingUnitsForSubject(subject) {
+    return sortUnitsByLatestActivity(allUnits.filter(function (unit) { return subject && String(unit.subject || '') === String(subject); }));
+}
+function buildGradingSubjectRows(subject, category) {
+    var units = getGradingUnitsForSubject(subject);
+    var studentMap = new Map();
+    rosterEntries.forEach(function (row) {
+        var num = String(row.number || '').trim();
+        if (!num)
+            return;
+        studentMap.set(num, {
+            num: num,
+            name: row.name || '',
+            units: {},
+        });
+    });
+    allAggData.forEach(function (row) {
+        var _a, _b;
+        if (String(row.subject || '') !== String(subject))
+            return;
+        var num = String(row.num || '').trim();
+        if (!num)
+            return;
+        if (!studentMap.has(num)) {
+            studentMap.set(num, { num: num, name: row.name || '', units: {} });
+        }
+        else if (!studentMap.get(num).name && row.name) {
+            studentMap.get(num).name = row.name;
+        }
+        var student = studentMap.get(num);
+        var unitKey = String(row.unitId || '');
+        if (!student.units[unitKey]) {
+            student.units[unitKey] = {
+                unitId: unitKey,
+                unitName: row.unitName || '',
+                assessment: row.teacherAssessment || { knowledge: '', thinking: '', attitude: '', memo: '' },
+                evidence: [],
+                evidenceHtml: [],
+                ranks: [],
+                periods: [],
+            };
+        }
+        var entry = student.units[unitKey];
+        if (row.teacherAssessment)
+            entry.assessment = row.teacherAssessment;
+        if (row.rank)
+            entry.ranks.push(row.rank);
+        if (row.period)
+            entry.periods.push("".concat(row.period, "\u6642\u9593\u76EE"));
+        var categoryEntries = collectAggCategoryEntries(row, category);
+        if (categoryEntries.length) {
+            (_a = entry.evidence).push.apply(_a, categoryEntries.map(function (item) { return "".concat(item.label, ": ").concat(item.value); }).slice(0, 2));
+            (_b = entry.evidenceHtml).push.apply(_b, categoryEntries.map(function (item) { return renderAggEvidenceEntry(item, row); }).slice(0, 2));
+        }
+        else if (String(row.review || '').trim()) {
+            entry.evidence.push(String(row.review || '').trim());
+            entry.evidenceHtml.push(renderTeacherReviewText_(String(row.review || '').trim(), row.fields || []));
+        }
+    });
+    return Array.from(studentMap.values())
+        .sort(function (a, b) {
+        var numDiff = (Number(a.num) || 0) - (Number(b.num) || 0);
+        if (numDiff !== 0)
+            return numDiff;
+        return String(a.name || '').localeCompare(String(b.name || ''), 'ja');
+    })
+        .map(function (student) { return (__assign(__assign({}, student), { unitEntries: units.map(function (unit) {
+            var existing = student.units[String(unit.id)] || null;
+            return existing || {
+                unitId: String(unit.id),
+                unitName: unit.name || '',
+                assessment: { knowledge: '', thinking: '', attitude: '', memo: '' },
+                evidence: [],
+                evidenceHtml: [],
+                ranks: [],
+                periods: [],
+            };
+        }) })); });
+}
+function renderGradingFieldChipsForSubject(subject, gradingCategory) {
+    var box = document.getElementById('gradeFieldChips');
+    if (!box)
+        return;
+    if (!subject) {
+        box.className = 'field-chip-empty';
+        box.textContent = '教科を選ぶと、その教科の単元を横並びで評定できます。';
+        return;
+    }
+    var labels = collectAggVisibleFields(allAggData.filter(function (row) { return String(row.subject || '') === String(subject); }))
+        .filter(function (field) { return matchesAggPresetField(field, gradingCategory); })
+        .map(function (field) { return field.label; });
+    var unitLabels = getGradingUnitsForSubject(subject).map(function (unit) { return unit.name || ''; });
+    box.className = 'field-chip-row';
+    box.innerHTML = ["<span class=\"field-chip\">".concat(esc(subject), "</span>"), "<span class=\"field-chip\">".concat(esc(FIELD_CATEGORY_LABELS[gradingCategory]), "</span>")]
+        .concat(unitLabels.map(function (label) { return "<span class=\"field-chip\">".concat(esc(label), "</span>"); }))
+        .concat(labels.slice(0, 6).map(function (label) { return "<span class=\"field-chip\">".concat(esc(label), "</span>"); }))
+        .join('');
+}
+function renderGradingSubjectMatrix(subject, gradingCategory) {
+    var gradeBody = document.getElementById('gradeBody');
+    var gradeCards = document.getElementById('gradeCards');
+    var gradeHead = document.getElementById('gradeHead');
+    var gradeDebug = document.getElementById('gradeDebug');
+    var units = getGradingUnitsForSubject(subject);
+    if (!subject) {
+        gradeHead.innerHTML = '<tr><th>#</th><th>なまえ</th><th>単元別評定</th></tr>';
+        gradeBody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#999;padding:14px;">教科を選択してください</td></tr>';
+        gradeCards.innerHTML = '<div class="portfolio-empty">教科を選択してください</div>';
+        if (gradeDebug)
+            gradeDebug.textContent = '教科ごとの一覧入力では、まず教科を選択してください。';
+        return;
+    }
+    if (!units.length) {
+        gradeHead.innerHTML = '<tr><th>#</th><th>なまえ</th><th>単元別評定</th></tr>';
+        gradeBody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#999;padding:14px;">この教科の単元がありません</td></tr>';
+        gradeCards.innerHTML = '<div class="portfolio-empty">この教科の単元がありません</div>';
+        if (gradeDebug)
+            gradeDebug.textContent = "".concat(subject, " \u306E\u5358\u5143\u304C\u307E\u3060\u3042\u308A\u307E\u305B\u3093\u3002");
+        return;
+    }
+    var rows = buildGradingSubjectRows(subject, gradingCategory);
+    gradeHead.innerHTML = "<tr><th>#</th><th>\u306A\u307E\u3048</th>".concat(units.map(function (unit) { return "<th>".concat(esc(unit.name || ''), "</th>"); }).join(''), "</tr>");
+    if (gradeDebug) {
+        gradeDebug.textContent = "".concat(subject, " \u306E ").concat(units.length, " \u5358\u5143\u3092\u6A2A\u4E26\u3073\u8868\u793A\u3057\u3066\u3044\u307E\u3059\u3002").concat(FIELD_CATEGORY_LABELS[gradingCategory], " \u3092\u4E00\u89A7\u3067\u5165\u529B\u3067\u304D\u307E\u3059\u3002");
+    }
+    if (!rows.length) {
+        gradeBody.innerHTML = "<tr><td colspan=\"".concat(2 + units.length, "\" style=\"text-align:center;color:#999;padding:14px;\">\u540D\u7C3F\u30C7\u30FC\u30BF\u304C\u3042\u308A\u307E\u305B\u3093</td></tr>");
+        gradeCards.innerHTML = '<div class="portfolio-empty">名簿データがありません</div>';
+        return;
+    }
+    gradeBody.innerHTML = rows.map(function (row) { return "\n    <tr>\n      <td>".concat(row.num, "</td>\n      <td>").concat(esc(row.name), "</td>\n      ").concat(row.unitEntries.map(function (unitEntry) { return "<td class=\"grading-matrix-cell\">".concat(renderGradingMatrixCell(row, unitEntry, gradingCategory), "</td>"); }).join(''), "\n    </tr>\n  "); }).join('');
+    gradeCards.innerHTML = rows.map(function (row) { return "\n    <div class=\"agg-card\">\n      <div class=\"agg-card-top\">\n        <div>\n          <div class=\"agg-card-title\">".concat(row.num, " ").concat(esc(row.name || ''), "</div>\n          <div class=\"agg-card-meta\">").concat(esc(subject), " / ").concat(FIELD_CATEGORY_LABELS[gradingCategory], "</div>\n        </div>\n      </div>\n      <div class=\"grading-card-grid\">\n        ").concat(row.unitEntries.map(function (unitEntry) { return "\n          <div class=\"agg-card-block\">\n            <div class=\"agg-card-label\">".concat(esc(unitEntry.unitName || ''), "</div>\n            <div class=\"agg-card-text\">").concat(renderGradingMatrixCardCell(row, unitEntry, gradingCategory), "</div>\n          </div>\n        "); }).join(''), "\n      </div>\n    </div>\n  "); }).join('');
+}
+function renderGradingMatrixCell(row, unitEntry, category) {
+    var evidence = buildGradingEvidenceHtml(unitEntry);
+    return "".concat(renderAggAssessmentSelect({
+        unitId: unitEntry.unitId,
+        num: row.num,
+        assessment: unitEntry.assessment || {},
+    }, category), "\n  <div class=\"grading-matrix-evidence ").concat(evidence === '—' ? 'grading-matrix-empty' : '', "\">").concat(evidence === '—' ? '—' : evidence, "</div>");
+}
+function renderGradingMatrixCardCell(row, unitEntry, category) {
+    var evidence = buildGradingEvidenceHtml(unitEntry);
+    return "".concat(renderAggAssessmentSelect({
+        unitId: unitEntry.unitId,
+        num: row.num,
+        assessment: unitEntry.assessment || {},
+    }, category), "\n  <div class=\"grading-matrix-evidence ").concat(evidence === '—' ? 'grading-matrix-empty' : '', "\">").concat(evidence === '—' ? '—' : evidence, "</div>");
+}
+function buildGradingEvidenceText(unitEntry) {
+    var lines = [];
+    var ranks = Array.from(new Set(unitEntry.ranks || [])).filter(Boolean);
+    var periods = Array.from(new Set(unitEntry.periods || [])).filter(Boolean);
+    var evidence = Array.from(new Set(unitEntry.evidence || [])).filter(Boolean).slice(0, 2);
+    if (ranks.length)
+        lines.push("\u30E9\u30F3\u30AF: ".concat(ranks.join(' / ')));
+    if (periods.length)
+        lines.push("\u6642\u9593: ".concat(periods.join(' / ')));
+    evidence.forEach(function (item) { return lines.push(item); });
+    return lines.length ? lines.join('\n') : '—';
+}
+function buildGradingEvidenceHtml(unitEntry) {
+    var lines = [];
+    var ranks = Array.from(new Set(unitEntry.ranks || [])).filter(Boolean);
+    var periods = Array.from(new Set(unitEntry.periods || [])).filter(Boolean);
+    var evidence = Array.from(new Set(unitEntry.evidenceHtml || [])).filter(Boolean).slice(0, 2);
+    if (ranks.length)
+        lines.push("\u30E9\u30F3\u30AF: ".concat(esc(ranks.join(' / '))));
+    if (periods.length)
+        lines.push("\u6642\u9593: ".concat(esc(periods.join(' / '))));
+    evidence.forEach(function (item) { lines.push(item); });
+    return lines.length ? lines.join('<br>') : '—';
+}
+function buildAggProcessingHeaderHtml(periods, gradingCategory) {
+    return "<tr><th>#</th><th>\u306A\u307E\u3048</th><th>".concat(FIELD_CATEGORY_LABELS[gradingCategory], " \u8A55\u5B9A</th>").concat(periods.map(function (currentPeriod) { return "<th>".concat(currentPeriod, "\u6642\u9593\u76EE</th>"); }).join(''), "</tr>");
+}
+function buildAggHeaderHtml(fieldMeta) {
+    return "<tr><th>\u5358\u5143</th><th>\u6642\u9593</th><th>#</th><th>\u306A\u307E\u3048</th><th>\u65E5\u4ED8</th>".concat(fieldMeta.fields.map(function (field) { return "<th>".concat(esc(field.label), "</th>"); }).join(''), "<th>\u30E9\u30F3\u30AF</th></tr>");
+}
+function renderAggFieldChips(fieldMeta, preset, viewMode, gradingCategory, rows) {
+    var box = document.getElementById(viewMode === 'grading' ? 'gradeFieldChips' : 'aggFieldChips');
+    if (!box)
+        return;
+    if (viewMode === 'grading') {
+        var labels = collectAggVisibleFields(rows)
+            .filter(function (field) { return matchesAggPresetField(field, gradingCategory); })
+            .map(function (field) { return field.label; })
+            .concat(collectAggChipLabels(rows));
+        if (!labels.length) {
+            box.className = 'field-chip-empty';
+            box.textContent = "".concat(FIELD_CATEGORY_LABELS[gradingCategory], " \u306B\u4F7F\u3048\u308B\u6587\u7AE0\u304C\u307E\u3060\u3042\u308A\u307E\u305B\u3093\u3002");
+            return;
+        }
+        box.className = 'field-chip-row';
+        box.innerHTML = ["<span class=\"field-chip\">".concat(esc(FIELD_CATEGORY_LABELS[gradingCategory]), "</span>")]
+            .concat(Array.from(new Set(labels)).map(function (label) { return "<span class=\"field-chip\">".concat(esc(label), "</span>"); }))
+            .join('');
+        return;
+    }
+    if (!fieldMeta.fields.length) {
+        box.className = 'field-chip-empty';
+        box.textContent = "".concat(AGG_PRESET_LABELS[preset] || '表示', "\u3067\u4F7F\u3048\u308B\u5165\u529B\u9805\u76EE\u304C\u307E\u3060\u3042\u308A\u307E\u305B\u3093\u3002");
+        return;
+    }
+    box.className = 'field-chip-row';
+    box.innerHTML = fieldMeta.fields.map(function (field) {
+        var extraClass = field.source === 'comment' ? ' field-chip-prefix' : '';
+        return "<span class=\"field-chip".concat(extraClass, "\">").concat(esc(field.label), "</span>");
+    }).join('');
+}
+function resolveAggPresetFields(rows, preset, showComment) {
+    var fields = collectAggVisibleFields(rows);
+    var reviewField = { key: 'reviewText', label: 'ふりかえり', source: 'review' };
+    var commentField = { key: 'comment', label: 'AIコメント', source: 'comment' };
+    var shouldShowComment = showComment && rows.some(function (row) { return String(row.comment || '').trim(); });
+    if (preset === 'standard') {
+        return { fields: [reviewField] };
+    }
+    if (preset === 'all') {
+        var merged = [reviewField].concat(fields.filter(function (field) { return !isAggReviewLikeField(field); }));
+        if (shouldShowComment)
+            merged.push(commentField);
+        return { fields: merged };
+    }
+    var filtered = fields.filter(function (field) { return matchesAggPresetField(field, preset); });
+    if (shouldShowComment)
+        filtered.push(commentField);
+    return { fields: filtered };
+}
+function collectAggVisibleFields(rows) {
+    var map = new Map();
+    rows.forEach(function (row) {
+        (row.fields || []).forEach(function (field) {
+            if (field.enabled === false)
+                return;
+            var value = formatAggAnswerValue((row.answersMap || {})[field.key]);
+            if (!value)
+                return;
+            if (!map.has(field.key)) {
+                map.set(field.key, {
+                    key: field.key,
+                    label: field.label || field.key,
+                    emoji: field.emoji || '',
+                    type: field.type || 'text',
+                    categories: Array.isArray(field.categories) ? field.categories : [],
+                    source: 'answer',
+                });
+            }
+        });
+    });
+    return Array.from(map.values()).sort(function (a, b) { return String(a.label || '').localeCompare(String(b.label || ''), 'ja'); });
+}
+function isAggReviewLikeField(field) {
+    var haystack = "".concat(String(field && field.key || ''), " ").concat(String(field && field.label || '')).toLowerCase();
+    return /review|ふりかえり/.test(haystack);
+}
+function formatAggAnswerValue(value) {
+    if (Array.isArray(value)) {
+        return value.map(function (item) { return String(item || '').trim(); }).filter(Boolean).join(' / ');
+    }
+    if (value === null || value === undefined)
+        return '';
+    return String(value).trim();
+}
+function isAggReviewField(field) {
+    return String(field && field.type || '') === 'review' || String(field && field.source || '') === 'review';
+}
+function isAggChipFriendlyField(field) {
+    var haystack = "".concat(String(field && field.key || ''), " ").concat(String(field && field.label || '')).toLowerCase();
+    return /わかった|りかい|できた|やり方|方法|工夫|考え|理由|まとめ|次|ふりかえり|review|method/.test(haystack);
+}
+function collectAggChipLabels(rows) {
+    var labels = [];
+    (rows || []).forEach(function (row) {
+        (row.fields || []).forEach(function (field) {
+            var value = formatAggAnswerValue((row.answersMap || {})[field.key]);
+            if (!value || !isAggChipFriendlyField(field))
+                return;
+            labels.push(field.label || field.key || '項目');
+        });
+    });
+    return Array.from(new Set(labels));
+}
+function matchesAggPresetField(field, preset) {
+    var categories = ((field && field.categories) || []).filter(Boolean);
+    if (categories.includes(preset))
+        return true;
+    var haystack = "".concat(String(field.key || ''), " ").concat(String(field.label || ''), " ").concat(String(field.type || '')).toLowerCase();
+    var match = function (words) { return words.some(function (word) { return haystack.includes(word); }); };
+    if (preset === 'knowledge') {
+        return match(['理解', 'できた', 'わかった', 'まとめ', '用語', '知識', '技能', 'eval', 'summary']);
+    }
+    if (preset === 'thinking') {
+        return match(['ふりかえり', 'review', 'やり方', '方法', '工夫', '理由', '考え', '説明', 'まとめ']);
+    }
+    if (preset === 'attitude') {
+        return match(['めあて', 'goal', 'ふりかえり', 'review', '次', 'がんば', '取り組', 'やり方', '方法']);
+    }
+    return false;
+}
+function renderAggFieldValue(row, field) {
+    var value = field.source === 'review'
+        ? String(row.review || '')
+        : field.source === 'comment'
+            ? String(row.comment || '')
+            : formatAggAnswerValue((row.answersMap || {})[field.key]);
+    if (!value)
+        return '';
+    if (isAggReviewField(field))
+        return renderTeacherReviewText_(value, row.fields || [field]);
+    return esc(value).replace(/\n/g, '<br>');
+}
+function renderAggCardFieldValue(row, field) {
+    var value = field.source === 'review'
+        ? String(row.review || '')
+        : field.source === 'comment'
+            ? String(row.comment || '')
+            : formatAggAnswerValue((row.answersMap || {})[field.key]);
+    if (!value)
+        return '';
+    if (isAggReviewField(field))
+        return renderTeacherReviewText_(value, row.fields || [field]);
+    return esc(value).replace(/\n/g, '<br>');
+}
+function renderAggFieldValueChips(row, field) {
+    if (field.source !== 'answer' || !isAggChipFriendlyField(field))
+        return '';
+    return "<div class=\"field-chip-row\"><span class=\"field-chip\">".concat(esc(field.label || field.key || '項目'), "</span></div>");
+}
+function buildAggProcessingRows(rows, periods, category) {
+    var grouped = new Map();
+    rows.forEach(function (row) {
+        var key = String(row.num || '');
+        if (!grouped.has(key)) {
+            grouped.set(key, {
+                unitId: row.unitId || '',
+                unitName: row.unitName || '',
+                subject: row.subject || '',
+                num: row.num,
+                name: row.name || '',
+                periodSummary: [],
+                date: row.date || '',
+                rank: row.rank || '',
+                assessment: row.teacherAssessment || { knowledge: '', thinking: '', attitude: '', memo: '' },
+                periodMap: {},
+            });
+        }
+        var item = grouped.get(key);
+        item.periodMap[String(row.period || '')] = row;
+        if (row.period)
+            item.periodSummary.push("".concat(row.period, "\u6642\u9593\u76EE"));
+        if (!item.rank && row.rank)
+            item.rank = row.rank;
+        if (!item.date && row.date)
+            item.date = row.date;
+        if (row.teacherAssessment)
+            item.assessment = row.teacherAssessment;
+    });
+    return Array.from(grouped.values())
+        .sort(function (a, b) { return (Number(a.num) || 0) - (Number(b.num) || 0); })
+        .map(function (row) { return buildAggProcessingRow(row, periods, category); });
+}
+function buildAggProcessingRow(row, periods, category) {
+    return __assign(__assign({}, row), { periodSummary: Array.from(new Set(row.periodSummary || [])).join(' / '), periods: periods, category: category });
+}
+function collectAggCategoryEntries(row, category) {
+    var sourceRows = row.entries || [row];
+    var explicit = sourceRows.flatMap(function (sourceRow) { return (sourceRow.fields || [])
+        .filter(function (field) { return (((field && field.categories) || []).includes(category)); })
+        .map(function (field) { return ({
+        label: field.label || field.key,
+        value: String((sourceRow.answersMap || {})[field.key] || '').trim(),
+        key: field.key,
+        emoji: field.emoji || '',
+        explicit: true,
+    }); }); })
+        .filter(function (entry) { return entry.value; });
+    if (explicit.length)
+        return explicit;
+    return sourceRows.flatMap(function (sourceRow) { return (sourceRow.fields || [])
+        .filter(function (field) { return matchesAggPresetField(field, category); })
+        .map(function (field) { return ({
+        label: field.label || field.key,
+        value: String((sourceRow.answersMap || {})[field.key] || '').trim(),
+        key: field.key,
+        emoji: field.emoji || '',
+        explicit: false,
+    }); }); })
+        .filter(function (entry) { return entry.value; });
+}
+function renderAggEntryChips(entries) {
+    var list = (entries || []).slice(0, 4);
+    if (!list.length)
+        return '';
+    return "<div class=\"field-chip-row\">".concat(list.map(function (entry) { return "<span class=\"field-chip\">".concat(esc(((entry.emoji || '') ? "".concat(entry.emoji, " ") : '') + (entry.label || entry.key || '項目')), "</span>"); }).join(''), "</div>");
+}
+function renderAggAssessmentSelect(row, category) {
+    return "<label class=\"agg-assess-note\">".concat(FIELD_CATEGORY_LABELS[category], "\n    <select class=\"agg-assess-select\" onchange=\"saveAggTeacherAssessmentLevel('").concat(escAttr(row.unitId), "','").concat(escAttr(row.num), "','").concat(category, "',this.value)\">\n      ").concat(TEACHER_ASSESS_LEVELS.map(function (level) { return "<option value=\"".concat(level, "\" ").concat(String((row.assessment || {})[category] || '') === String(level) ? 'selected' : '', ">").concat(level || '未設定', "</option>"); }).join(''), "\n    </select>\n  </label>");
+}
+function saveAggTeacherAssessmentLevel(unitId, studentNumber, category, value) {
+    var _a;
+    google.script.run
+        .withSuccessHandler(function (res) { return updateAggTeacherAssessmentLocal(res && res.assessment || null); })
+        .withFailureHandler(function (err) { return alert((err && err.message) || err || '評価の保存に失敗しました'); })
+        .saveTeacherAssessment(unitId, studentNumber, (_a = {}, _a[category] = value, _a));
+}
+function saveAggTeacherAssessmentMemo(unitId, studentNumber, value) {
+    google.script.run
+        .withSuccessHandler(function (res) { return updateAggTeacherAssessmentLocal(res && res.assessment || null); })
+        .withFailureHandler(function (err) { return alert((err && err.message) || err || 'メモの保存に失敗しました'); })
+        .saveTeacherAssessment(unitId, studentNumber, { memo: value });
+}
+function updateAggTeacherAssessmentLocal(assessment) {
+    if (!assessment)
+        return;
+    allAggData = allAggData.map(function (row) {
+        if (String(row.unitId || '') !== String(assessment.unitId || ''))
+            return row;
+        if (String(row.num || '') !== String(assessment.studentNumber || ''))
+            return row;
+        return __assign(__assign({}, row), { teacherAssessment: assessment });
+    });
+}
+function renderAggPeriodCell(row, category) {
+    if (!row)
+        return '<span class="agg-processing-cell empty">—</span>';
+    var entries = collectAggCategoryEntries(row, category);
+    if (!entries.length)
+        return '<span class="agg-processing-cell empty">—</span>';
+    return "".concat(renderAggEntryChips(entries), "<div class=\"agg-processing-cell\">").concat(entries.map(function (entry) { return renderAggEvidenceEntry(entry, row); }).join('<br>'), "</div>");
+}
+function renderAggPeriodCardCell(row, category) {
+    if (!row)
+        return '—';
+    var entries = collectAggCategoryEntries(row, category);
+    if (!entries.length)
+        return '—';
+    return "".concat(renderAggEntryChips(entries), "<div class=\"agg-processing-cell\">").concat(entries.map(function (entry) { return renderAggEvidenceEntry(entry, row); }).join('<br>'), "</div>");
+}
+function renderAggEvidenceEntry(entry, row) {
+    var label = esc((entry && entry.label) || '');
+    var value = String(entry && entry.value || '');
+    var rowFields = (row && row.fields) || [];
+    var field = rowFields.find(function (item) { return String(item && item.key || '') === String(entry && entry.key || ''); }) || entry;
+    var body = isAggReviewField(field)
+        ? renderTeacherReviewText_(value, rowFields.length ? rowFields : [field])
+        : esc(value).replace(/\n/g, '<br>');
+    return label ? "".concat(label, ": ").concat(body) : body;
+}
+function renderAggDebug(debug, build) {
+    var box = document.getElementById('aggDebug');
+    if (!debug) {
+        box.innerHTML = "<div class=\"debug-summary\">\u5358\u5143\u5206\u6790\u306E\u53D6\u5F97\u4EF6\u6570\u3092\u8868\u793A\u3067\u304D\u307E\u305B\u3093\u3067\u3057\u305F\u3002</div><details><summary>\u8A73\u7D30\u3092\u898B\u308B</summary><code>teacherInit build=".concat(esc(teacherBuild || 'unknown'), "</code></details>");
+        return;
+    }
+    var sample = (debug.sampleRows || [])
+        .map(function (row, idx) { return "".concat(idx + 1, ". ").concat(row.subject, "/").concat(row.unitName, "/").concat(row.period, "\u6642\u9593\u76EE ").concat(row.num, "\u756A\n   ").concat(formatDisplayDate(row.date), "\n   ").concat(row.preview); })
+        .join('\n\n');
+    var summary = "\u96C6\u7D04 ".concat(debug.rowCount || 0, "\u4EF6");
+    var buildLine = "teacher=".concat(teacherBuild || 'unknown', " / aggregate=").concat(build || 'unknown', " / unitId=").concat(debug.unitId || '');
+    box.innerHTML = "<div class=\"debug-summary\">".concat(esc(summary), "</div><details><summary>\u8A73\u7D30\u3092\u898B\u308B</summary><code>").concat(esc(buildLine)).concat(sample ? "\n\n".concat(sample) : '', "</code></details>");
+}
+function renderAggSummary(rows) {
+    var box = document.getElementById('aggSummary');
+    if (!box)
+        return;
+    if (!rows.length) {
+        box.innerHTML = "\n      <div class=\"insight-grid\">\n        <div class=\"insight-box\"><div class=\"insight-k\">\u5BFE\u8C61\u4EBA\u6570</div><div class=\"insight-v\">0</div></div>\n        <div class=\"insight-box\"><div class=\"insight-k\">\u7406\u89E3\u5EA6</div><div class=\"insight-v\">-</div></div>\n        <div class=\"insight-box\"><div class=\"insight-k\">A\u4EE5\u4E0A</div><div class=\"insight-v\">0</div></div>\n        <div class=\"insight-box\"><div class=\"insight-k\">\u8981\u652F\u63F4\u5019\u88DC</div><div class=\"insight-v\">0</div></div>\n      </div>";
+        return;
+    }
+    var scoreMap = { 'C': 0, 'C+': 1, 'B': 2, 'B+': 3, 'A': 4, 'A+': 5, 'S': 6, 'S+': 7 };
+    var strong = rows
+        .filter(function (r) { return ((Object.prototype.hasOwnProperty.call(scoreMap, r.rank) ? scoreMap[r.rank] : -1)) >= 4; })
+        .sort(function (a, b) { return ((Object.prototype.hasOwnProperty.call(scoreMap, b.rank) ? scoreMap[b.rank] : -1) - (Object.prototype.hasOwnProperty.call(scoreMap, a.rank) ? scoreMap[a.rank] : -1)) || String(b.review || '').length - String(a.review || '').length; })
+        .slice(0, 3);
+    var support = rows
+        .filter(function (r) { return r.rank && ['C', 'C+', 'B'].includes(r.rank); })
+        .sort(function (a, b) { return ((Object.prototype.hasOwnProperty.call(scoreMap, a.rank) ? scoreMap[a.rank] : 99) - (Object.prototype.hasOwnProperty.call(scoreMap, b.rank) ? scoreMap[b.rank] : 99)) || String(a.review || '').length - String(b.review || '').length; })
+        .slice(0, 3);
+    var rankCounts = {};
+    rows.forEach(function (r) { if (r.rank)
+        rankCounts[r.rank] = (rankCounts[r.rank] || 0) + 1; });
+    var rankOrder = ['S+', 'S', 'A+', 'A', 'B+', 'B', 'C+', 'C'];
+    var understandingStats = collectAggregateUnderstandingStats(rows);
+    box.innerHTML = "\n    <div class=\"insight-grid\">\n      <div class=\"insight-box\">\n        <div class=\"insight-k\">\u5BFE\u8C61\u4EBA\u6570</div>\n        <div class=\"insight-v\">".concat(rows.length, "</div>\n        <div class=\"insight-sub\">\u8A18\u9332\u306E\u3042\u308B\u5150\u7AE5</div>\n      </div>\n      <div class=\"insight-box\">\n        <div class=\"insight-k\">\u7406\u89E3\u5EA6</div>\n        <div class=\"insight-v\">").concat(understandingStats.label, "</div>\n        <div class=\"insight-sub\">").concat(understandingStats.sub, "</div>\n      </div>\n      <div class=\"insight-box\">\n        <div class=\"insight-k\">A\u4EE5\u4E0A</div>\n        <div class=\"insight-v\">").concat(rows.filter(function (r) { return ((Object.prototype.hasOwnProperty.call(scoreMap, r.rank) ? scoreMap[r.rank] : -1)) >= 4; }).length, "</div>\n        <div class=\"insight-sub\">\u65B9\u7565\u3084\u6B21\u3078\u306E\u6539\u5584\u304C\u898B\u3048\u308B\u8A18\u9332</div>\n      </div>\n      <div class=\"insight-box\">\n        <div class=\"insight-k\">\u8981\u652F\u63F4\u5019\u88DC</div>\n        <div class=\"insight-v\">").concat(rows.filter(function (r) { return r.rank && ['C', 'C+', 'B'].includes(r.rank); }).length, "</div>\n        <div class=\"insight-sub\">\u77ED\u6587\u30FB\u611F\u60F3\u6B62\u307E\u308A\u304C\u4E2D\u5FC3\u306E\u8A18\u9332</div>\n      </div>\n    </div>\n    <div class=\"analysis-grid\">\n      <div class=\"analysis-card\">\n        <h3>\u30E9\u30F3\u30AF\u5206\u5E03</h3>\n        <div class=\"dist-row\">").concat(rankOrder.filter(function (rank) { return rankCounts[rank]; }).map(function (rank) { return "<span class=\"dist-chip\">".concat(rank, "<span class=\"n\">").concat(rankCounts[rank], "</span></span>"); }).join('') || '<span class="insight-sub">ランク未生成</span>', "</div>\n      </div>\n      <div class=\"analysis-card\">\n        <h3>\u3088\u304F\u66F8\u3051\u3066\u3044\u308B\u5150\u7AE5</h3>\n        <ul class=\"mini-list\">").concat(strong.map(function (row) { return "<li>".concat(row.num, " ").concat(esc(row.name || ''), " ").concat(row.rank, " / ").concat(renderTeacherReviewText_(shortText(row.review, 38), row.fields || []), "</li>"); }).join('') || '<li>まだ候補がありません</li>', "</ul>\n      </div>\n      <div class=\"analysis-card\">\n        <h3>\u652F\u63F4\u3092\u898B\u305F\u3044\u5150\u7AE5</h3>\n        <ul class=\"mini-list\">").concat(support.map(function (row) { return "<li>".concat(row.num, " ").concat(esc(row.name || ''), " ").concat(row.rank, " / ").concat(renderTeacherReviewText_(shortText(row.review, 38), row.fields || []), "</li>"); }).join('') || '<li>候補はありません</li>', "</ul>\n      </div>\n    </div>");
+}
+function collectAggregateUnderstandingStats(rows) {
+    var counts = { good: 0, mid: 0, support: 0, none: 0 };
+    rows.forEach(function (row) {
+        var value = getAggregateUnderstandingValue(row);
+        if (!value) {
+            counts.none++;
+            return;
+        }
+        if (/よく/.test(value)) {
+            counts.good++;
+            return;
+        }
+        if (/だいたい/.test(value)) {
+            counts.mid++;
+            return;
+        }
+        if (/あまり|わから/.test(value)) {
+            counts.support++;
+            return;
+        }
+        counts.none++;
+    });
+    var total = rows.length || 0;
+    var understood = counts.good + counts.mid;
+    if (!total || !understood) {
+        return { label: '未入力多め', sub: '理解度の入力がまだ少ないです' };
+    }
+    var ratio = Math.round((understood / total) * 100);
+    return {
+        label: "".concat(ratio, "%"),
+        sub: "\u3088\u304F ".concat(counts.good, "\u4EBA / \u3060\u3044\u305F\u3044 ").concat(counts.mid, "\u4EBA / \u652F\u63F4 ").concat(counts.support, "\u4EBA"),
+    };
+}
+function getAggregateUnderstandingValue(row) {
+    var fields = Array.isArray(row && row.fields) ? row.fields : [];
+    var target = fields.find(function (field) {
+        var text = "".concat(field && field.key || '', " ").concat(field && field.label || '', " ").concat(field && field.type || '').toLowerCase();
+        return /理解|りかい|わか|自己評価|じこひょうか|達成|たっせい|self|score|check|eval/.test(text);
+    });
+    if (!target)
+        return '';
+    return formatAggAnswerValue((row.answersMap || {})[target.key]);
+}
+function shortText(text, max) {
+    var s = String(text || '').replace(/\s+/g, ' ').trim();
+    if (!s)
+        return '記録なし';
+    return s.length > max ? s.slice(0, max) + '…' : s;
+}
+function formatDisplayDate(value) {
+    if (!value)
+        return '';
+    var text = String(value);
+    var m = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m)
+        return "".concat(m[1], "/").concat(m[2], "/").concat(m[3]);
+    return text;
+}
+function formatDisplayDateTime(value) {
+    if (!value)
+        return '';
+    var d = new Date(value);
+    if (Number.isNaN(d.getTime()))
+        return String(value);
+    var yyyy = d.getFullYear();
+    var mm = String(d.getMonth() + 1).padStart(2, '0');
+    var dd = String(d.getDate()).padStart(2, '0');
+    var hh = String(d.getHours()).padStart(2, '0');
+    var mi = String(d.getMinutes()).padStart(2, '0');
+    var ss = String(d.getSeconds()).padStart(2, '0');
+    return "".concat(yyyy, "/").concat(mm, "/").concat(dd, " ").concat(hh, ":").concat(mi, ":").concat(ss);
+}
+function formatDurationShort(ms) {
+    var num = Number(ms || 0);
+    if (!Number.isFinite(num) || num <= 0)
+        return '';
+    if (num < 1000)
+        return "".concat(Math.round(num), "ms");
+    if (num < 10000)
+        return "".concat((num / 1000).toFixed(1), "s");
+    return "".concat(Math.round(num / 1000), "s");
+}
+function renderStudentAiState(student) {
+    if (!(student && student.submitted)) {
+        return student && student.review ? '✍️記入中' : '';
+    }
+    if (String(student && student.draftStatus || '') === 'draft' && String(student && student.draftComment || '').trim()) {
+        return '📝 AI下書きあり';
+    }
+    if (String(student && student.draftStatus || '') === 'returned' && String(student && student.comment || '').trim()) {
+        return '📤 返却済';
+    }
+    var status = String(student.aiStatus || '');
+    var retry = Number(student.aiRetryCount || 0);
+    var retryLabel = retry > 0 ? " / retry ".concat(retry) : '';
+    if (status === 'done') {
+        return "\u2705 AI\u5B8C\u4E86".concat(retryLabel ? "<br><span style=\"font-size:11px;color:#607D8B;\">retry ".concat(retry, "</span>") : '');
+    }
+    if (status === 'error') {
+        var msg = esc(String(student.aiError || 'AI失敗'));
+        return "\u26A0\uFE0F AI\u5931\u6557<br><span style=\"font-size:11px;color:#C62828;\">".concat(msg).concat(retryLabel, "</span>");
+    }
+    if (status === 'processing') {
+        return "\uD83E\uDD16 AI\u51E6\u7406\u4E2D".concat(retryLabel ? "<br><span style=\"font-size:11px;color:#607D8B;\">retry ".concat(retry, "</span>") : '');
+    }
+    if (status === 'pending') {
+        return "\u23F3 AI\u5F85\u3061".concat(retryLabel ? "<br><span style=\"font-size:11px;color:#607D8B;\">retry ".concat(retry, "</span>") : '');
+    }
+    return '✅提出済';
+}
+function calcElapsedMs(value) {
+    if (!value)
+        return 0;
+    var startedAt = new Date(value).getTime();
+    if (Number.isNaN(startedAt))
+        return 0;
+    return Math.max(0, Date.now() - startedAt);
+}
+function genSummary() {
+    if (!isTeacherAiReadyOnClient_()) {
+        showToast('AI未設定です。プロンプトタブでAPIキーを保存してください', { tone: 'error' });
+        return;
+    }
+    var unitId = document.getElementById('aggUnit').value;
+    var period = (document.getElementById('aggPeriod') || {}).value || '';
+    if (!unitId) {
+        showToast('単元を選択してください');
+        return;
+    }
+    requestUnitSummaryReport({
+        unitId: unitId,
+        period: period,
+        boxId: 'aiReport',
+        loadingText: '🤖 単元指導レポートを生成中…',
+        successTitle: function (res) { return "\u3010".concat(res.unitName, "\u3011\u5358\u5143\u6307\u5C0E\u30EC\u30DD\u30FC\u30C8"); },
+        successToast: '単元指導レポートを生成しました',
+        failureToast: '単元指導レポートの生成に失敗しました',
+    });
+}
+function genStatusSummary() {
+    if (!activeUnitId || !activePeriod) {
+        showToast('授業中の単元がありません');
+        return;
+    }
+    requestUnitSummaryReport({
+        unitId: activeUnitId,
+        period: String(activePeriod || ''),
+        boxId: 'statusAiReport',
+        loadingText: '🤖 この時間のふりかえりレポートを生成中…',
+        successTitle: function (res) { return "\u3010".concat(res.unitName, " / ").concat(activePeriod, "\u6642\u9593\u76EE\u3011\u3053\u306E\u6642\u9593\u306E\u3075\u308A\u304B\u3048\u308A\u30EC\u30DD\u30FC\u30C8"); },
+        successToast: 'この時間のふりかえりレポートを生成しました',
+        failureToast: 'この時間のふりかえりレポートの生成に失敗しました',
+    });
+}
+function requestUnitSummaryReport(options) {
+    var unitId = String(options && options.unitId || '').trim();
+    var period = String(options && options.period || '').trim();
+    var box = document.getElementById(options && options.boxId || '');
+    if (!unitId || !box) {
+        showToast('レポート対象が見つかりません', { tone: 'error' });
+        return;
+    }
+    box.style.display = 'block';
+    box.classList.add('ready');
+    box.textContent = options && options.loadingText || '🤖 レポートを生成中…';
+    google.script.run
+        .withSuccessHandler(function (res) {
+        if (!res.ok) {
+            box.textContent = 'エラー:' + res.error;
+            showToast(options && options.failureToast || 'レポートの生成に失敗しました', { tone: 'error' });
+            return;
+        }
+        var title = typeof (options && options.successTitle) === 'function' ? options.successTitle(res) : "\u3010".concat(res.unitName, "\u3011\u30EC\u30DD\u30FC\u30C8");
+        box.textContent = "".concat(title, "\n\n").concat(res.summary);
+        showToast(options && options.successToast || 'レポートを生成しました', { tone: 'success' });
+    })
+        .withFailureHandler(function (err) {
+        box.textContent = 'エラー:' + ((err && err.message) || err || (options && options.failureToast) || 'レポートの生成に失敗しました');
+        showToast(options && options.failureToast || 'レポートの生成に失敗しました', { tone: 'error' });
+    })
+        .generateUnitSummary(unitId, period);
+}
+function exportAggCsv() {
+    var unitId = document.getElementById('aggUnit').value || '';
+    var period = document.getElementById('aggPeriod').value || '';
+    google.script.run
+        .withSuccessHandler(function (res) {
+        if (!(res && res.csv)) {
+            alert('CSVデータがありません');
+            return;
+        }
+        var blob = new Blob(['\uFEFF' + res.csv], { type: 'text/csv;charset=utf-8;' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = res.filename || 'jibun-matome.csv';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        alert("CSV\u3092\u51FA\u529B\u3057\u307E\u3057\u305F\uFF08".concat(res.rowCount || 0, "\u4EF6\uFF09"));
+    })
+        .withFailureHandler(function (err) { return alert('CSV出力に失敗しました: ' + ((err && err.message) || err)); })
+        .exportAggregateCsv(unitId, period);
+}
+function generateGradingDrafts() {
+    if (!isTeacherAiReadyOnClient_()) {
+        showToast('AI未設定です。プロンプトタブでAPIキーを保存してください', { tone: 'error' });
+        return;
+    }
+    var mode = (document.getElementById('gradeMode') || {}).value || 'unit';
+    var subject = (document.getElementById('gradeSubject') || {}).value || '';
+    var unitId = (document.getElementById('gradeUnit') || {}).value || '';
+    var category = (document.getElementById('gradeCategory') || {}).value || 'thinking';
+    var period = (document.getElementById('gradePeriod') || {}).value || '';
+    if (mode === 'unit' && !unitId) {
+        showToast('単元を選択してください');
+        return;
+    }
+    if (mode === 'subject' && !subject) {
+        showToast('教科を選択してください');
+        return;
+    }
+    var confirmMessage = mode === 'subject'
+        ? '選択中の教科の各単元について、未設定の児童だけAI仮評定を入れます。よいですか？'
+        : '現在の観点について、未設定の児童だけAI仮評定を入れます。よいですか？';
+    if (!confirm(confirmMessage))
+        return;
+    var debugBox = document.getElementById('gradeDebug');
+    if (debugBox)
+        debugBox.textContent = 'AI仮評定を作成中…';
+    var runner = google.script.run
+        .withSuccessHandler(function (res) {
+        if (!(res && res.ok)) {
+            if (debugBox)
+                debugBox.textContent = 'AI仮評定の作成に失敗しました: ' + (res && res.error || 'unknown');
+            showToast('AI仮評定の作成に失敗しました', { tone: 'error' });
+            return;
+        }
+        loadAgg();
+        var warning = res.warning ? " / \u4E00\u90E8\u5931\u6557 ".concat(res.warning) : '';
+        var summary = "AI\u4EEE\u8A55\u5B9A\u3092\u53CD\u6620\u3057\u307E\u3057\u305F\u3002\u5BFE\u8C61 ".concat(res.targetCount || 0, "\u4EBA / \u53CD\u6620 ").concat(res.updatedCount || 0, "\u4EBA / \u65E2\u5B58\u3042\u308A ").concat(res.skippedCount || 0, "\u4EBA").concat(warning);
+        if (debugBox)
+            debugBox.textContent = summary;
+        showToast(summary, { tone: warning ? 'info' : 'success', duration: 4200 });
+    })
+        .withFailureHandler(function (err) {
+        var message = (err && err.message) || err || 'unknown';
+        if (debugBox)
+            debugBox.textContent = 'AI仮評定の作成に失敗しました: ' + message;
+        showToast('AI仮評定の作成に失敗しました: ' + message, { tone: 'error', duration: 4200 });
+    });
+    if (mode === 'subject') {
+        runner.generateTeacherAssessmentDraftsBySubject(subject, category, true);
+        return;
+    }
+    runner.generateTeacherAssessmentDrafts(unitId, category, period, true);
+}
+function exportGradingCsv() {
+    var mode = (document.getElementById('gradeMode') || {}).value || 'unit';
+    var subject = (document.getElementById('gradeSubject') || {}).value || '';
+    var unitId = (document.getElementById('gradeUnit') || {}).value || '';
+    var period = (document.getElementById('gradePeriod') || {}).value || '';
+    var category = (document.getElementById('gradeCategory') || {}).value || 'thinking';
+    var rows = buildGradingCsvRows(mode, subject, unitId, period, category);
+    if (!rows.length) {
+        alert('CSVに出力できる評定データがありません');
+        return;
+    }
+    var csv = rows.map(toCsvLine).join('\r\n');
+    var filename = [
+        'jibun-matome-grading',
+        mode === 'subject' ? sanitizeClientFileName(subject || 'subject') : sanitizeClientFileName(getUnitNameById(unitId) || 'unit'),
+        category,
+        new Date().toISOString().replace(/[:.]/g, '-'),
+    ].join('_') + '.csv';
+    downloadCsv(csv, filename);
+    alert("\u8A55\u5B9ACSV\u3092\u51FA\u529B\u3057\u307E\u3057\u305F\uFF08".concat(rows.length - 1, "\u4EF6\uFF09"));
+}
+function buildGradingCsvRows(mode, subject, unitId, period, category) {
+    if (mode === 'subject') {
+        if (!subject)
+            return [];
+        var units = getGradingUnitsForSubject(subject);
+        var rows = buildGradingSubjectRows(subject, category);
+        return [
+            ['教科', '番号', '名前'].concat(units.map(function (unit) { return unit.name || ''; })),
+        ].concat(rows.map(function (row) { return [
+            subject,
+            row.num || '',
+            row.name || '',
+        ].concat(row.unitEntries.map(function (unitEntry) { return String((unitEntry.assessment || {})[category] || ''); })); }));
+    }
+    if (!unitId)
+        return [];
+    var filtered = allAggData.filter(function (row) {
+        if (subject && String(row.subject || '') !== String(subject))
+            return false;
+        if (unitId && String(row.unitId || '') !== String(unitId))
+            return false;
+        if (period && String(row.period || '') !== String(period))
+            return false;
+        return true;
+    }).sort(function (a, b) {
+        var numDiff = (Number(a.num) || 0) - (Number(b.num) || 0);
+        if (numDiff !== 0)
+            return numDiff;
+        return String(a.name || '').localeCompare(String(b.name || ''), 'ja');
+    });
+    var periods = uniqueValues(allAggData
+        .filter(function (row) { return (!subject || String(row.subject || '') === String(subject)) && (!unitId || String(row.unitId || '') === String(unitId)); })
+        .map(function (row) { return row.period; })).sort(function (a, b) { return a - b; });
+    var processedRows = buildAggProcessingRows(filtered, periods, category);
+    return [
+        ['教科', '単元', '番号', '名前', '評定', 'ランク', '時間別根拠'],
+    ].concat(processedRows.map(function (row) { return [
+        row.subject || '',
+        row.unitName || '',
+        row.num || '',
+        row.name || '',
+        String((row.assessment || {})[category] || ''),
+        row.rank || '',
+        periods.map(function (currentPeriod) { return buildGradingEvidenceTextFromRow(row.periodMap[currentPeriod], category, currentPeriod); }).filter(Boolean).join('\n\n'),
+    ]; }));
+}
+function buildGradingEvidenceTextFromRow(row, category, currentPeriod) {
+    if (!row)
+        return '';
+    var entries = collectAggCategoryEntries(row, category).map(function (entry) { return "".concat(entry.label, ": ").concat(entry.value); });
+    var body = entries.length ? entries.join(' / ') : String(row.review || '').trim();
+    if (!body)
+        return '';
+    return "".concat(currentPeriod, "\u6642\u9593\u76EE: ").concat(body);
+}
+function toCsvLine(cols) {
+    return (cols || []).map(function (value) {
+        var text = String(value == null ? '' : value);
+        return "\"".concat(text.replace(/"/g, '""'), "\"");
+    }).join(',');
+}
+function downloadCsv(csv, filename) {
+    var blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = filename || 'jibun-matome.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+}
+function sanitizeClientFileName(value) {
+    return String(value || '').trim().replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, '-') || 'data';
+}
+function getUnitNameById(unitId) {
+    var found = allUnits.find(function (unit) { return String(unit.id || '') === String(unitId || ''); });
+    return found ? found.name || '' : '';
+}
+// =====================================
+//  util
+// =====================================
+function renderMedal(medal, color) {
+    if (!medal)
+        return '';
+    if (['🥇', '🥈', '🥉'].includes(medal))
+        return "<span style=\"font-size:18px;\">".concat(medal, "</span>");
+    return "<span class=\"medal-num\" style=\"background:".concat(color || '#999', "\">").concat(medal.replace('th', ''), "</span>");
+}
+function esc(s) {
+    return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+function escAttr(s) {
+    return esc(s).replace(/'/g, '&#39;');
+}
+function escTextArea(s) {
+    return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
+}
+// 初期ロード
+loadStatusInit({ startPolling: true });
+</script>

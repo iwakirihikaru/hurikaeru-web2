@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ふりカエルLite MVP Setup</title>
+    <style>
+      :root{
+        --sky:#29B6F6;--green:#66BB6A;--yellow:#FFD54F;--coral:#FF7043;
+        --purple:#AB47BC;--ink:#1A237E;--muted:#78909C;
+        --bg:#E8F5E9;--card:#fff;--r:16px;--sh:0 3px 12px rgba(0,0,0,.10);
+        --font:'Hiragino Maru Gothic ProN','BIZ UDPGothic',sans-serif;
+      }
+
+      *{box-sizing:border-box;margin:0;padding:0;}
+
+      html,body{min-height:100%;font-family:var(--font);background:var(--bg);color:var(--ink);}
+      body{
+        background:
+          radial-gradient(circle at top right, rgba(41,182,246,.24), transparent 24%),
+          radial-gradient(circle at bottom left, rgba(102,187,106,.18), transparent 28%),
+          var(--bg);
+      }
+
+      main{max-width:760px;margin:0 auto;padding:28px 16px 72px;}
+
+      .hero{
+        margin-bottom:18px;padding:18px 20px;border-radius:18px;
+        background:linear-gradient(135deg,var(--sky),#0288D1);color:#fff;box-shadow:var(--sh);
+      }
+      .hero .eyebrow{font-size:12px;font-weight:bold;opacity:.85;letter-spacing:.08em;}
+      .hero h1{margin-top:6px;font-size:28px;}
+      .hero p{margin-top:8px;font-size:13px;line-height:1.7;opacity:.95;}
+
+      .panel{background:var(--card);border-radius:var(--r);padding:18px;box-shadow:var(--sh);}
+      .card-title{font-size:14px;font-weight:bold;color:var(--muted);margin-bottom:10px;}
+
+      .lead{font-size:13px;color:var(--muted);line-height:1.8;margin-bottom:14px;}
+      .field{display:grid;gap:8px;margin-bottom:16px;}
+      .field label{font-size:13px;font-weight:bold;}
+      .field input{
+        width:100%;border:2px solid #CFD8DC;border-radius:12px;padding:12px 14px;
+        font-family:var(--font);font-size:14px;color:var(--ink);background:#F9FAFB;
+      }
+      .field input:focus{outline:none;border-color:var(--sky);background:#fff;}
+      .button-row{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px;}
+      button{
+        border:none;border-radius:999px;padding:12px 18px;font-family:var(--font);
+        font-size:13px;font-weight:bold;cursor:pointer;box-shadow:var(--sh);
+      }
+      #setup-save{background:#E3F2FD;color:#4E6F8B;}
+      #setup-test{background:linear-gradient(135deg,var(--green),#388E3C);color:#fff;}
+      .status{min-height:28px;margin-top:14px;font-size:13px;font-weight:bold;line-height:1.6;}
+      .status[data-tone="info"]{color:var(--muted);}
+      .status[data-tone="success"]{color:#2E7D32;}
+      .status[data-tone="error"]{color:#C62828;}
+      .notes{
+        margin-top:18px;padding:14px;border-radius:14px;background:#FFF8E1;
+        border:2px solid #FFE082;color:#6D4C41;
+      }
+      .notes p{font-size:12px;line-height:1.8;}
+      code{
+        font-family:Consolas,monospace;background:#ECEFF1;padding:2px 6px;border-radius:6px;
+      }
+      .nav-links{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px;}
+      .nav-link{
+        display:inline-flex;align-items:center;justify-content:center;text-decoration:none;
+        border-radius:999px;padding:10px 14px;background:#fff;color:var(--sky);
+        border:2px solid #B3E5FC;font-size:12px;font-weight:bold;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="hero">
+        <p class="eyebrow">CircleSchool / ふりカエルLite MVP</p>
+        <h1>初期設定</h1>
+        <p>
+          <code>/setup?api=GAS_URL</code> で開くと URL を自動で保存します。保存後に導通確認を行い、この端末の
+          <code>localStorage</code> に設定を残します。
+        </p>
+      </section>
+
+      <section class="panel">
+        <p class="card-title">GAS 接続設定</p>
+        <p class="lead">
+          GAS版での配布導線は持ち込まず、まずは URL 保存と PING 通信だけを確実に確認する構成です。
+        </p>
+
+        <form id="setup-form" onsubmit="return false;">
+          <div class="field">
+            <label for="api-url">GAS API URL</label>
+            <input
+              id="api-url"
+              name="api-url"
+              placeholder="https://script.google.com/macros/s/.../exec"
+              type="url"
+            />
+          </div>
+
+          <div class="button-row">
+            <button id="setup-save" type="button">URLを保存</button>
+            <button id="setup-test" type="button">接続テスト</button>
+          </div>
+
+          <p class="status" data-tone="info" id="setup-status">URL を入力して保存してください。</p>
+        </form>
+
+        <div class="notes">
+          <p>この MVP では次の運用を前提にしています。</p>
+          <p>1. 児童画面は送信中に即完了表示しない。</p>
+          <p>2. 失敗時は下書きを残して再送させる。</p>
+          <p>3. 先生画面は 30 秒ごと自動更新と手動更新を併用する。</p>
+        </div>
+
+        <div class="nav-links">
+          <a class="nav-link" href="./student.html">児童画面を見る</a>
+          <a class="nav-link" href="./teacher.html">先生画面を見る</a>
+        </div>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

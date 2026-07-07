@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <base target="_blank">
+  <title>ふりかえりアプリ 配布ページ</title>
+  <style>
+    :root {
+      --bg: #f6f1e8;
+      --card: #fffdf8;
+      --ink: #1f2a30;
+      --sub: #5f6b72;
+      --line: #d8cbb7;
+      --accent: #0e7c66;
+      --accent-2: #d96c3f;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Yu Gothic UI", "Hiragino Sans", sans-serif;
+      background: linear-gradient(180deg, #efe6d7 0%, var(--bg) 100%);
+      color: var(--ink);
+    }
+    .wrap {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 32px 20px 56px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 24px;
+      box-shadow: 0 18px 40px rgba(44, 37, 24, 0.08);
+    }
+    .eyebrow {
+      display: inline-block;
+      margin: 0 0 10px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: #eef6f3;
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .04em;
+    }
+    h1 { margin: 0 0 8px; font-size: 28px; }
+    p {
+      margin: 0 0 18px;
+      color: var(--sub);
+      line-height: 1.8;
+    }
+    .lead {
+      margin-bottom: 20px;
+    }
+    ol {
+      margin: 0 0 20px 22px;
+      padding: 0;
+      line-height: 1.9;
+    }
+    .step-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin: 18px 0 20px;
+    }
+    .step {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px;
+      background: #fffaf2;
+    }
+    .step-num {
+      display: inline-block;
+      margin-bottom: 8px;
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .step strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 15px;
+    }
+    .step span {
+      color: var(--sub);
+      font-size: 13px;
+      line-height: 1.7;
+    }
+    .actions {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 14px;
+      margin-top: 20px;
+    }
+    .primary-box {
+      padding: 16px;
+      border-radius: 14px;
+      background: #eef6f3;
+      border: 1px solid #c9e5dd;
+    }
+    .primary-box strong,
+    .fallback strong {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 15px;
+    }
+    .primary-box p,
+    .fallback p {
+      margin: 0 0 12px;
+      font-size: 13px;
+      line-height: 1.8;
+    }
+    a.button {
+      display: block;
+      text-align: center;
+      text-decoration: none;
+      border-radius: 14px;
+      padding: 16px 18px;
+      font-weight: 700;
+    }
+    .button-main {
+      background: var(--accent);
+      color: #fff;
+    }
+    .button-sub {
+      background: #fff7f3;
+      color: var(--accent-2);
+      border: 1px solid #efc7b8;
+    }
+    .note {
+      margin-top: 20px;
+      padding: 14px 16px;
+      border-radius: 14px;
+      background: #f7fbfa;
+      border: 1px solid #c9e5dd;
+      color: var(--ink);
+    }
+    .small {
+      margin-top: 12px;
+      font-size: 13px;
+      color: var(--sub);
+      word-break: break-all;
+    }
+    .fallback {
+      padding: 16px;
+      border-radius: 14px;
+      background: #fff7f3;
+      border: 1px solid #efc7b8;
+    }
+    .step.alert-step {
+      background: #fff7f3;
+      border-color: #efc7b8;
+    }
+    .step.alert-step .step-num {
+      color: var(--accent-2);
+    }
+    .quick-link {
+      margin-top: 12px;
+      padding: 16px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: #fffaf5;
+    }
+    .quick-link strong {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 15px;
+    }
+    .quick-link p {
+      margin: 0 0 12px;
+      font-size: 13px;
+      line-height: 1.8;
+    }
+    @media (max-width: 640px) {
+      .step-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="eyebrow">配布開始ページ</div>
+      <h1>ふりかえりアプリ 配布ページ</h1>
+      <p class="lead">アプリに必要なスプレッドシートをコピーします。まずは緑のボタンから進めます。できれば、使いたい Google アカウントでブラウザにログインし直してから進めてください。</p>
+      <div class="step-grid">
+        <div class="step">
+          <div class="step-num">STEP 1</div>
+          <strong>できれば先にログインし直す</strong>
+          <span>可能であれば、コピーしたい Google アカウントでブラウザにログインし直してから、このページの URL をもう一度貼り付けて開きます。</span>
+        </div>
+        <div class="step">
+          <div class="step-num">STEP 2</div>
+          <strong>緑のボタンでコピーする</strong>
+          <span>基本は下の緑のボタンを押して進めます。ブラウザに今ログインしている Google アカウントの Drive にコピーされます。</span>
+        </div>
+        <div class="step">
+          <div class="step-num">STEP 3</div>
+          <strong>コピー先で初期設定</strong>
+          <span>作成されたシートで初期設定を押し、その後「つぎへ」から Webアプリ化します。</span>
+        </div>
+        <div class="step alert-step">
+          <div class="step-num">補足</div>
+          <strong>コピー先が違ったとき</strong>
+          <span>違う Drive に保存されたときは、そのコピーでは初期設定せず閉じてください。戻って別のアカウントでやり直します。Chrome で開けないときは、シークレットウィンドウか Edge で開いてください。</span>
+        </div>
+      </div>
+      <div class="actions">
+        <div class="primary-box">
+          <strong>基本はこちら</strong>
+          <p>まずはこの方法で進めます。いちばん迷いにくい入口です。</p>
+          <a id="direct-link" class="button button-main" href="#" rel="noopener noreferrer">ブラウザにログインしているGoogleアカウントで作成</a>
+        </div>
+        <div class="fallback">
+          <strong>うまくいかなかったときだけ</strong>
+          <p>違う Drive に入った場合だけ、別の Google アカウントでログインし直すか、下のボタンから別アカウント向けの導線を使います。</p>
+          <a id="template-link" class="button button-sub" href="#" rel="noopener noreferrer">別のGoogleアカウントで作成</a>
+        </div>
+      </div>
+      <div id="status-box" class="note">基本は緑のボタンで進めます。開けないときは、通常ブラウザ → シークレットウィンドウ → Edge の順で試してください。うまくいかなかったときだけ、オレンジのボタンか下の補助リンクを使ってください。</div>
+      <div class="quick-link">
+        <strong>ブラウザのGoogleアカウントを切り替える場合はこちら</strong>
+        <p>ワンクリックでコピー先アカウントの選択ページを開きます。先にブラウザで目的の Google アカウントにログインし直してから使うと分かりやすいです。</p>
+        <a id="template-link-inline" class="button button-sub" href="#" rel="noopener noreferrer">アカウントを選んでコピーする</a>
+        <div class="small">補助URL: <span id="template-url-text"></span></div>
+      </div>
+      <div class="note" style="margin-top:12px;">
+        Chrome で開けないときは、まずシークレットウィンドウで試してください。それでもだめなときは、Edge で開いてください。Google アカウントが複数ログイン中だと、正しいアカウントでも開けないことがあります。
+      </div>
+    </div>
+  </div>
+  <script>
+    const directLink = document.getElementById('direct-link');
+    const templateLink = document.getElementById('template-link');
+    const templateLinkInline = document.getElementById('template-link-inline');
+    const templateUrlText = document.getElementById('template-url-text');
+    const statusBox = document.getElementById('status-box');
+
+    function setStatus(text) {
+      statusBox.textContent = text;
+    }
+
+    google.script.run
+      .withSuccessHandler((json) => {
+        if (!json || !json.ok) return;
+        const directTemplateUrl = String(json.directTemplateUrl || '').trim();
+        const chooserTemplateUrl = String(json.chooserTemplateUrl || '').trim();
+        directLink.href = directTemplateUrl || '#';
+        templateLink.href = chooserTemplateUrl || '#';
+        templateLinkInline.href = chooserTemplateUrl || '#';
+        templateUrlText.textContent = chooserTemplateUrl || '(URLなし)';
+      })
+      .registerTeacherFromForm({});
+  </script>
+</body>
+</html>

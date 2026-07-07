@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ふりカエルLite MVP 先生画面</title>
+    <style>
+      :root{
+        --navy:#1A237E;--sky:#1976D2;--green:#388E3C;--red:#C62828;
+        --yellow:#F9A825;--purple:#6A1B9A;--orange:#E65100;--teal:#00695C;
+        --bg:#F5F5F5;--card:#fff;--muted:#78909C;
+        --r:10px;--sh:0 2px 8px rgba(0,0,0,.10);
+        --font:'Hiragino Maru Gothic ProN','BIZ UDPGothic',sans-serif;
+      }
+      *{box-sizing:border-box;margin:0;padding:0;}
+      body{font-family:var(--font);background:var(--bg);color:#212121;}
+      .nav{
+        background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:space-between;
+        padding:0 16px;height:50px;position:sticky;top:0;z-index:100;box-shadow:0 2px 6px rgba(0,0,0,.3);gap:12px;
+      }
+      .nav h1{font-size:14px;white-space:nowrap;}
+      .nav-links{display:flex;gap:8px;flex-wrap:wrap;}
+      .nav-link{
+        padding:8px 12px;border-radius:999px;background:rgba(255,255,255,.12);color:#fff;
+        font-size:12px;font-weight:bold;text-decoration:none;
+      }
+      .container{max-width:1000px;margin:0 auto;padding:16px;}
+      .card{background:var(--card);border-radius:var(--r);padding:18px;box-shadow:var(--sh);margin-bottom:14px;}
+      .card h2{font-size:15px;font-weight:bold;margin-bottom:12px;color:var(--navy);display:flex;align-items:center;gap:6px;}
+      .lesson-banner{
+        background:linear-gradient(135deg,#E8F5E9,#C8E6C9);border:2px solid var(--green);
+        border-radius:var(--r);padding:14px;margin-bottom:14px;
+      }
+      .lesson-banner .lbl{font-size:12px;color:var(--green);font-weight:bold;margin-bottom:3px;}
+      .lesson-banner .name{font-size:19px;font-weight:bold;color:var(--navy);}
+      .lesson-banner .meta{font-size:12px;color:var(--muted);margin-top:2px;line-height:1.7;}
+      .warning-banner{
+        background:linear-gradient(135deg,#FFF8E1,#FFF3E0);border:2px solid #FFCC80;
+        border-radius:var(--r);padding:14px;margin-bottom:14px;
+      }
+      .warning-banner strong{display:block;font-size:13px;color:#E65100;margin-bottom:4px;}
+      .warning-banner p{font-size:12px;line-height:1.8;color:#6D4C41;}
+      .start-row{display:flex;align-items:end;gap:8px;flex-wrap:wrap;margin-bottom:10px;}
+      .field{display:flex;flex-direction:column;gap:6px;min-width:160px;flex:1;}
+      .field label{font-size:12px;font-weight:bold;color:#455A64;}
+      .field input{
+        padding:9px 10px;border:1.5px solid #CFD8DC;border-radius:7px;font-size:13px;font-family:var(--font);
+      }
+      .btn-refresh{
+        padding:10px 18px;border:none;border-radius:8px;background:linear-gradient(135deg,var(--green),#2E7D32);
+        color:#fff;font-size:14px;font-weight:bold;cursor:pointer;font-family:var(--font);
+      }
+      .btn-subtle{
+        padding:10px 16px;border:none;border-radius:8px;background:#E3F2FD;
+        color:#4E6F8B;font-size:13px;font-weight:bold;cursor:pointer;font-family:var(--font);
+      }
+      .btn-refresh:disabled{opacity:.45;cursor:default;}
+      .status{font-size:12px;font-weight:bold;line-height:1.7;color:var(--muted);}
+      .status[data-tone="success"]{color:#1B5E20;}
+      .status[data-tone="error"]{color:var(--red);}
+      textarea.field-input{
+        min-height:140px;padding:9px 10px;border:1.5px solid #CFD8DC;border-radius:7px;
+        font-size:13px;font-family:var(--font);resize:vertical;line-height:1.7;
+      }
+      .field-note{font-size:11px;color:var(--muted);line-height:1.7;margin-top:6px;}
+      .stat-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;}
+      .stat-box{background:#fff;border-radius:9px;padding:10px 14px;box-shadow:var(--sh);text-align:center;min-width:76px;}
+      .stat-num{font-size:26px;font-weight:bold;color:var(--sky);}
+      .stat-lbl{font-size:11px;color:var(--muted);}
+      .tbl-wrap{overflow:auto;}
+      .tbl{width:100%;border-collapse:collapse;font-size:13px;}
+      .tbl th{background:var(--navy);color:#fff;padding:9px 10px;text-align:left;}
+      .tbl td{padding:9px 10px;border-bottom:1px solid #e0e0e0;vertical-align:top;}
+      .tbl tr:hover td{background:#F5F5F5;}
+      .student-name{font-weight:bold;color:#263238;}
+      .response-text{white-space:pre-wrap;word-break:break-word;line-height:1.7;color:#37474F;}
+      .meta-chip{
+        display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:999px;
+        font-size:11px;font-weight:bold;background:#E8F5E9;color:#2E7D32;
+      }
+      .empty{
+        padding:18px;border-radius:10px;background:#F8FBFF;border:1px solid #D6EAF8;
+        color:#546E7A;font-size:12px;line-height:1.8;
+      }
+      @media(max-width:820px){
+        .container{padding:10px;}
+        .card{padding:14px;}
+        .nav{padding:0 10px;height:auto;min-height:50px;align-items:flex-start;flex-direction:column;justify-content:center;}
+        .nav-links{padding-bottom:10px;}
+      }
+    </style>
+  </head>
+  <body>
+    <header class="nav">
+      <h1>ふりカエルLite MVP / 先生画面</h1>
+      <div class="nav-links">
+        <a class="nav-link" href="./setup.html">設定</a>
+        <a class="nav-link" href="./student.html">児童画面</a>
+      </div>
+    </header>
+
+    <main class="container">
+      <section class="warning-banner" hidden id="setup-required-notice">
+        <strong>設定がまだです</strong>
+        <p data-role="message"></p>
+      </section>
+
+      <section class="lesson-banner">
+        <div class="lbl">授業状況</div>
+        <div class="name">提出一覧</div>
+        <p class="meta">5分キャッシュは使わず、30秒ごとの自動更新と手動更新を併用します。授業中の反映確認を最優先にした最小構成です。</p>
+      </section>
+
+      <section class="card">
+        <h2>クラス設定</h2>
+        <div class="start-row">
+          <div class="field">
+            <label for="config-class-name">クラス名</label>
+            <input id="config-class-name" placeholder="例: 4年1組" type="text" />
+          </div>
+        </div>
+        <div class="field">
+          <label for="config-roster">名簿</label>
+          <textarea class="field-input" id="config-roster" placeholder="1 たなか みなと&#10;2 すずき ひな"></textarea>
+          <p class="field-note">1行に1人ずつ。形式は `番号 名前` です。</p>
+        </div>
+        <div class="start-row">
+          <button class="btn-refresh" id="config-save" type="button">設定を保存</button>
+          <button class="btn-subtle" id="config-load" type="button">設定を再読込</button>
+        </div>
+        <p class="status" data-tone="info" id="config-status">この設定は `Config` シートへ保存されます。</p>
+      </section>
+
+      <section class="card">
+        <h2>絞り込みと更新</h2>
+        <form id="teacher-filter-form" onsubmit="return false;">
+          <div class="start-row">
+            <div class="field">
+              <label for="teacher-class">クラス名</label>
+              <input id="teacher-class" placeholder="例: 4年1組" type="text" />
+            </div>
+            <div class="field">
+              <label for="teacher-date">日付</label>
+              <input id="teacher-date" type="date" />
+            </div>
+            <button class="btn-refresh" id="teacher-refresh" type="button">今すぐ更新</button>
+          </div>
+        </form>
+        <p class="status" data-tone="info" id="teacher-status">30 秒ごとに自動更新します。</p>
+      </section>
+
+      <section class="card">
+        <h2>提出数</h2>
+        <div class="stat-row">
+          <div class="stat-box">
+            <div class="stat-num" id="teacher-count">0</div>
+            <div class="stat-lbl">提出</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>提出一覧</h2>
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead>
+              <tr>
+                <th>児童</th>
+                <th>提出時刻</th>
+                <th>ふりかえり</th>
+              </tr>
+            </thead>
+            <tbody id="teacher-list"></tbody>
+          </table>
+        </div>
+        <div class="empty" hidden id="teacher-empty">まだ提出はありません。</div>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+    <script>
+      document.addEventListener("DOMContentLoaded", function () {
+        var list = document.getElementById("teacher-list");
+        var empty = document.getElementById("teacher-empty");
+
+        window.FurikaeruMvp.renderTeacherList = function (node, items) {
+          list.innerHTML = "";
+          empty.hidden = items.length > 0;
+          if (!items.length) {
+            return;
+          }
+          items.forEach(function (item) {
+            var row = document.createElement("tr");
+
+            var studentCell = document.createElement("td");
+            var name = document.createElement("div");
+            name.className = "student-name";
+            name.textContent = item.studentName || item.studentId || "-";
+            var chip = document.createElement("div");
+            chip.className = "meta-chip";
+            chip.textContent = (item.className || "-") + " / " + (item.studentId || "-");
+            studentCell.appendChild(name);
+            studentCell.appendChild(chip);
+
+            var timeCell = document.createElement("td");
+            timeCell.textContent = item.submittedAt || "-";
+
+            var reflectionCell = document.createElement("td");
+            var reflection = document.createElement("div");
+            reflection.className = "response-text";
+            reflection.textContent = item.answers && item.answers.reflection ? item.answers.reflection : "";
+            reflectionCell.appendChild(reflection);
+
+            row.appendChild(studentCell);
+            row.appendChild(timeCell);
+            row.appendChild(reflectionCell);
+            list.appendChild(row);
+          });
+        };
+      });
+    </script>
+  </body>
+</html>

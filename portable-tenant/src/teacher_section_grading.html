@@ -1,0 +1,37 @@
+  <!-- ⑧ 評定する -->
+  <div class="section" id="sec-grading">
+    <div class="card">
+      <h2>📝 単元の評定をする</h2>
+      <div class="agg-toolbar">
+        <select id="gradeMode" onchange="filterGrading()">
+          <option value="unit">単元ごとの詳細入力</option>
+          <option value="subject">教科ごとの一覧入力</option>
+        </select>
+        <select id="gradeSubject" onchange="filterGrading()"><option value="">全教科</option></select>
+        <select id="gradeUnit" onchange="filterGrading()"><option value="">単元を選択…</option></select>
+        <select id="gradePeriod" onchange="filterGrading()"><option value="">全時間</option></select>
+        <select id="gradeCategory" onchange="filterGrading()">
+          <option value="knowledge">知識・技能で評定</option>
+          <option value="thinking">思考・判断・表現で評定</option>
+          <option value="attitude">主体的態度で評定</option>
+        </select>
+        <button class="btn-ai" onclick="generateGradingDrafts()">🤖 空欄にAI仮評定</button>
+        <button class="btn-export" onclick="exportGradingCsv()">⬇️ 評定CSV</button>
+        <div class="grading-mode-note" id="gradingModeNote">単元ごとの根拠を見ながら評定できます。</div>
+      </div>
+      <div class="debug-note">AIには児童名を送らず出席番号だけを送信します。反映時は出席番号で評定先を照合し、画面は氏名付きで表示します。</div>
+      <div id="gradeFieldChips" class="field-chip-empty">観点を選ぶと根拠に使う項目を表示します。</div>
+      <div class="debug-note" id="gradeDebug">評定に使う記録の取得状況を表示します。</div>
+      <div class="agg-list">
+        <div class="agg-table-wrap">
+          <table class="tbl">
+            <thead id="gradeHead"><tr><th>#</th><th>なまえ</th><th>評定</th></tr></thead>
+            <tbody id="gradeBody"><tr><td colspan="3" style="text-align:center;padding:14px;"><span class="spinner"></span></td></tr></tbody>
+          </table>
+        </div>
+        <div class="agg-cards" id="gradeCards">
+          <div class="portfolio-empty"><span class="spinner"></span></div>
+        </div>
+      </div>
+    </div>
+  </div>

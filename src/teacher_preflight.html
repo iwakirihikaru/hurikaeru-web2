@@ -1,0 +1,35 @@
+<script>
+(function(){
+  function show(message){
+    var text = String(message || '').replace(/\s+/g, ' ').trim();
+    if (!text) return;
+    var box = document.getElementById('teacherFatalError');
+    if (!box) return;
+    box.style.display = 'block';
+    box.textContent = '画面エラー: ' + text;
+  }
+
+  window.showFatalTeacherError = show;
+  window.__teacherPreflightLoaded = true;
+
+  window.onerror = function(message, source, lineno, colno){
+    var where = lineno ? ' @' + lineno + ':' + (colno || 0) : '';
+    show(String(message || 'unknown error') + where);
+    return false;
+  };
+
+  if (window.addEventListener) {
+    window.addEventListener('unhandledrejection', function(event){
+      var reason = event && event.reason;
+      show((reason && reason.message) || String(reason || 'promise rejection'));
+    });
+    window.addEventListener('load', function(){
+      setTimeout(function(){
+        if (typeof window.switchTab !== 'function') {
+          show('先生画面の操作スクリプトが読み込めていません。ブラウザが新しい構文に対応していない可能性があります。');
+        }
+      }, 800);
+    });
+  }
+})();
+</script>

@@ -1,0 +1,45 @@
+﻿{
+    "version":  1,
+    "defaults":  {
+                     "descriptionPrefix":  "jibun-matome",
+                     "status":  "active"
+                 },
+    "tenants":  [
+                    {
+                        "tenantId":  "dev_owner",
+                        "teacherName":  "髢狗匱閠・､懆ｨｼ",
+                        "scriptId":  "SCRIPT_ID_DEV",
+                        "deploymentId":  "DEPLOYMENT_ID_DEV",
+                        "spreadsheetId":  "SPREADSHEET_ID_DEV",
+                        "enableStudentAi":  false,
+                        "enableTeacherAi":  false,
+                        "status":  "active",
+                        "group":  "dev",
+                        "notes":  "讀懆ｨｼ逕ｨ"
+                    },
+                    {
+                        "tenantId":  "t_sample",
+                        "teacherName":  "繧ｵ繝ｳ繝励Ν蜈育函",
+                        "scriptId":  "SCRIPT_ID_SAMPLE",
+                        "deploymentId":  "DEPLOYMENT_ID_SAMPLE",
+                        "spreadsheetId":  "SPREADSHEET_ID_SAMPLE",
+                        "enableStudentAi":  false,
+                        "enableTeacherAi":  false,
+                        "status":  "active",
+                        "group":  "2026",
+                        "notes":  "驟榊ｸ・・繧ｵ繝ｳ繝励Ν"
+                    },
+                    {
+                        "tenantId":  "iwakiri-hikaru",
+                        "teacherName":  "光",
+                        "scriptId":  "1wEr5TwRdGg0O-PcpEY-vUuTKQZavHR5aalPfhsTqc5idrpc4_QUvHfL7",
+                        "deploymentId":  "AKfycbxoup-8cLgxodJ0GF5KoAhVQt9PDQEPo7tZt-K87DA5kOnsQmB5qIM4S2kbaz_toz_-3A",
+                        "spreadsheetId":  "1zfQi1GPpGIWpy5Ghm3o20SkEne2Z3oqMpVv2oixv9eI",
+                        "enableStudentAi":  true,
+                        "enableTeacherAi":  true,
+                        "status":  "active",
+                        "group":  "2026",
+                        "notes":  "94367dd1-de0a-4974-a34e-06630b2215ed / 岩切 / 3"
+                    }
+                ]
+}

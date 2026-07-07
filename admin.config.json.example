@@ -1,0 +1,17 @@
+{
+  "scriptId": "PASTE_ADMIN_SCRIPT_ID_HERE",
+  "deploymentId": "PASTE_ADMIN_DEPLOYMENT_ID_HERE",
+  "rootDir": "admin-src",
+  "templateCopyUrlBase": "PASTE_TEMPLATE_COPY_URL_HERE",
+  "templateCopyChooserUrlBase": "PASTE_MAIN_WEBAPP_URL_HERE",
+  "templateProvisionUrlBase": "PASTE_TEMPLATE_PROVISION_WEBAPP_URL_HERE",
+  "primaryShellConfigUrl": "",
+  "primaryMaintenanceUrl": "",
+  "guideModePath": "?mode=guide",
+  "templateScriptId": "PASTE_TEMPLATE_SCRIPT_ID_HERE",
+  "templateDeploymentId": "PASTE_TEMPLATE_DEPLOYMENT_ID_HERE",
+  "templateRootDir": "src",
+  "provisionScriptId": "PASTE_PROVISION_SCRIPT_ID_HERE",
+  "provisionDeploymentId": "PASTE_PROVISION_DEPLOYMENT_ID_HERE",
+  "provisionRootDir": "provision-src"
+}

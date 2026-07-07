@@ -1,0 +1,1495 @@
+<script>
+var __assign = (this && this.__assign) || function () {
+    __assign = Object.assign || function(t) {
+        for (var s, i = 1, n = arguments.length; i < n; i++) {
+            s = arguments[i];
+            for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p))
+                t[p] = s[p];
+        }
+        return t;
+    };
+    return __assign.apply(this, arguments);
+};
+// =====================================
+//  State
+// =====================================
+var allUnits = [];
+var allPresets = [];
+var subjectDefaults = {};
+var allSubjects = [];
+var activeUnitId = null;
+var activePeriod = 0;
+var statusTimer = null;
+var delTargetId = null;
+var allAggData = [];
+var rosterEntries = [];
+var portfolioRows = [];
+var teacherBuild = '';
+var teacherHelpData = null;
+var teacherHelpLoading = false;
+var teacherHelpAutoChecked = false;
+var teacherShellRefreshQueued = false;
+var unitProgressByUnitId = {};
+var teacherDataEpoch = 0;
+var lastTeacherStartAtMs = 0;
+var teacherEndingLesson = false;
+var teacherActiveDebug = '';
+var TEACHER_CLIENT_BUILD = 'client-20260704-1035';
+var teacherBootstrapApplied = false;
+var UI_STATE_KEY = 'jibun-matome-teacher-ui';
+var AGG_PRESET_LABELS = {
+    standard: 'ふりかえり中心',
+    knowledge: '知識・技能',
+    thinking: '思考・判断・表現',
+    attitude: '主体的態度',
+    all: '記入記録をまとめて表示',
+};
+var AGG_CATEGORY_ORDER = ['knowledge', 'thinking', 'attitude'];
+var FIELD_CATEGORY_LABELS = {
+    knowledge: '知識・技能',
+    thinking: '思考・判断・表現',
+    attitude: '主体的態度',
+};
+var TEACHER_ASSESS_LEVELS = ['', 'A', 'B', 'C'];
+var nativeAlert = window.alert.bind(window);
+function uniqueValues(list) {
+    var out = [];
+    var seen = Object.create(null);
+    (list || []).forEach(function (value) {
+        var key = typeof value + ':' + String(value);
+        if (seen[key])
+            return;
+        seen[key] = true;
+        out.push(value);
+    });
+    return out;
+}
+function getTeacherReviewField_(fields) {
+    return (fields || []).find(function (field) { return field && field.type === 'review'; }) || null;
+}
+function getTeacherReviewHintLabels_(field) {
+    return String(field && field.hints || '')
+        .split(',')
+        .map(function (text) { return String(text || '').trim(); })
+        .filter(Boolean);
+}
+function teacherEscapeRegex_(text) {
+    return String(text || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+function renderTeacherInlineChipText_(text, labels) {
+    var source = String(text || '');
+    var normalized = (labels || []).map(function (label) { return String(label || '').trim(); }).filter(Boolean);
+    if (!normalized.length)
+        return esc(source).replace(/\n/g, '<br>');
+    var unique = uniqueValues(normalized).sort(function (a, b) { return b.length - a.length; });
+    var labelMap = Object.create(null);
+    unique.forEach(function (label) { labelMap[label] = true; });
+    var pattern = new RegExp('(' + unique.map(teacherEscapeRegex_).join('|') + ')', 'g');
+    return source
+        .split(pattern)
+        .map(function (part) {
+        return labelMap[part] ? '<span class="inline-chip">' + esc(part) + '</span>' : esc(part).replace(/\n/g, '<br>');
+    })
+        .join('');
+}
+function extractTeacherReviewChipLabels_(text, field) {
+    var source = String(text || '');
+    return getTeacherReviewHintLabels_(field).filter(function (label) {
+        return label && source.indexOf(label) >= 0;
+    }).slice(0, 6);
+}
+function renderTeacherReviewText_(text, fields) {
+    var reviewField = getTeacherReviewField_(fields);
+    return renderTeacherInlineChipText_(text, extractTeacherReviewChipLabels_(text, reviewField));
+}
+function showFatalTeacherError(message) {
+    if (window.showFatalTeacherError && window.showFatalTeacherError !== showFatalTeacherError) {
+        window.showFatalTeacherError(message);
+        return;
+    }
+    var text = String(message || '').trim();
+    if (!text)
+        return;
+    var box = document.getElementById('teacherFatalError');
+    if (box) {
+        box.style.display = 'block';
+        box.textContent = "\u753B\u9762\u30A8\u30E9\u30FC: ".concat(text);
+    }
+}
+window.addEventListener('error', function (event) {
+    var msg = (event && event.message) || 'unknown error';
+    showFatalTeacherError(msg);
+});
+window.addEventListener('unhandledrejection', function (event) {
+    var reason = event && event.reason;
+    var msg = (reason && reason.message) || String(reason || 'promise rejection');
+    showFatalTeacherError(msg);
+});
+function inferToastTone(message) {
+    var text = String(message || '');
+    if (/失敗|エラー|重複|選択してください|入力してください|ありません/.test(text))
+        return 'error';
+    if (/しました|完了|保存|コピー|発表/.test(text))
+        return 'success';
+    return 'info';
+}
+function showToast(message, options) {
+    var text = String(message == null ? '' : message).trim();
+    if (!text)
+        return;
+    var stack = document.getElementById('toastStack');
+    if (!stack) {
+        nativeAlert(text);
+        return;
+    }
+    var toast = document.createElement('div');
+    toast.className = "toast ".concat(options && options.tone ? options.tone : inferToastTone(text));
+    toast.textContent = text;
+    stack.appendChild(toast);
+    requestAnimationFrame(function () { return toast.classList.add('show'); });
+    var close = function () {
+        toast.classList.remove('show');
+        setTimeout(function () { return toast.remove(); }, 180);
+    };
+    window.setTimeout(close, Number(options && options.duration || 2600));
+}
+window.alert = function (message) {
+    showToast(message);
+};
+// 編集中の項目リスト（単元フォーム用）
+var editingFields = [];
+var subjectEditingFields = [];
+var currentSubject = '算数';
+var recentCustomPresets = [];
+var preloadCache = {
+    roster: null,
+    editor: null,
+    prompts: null,
+    rosterLoading: false,
+    editorLoading: false,
+    promptsLoading: false,
+    started: false,
+};
+var TEACHER_PRELOAD_CACHE_KEY = 'jibun-matome-teacher-preload';
+var TEACHER_PRELOAD_TTL_MS = 5 * 60 * 1000;
+hydrateTeacherPreloadCache_();
+// =====================================
+//  タブ切替
+// =====================================
+function switchTab(name, el) {
+    document.querySelectorAll('.section').forEach(function (s) { return s.classList.remove('active'); });
+    document.querySelectorAll('.tab').forEach(function (t) { return t.classList.remove('active'); });
+    document.getElementById('sec-' + name).classList.add('active');
+    if (el)
+        el.classList.add('active');
+    clearInterval(statusTimer);
+    if (name === 'status') {
+        loadStatusInit({ startPolling: true });
+    }
+    if (name === 'curriculum') {
+        loadCurriculumTab();
+    }
+    if (name === 'roster') {
+        loadRosterEditor();
+    }
+    if (name === 'records') {
+        loadRecordsTab();
+    }
+    if (name === 'prompts') {
+        loadPromptsTab();
+    }
+    if (name === 'help') {
+        loadHelpTab();
+    }
+    if (name === 'logs') {
+        loadAiLogs();
+    }
+}
+// =====================================
+//  初期ロード
+// =====================================
+function loadInit() {
+    var requestEpoch = teacherDataEpoch;
+    applyEmbeddedTeacherBootstrap_();
+    google.script.run
+        .withSuccessHandler(function (d) {
+        if (requestEpoch !== teacherDataEpoch)
+            return;
+        applyTeacherInitData(d, { includeRoster: true, renderUnitList: true, schedulePreload: true, source: 'teacherInit' });
+    })
+        .withFailureHandler(function (err) {
+        if (requestEpoch !== teacherDataEpoch)
+            return;
+        handleTeacherInitFailure_(err, 'teacherInit');
+    })
+        .teacherInit();
+}
+function loadCurriculumTab() {
+    loadInit();
+    loadSubjectEditor();
+    switchCurriculumSubtab(readUiState().curriculumSubtab || 'units');
+}
+function loadRecordsTab() {
+    switchRecordSubtab(readUiState().recordSubtab || 'aggregate');
+}
+function loadPromptsTab() {
+    loadPrompts();
+    switchPromptSubtab(readUiState().promptSubtab || 'ai');
+}
+function loadStatusInit(options) {
+    var opts = options || {};
+    var requestEpoch = teacherDataEpoch;
+    applyEmbeddedTeacherBootstrap_();
+    var runner = google.script.run
+        .withSuccessHandler(function (d) {
+        if (requestEpoch !== teacherDataEpoch)
+            return;
+        applyTeacherInitData(d, { includeRoster: false, renderUnitList: false, schedulePreload: true, source: 'teacherStatusInit' });
+        if (d && d.status) {
+            renderStatus(d.status);
+        }
+        else {
+            var statusSection = document.getElementById('sec-status');
+            if (statusSection && statusSection.classList.contains('active')) {
+                loadStatus();
+            }
+        }
+        if (opts.startPolling) {
+            startStatusPoll(Boolean(d && d.status));
+        }
+    })
+        .withFailureHandler(function (err) {
+        if (requestEpoch !== teacherDataEpoch)
+            return;
+        handleTeacherInitFailure_(err, 'teacherStatusInit');
+        if (opts.startPolling) {
+            startStatusPoll(false);
+        }
+    });
+    if (opts.lightweight !== false && Array.isArray(allUnits) && allUnits.length) {
+        runner.teacherStatusSnapshot();
+        return;
+    }
+    runner.teacherStatusInit();
+}
+function invalidateTeacherDataRequests_() {
+    teacherDataEpoch += 1;
+}
+function buildResolvedActiveState_(incomingActive) {
+    var active = incomingActive || {};
+    var unitId = active && active.unitId || null;
+    var period = Number(active && active.period || 0);
+    var currentUnit = (activeUnitId != null && activePeriod > 0)
+        ? (allUnits.find(function (u) { return String(u.id) === String(activeUnitId); }) || null)
+        : null;
+    var resolvedUnit = active && active.unit
+        ? active.unit
+        : (unitId != null ? (allUnits.find(function (u) { return String(u.id) === String(unitId); }) || null) : null);
+    var resolvedFields = Array.isArray(active && active.fields) && active.fields.length
+        ? active.fields
+        : (resolvedUnit && Array.isArray(resolvedUnit.fields) ? resolvedUnit.fields : []);
+    var canPreserveCurrent = activeUnitId != null
+        && activePeriod > 0
+        && (Date.now() - lastTeacherStartAtMs) < 30000;
+    if (unitId != null && period > 0) {
+        return {
+            unitId: unitId,
+            period: period,
+            unit: resolvedUnit,
+            fields: resolvedFields,
+            timelineFieldKey: active && active.timelineFieldKey || '',
+        };
+    }
+    if (activeUnitId != null && activePeriod > 0 && !teacherEndingLesson && currentUnit) {
+        return {
+            unitId: activeUnitId,
+            period: activePeriod,
+            unit: currentUnit,
+            fields: Array.isArray(currentUnit.fields) ? currentUnit.fields : [],
+            timelineFieldKey: '',
+        };
+    }
+    if (canPreserveCurrent && currentUnit) {
+        return {
+            unitId: activeUnitId,
+            period: activePeriod,
+            unit: currentUnit,
+            fields: Array.isArray(currentUnit.fields) ? currentUnit.fields : [],
+            timelineFieldKey: '',
+        };
+    }
+    return active;
+}
+function applyTeacherInitData(d, options) {
+    d = d || {};
+    var opts = options || {};
+    var previousUnitId = activeUnitId;
+    var previousPeriod = activePeriod;
+    if (Array.isArray(d.units))
+        allUnits = d.units;
+    if (d.active !== undefined) {
+        var rawActive = d.active || {};
+        d.active = buildResolvedActiveState_(d.active);
+        activeUnitId = d.active && d.active.unitId || null;
+        activePeriod = d.active && d.active.period || 0;
+        teacherActiveDebug = "".concat(opts.source || 'unknown', " raw=").concat(rawActive && rawActive.unitId || '', "/").concat(rawActive && rawActive.period || 0, " resolved=").concat(activeUnitId || '', "/").concat(activePeriod || 0);
+        if (previousUnitId != null && previousPeriod > 0 && !(rawActive && rawActive.unitId) && !teacherEndingLesson) {
+            teacherActiveDebug += ' preserve-current';
+        }
+        if (teacherEndingLesson && (!activeUnitId || !activePeriod)) {
+            teacherEndingLesson = false;
+        }
+    }
+    if (d.unitProgress && typeof d.unitProgress === 'object')
+        unitProgressByUnitId = d.unitProgress;
+    if (d.build)
+        teacherBuild = d.build;
+    if (opts.includeRoster) {
+        if (Array.isArray(d.roster)) {
+            rosterEntries = d.roster.filter(function (row) { return row.active !== false; });
+            preloadCache.roster = { roster: d.roster };
+            persistTeacherPreloadCache_();
+        }
+    }
+    applySavedUiState();
+    renderBuildBar();
+    renderActiveBanner(d.active);
+    populateUnitSelects();
+    renderTimelineFieldSelect(d.active);
+    if (opts.renderUnitList)
+        renderUnitList();
+    if (opts.schedulePreload)
+        scheduleTeacherPreload();
+    if (Array.isArray(d.errors) && d.errors.length) {
+        showTeacherLoadWarning_(d.errors.join(' / '));
+    }
+}
+function applyEmbeddedTeacherBootstrap_() {
+    if (teacherBootstrapApplied)
+        return false;
+    var data = window.__TEACHER_BOOTSTRAP__;
+    if (!data || typeof data !== 'object')
+        return false;
+    teacherBootstrapApplied = true;
+    applyTeacherInitData(data, { includeRoster: true, renderUnitList: true, schedulePreload: false, source: 'bootstrap' });
+    return true;
+}
+function showTeacherLoadWarning_(message) {
+    var text = String(message || '').trim();
+    if (!text)
+        return;
+    var box = document.getElementById('teacherFatalError');
+    if (box) {
+        box.style.display = 'block';
+        box.textContent = '一部の読み込みに失敗しました: ' + text;
+    }
+    showToast('一部の読み込みに失敗しました。画面上部のメッセージを確認してください。', { tone: 'warn' });
+}
+function handleTeacherInitFailure_(err, source) {
+    var message = (err && err.message) ? err.message : String(err || 'unknown error');
+    teacherBuild = 'error';
+    renderBuildBar();
+    showTeacherLoadWarning_("".concat(source, ": ").concat(message));
+}
+function scheduleTeacherPreload() {
+    if (preloadCache.started)
+        return;
+    preloadCache.started = true;
+    var runner = function () {
+        ensureRosterPreload();
+        ensureEditorPreload();
+        ensurePromptPreload();
+        preloadTeacherHelpInfo();
+    };
+    if (typeof requestIdleCallback === 'function') {
+        requestIdleCallback(runner, { timeout: 1500 });
+    }
+    else {
+        setTimeout(runner, 700);
+    }
+}
+function hydrateTeacherPreloadCache_() {
+    try {
+        var raw = localStorage.getItem(TEACHER_PRELOAD_CACHE_KEY);
+        if (!raw)
+            return;
+        var parsed = JSON.parse(raw);
+        if (!parsed || (Date.now() - Number(parsed.savedAt || 0)) > TEACHER_PRELOAD_TTL_MS) {
+            localStorage.removeItem(TEACHER_PRELOAD_CACHE_KEY);
+            return;
+        }
+        if (parsed.roster)
+            preloadCache.roster = parsed.roster;
+        if (parsed.editor)
+            preloadCache.editor = parsed.editor;
+        if (parsed.prompts)
+            preloadCache.prompts = parsed.prompts;
+    }
+    catch (_err) { }
+}
+function persistTeacherPreloadCache_() {
+    try {
+        localStorage.setItem(TEACHER_PRELOAD_CACHE_KEY, JSON.stringify({
+            savedAt: Date.now(),
+            roster: preloadCache.roster || null,
+            editor: preloadCache.editor || null,
+            prompts: preloadCache.prompts || null,
+        }));
+    }
+    catch (_err) { }
+}
+function readUiState() {
+    try {
+        var raw = localStorage.getItem(UI_STATE_KEY);
+        return raw ? JSON.parse(raw) : {};
+    }
+    catch (_err) {
+        return {};
+    }
+}
+function saveUiState(patch) {
+    try {
+        var next = __assign(__assign({}, readUiState()), patch);
+        localStorage.setItem(UI_STATE_KEY, JSON.stringify(next));
+    }
+    catch (_err) { }
+}
+function applySavedUiState() {
+    var state = readUiState();
+    setControlValue('startSubjectFilter', state.startSubjectFilter || '');
+    setControlValue('startUnitSearch', state.startUnitSearch || '');
+    setControlValue('unitListSubjectFilter', state.unitListSubjectFilter || '');
+    setControlValue('unitListSearch', state.unitListSearch || '');
+    setControlValue('unitListSort', state.unitListSort || 'recent_activity');
+}
+function switchCurriculumSubtab(name, el) {
+    var next = String(name || 'units');
+    document.querySelectorAll('.curriculum-pane').forEach(function (p) { return p.classList.remove('active'); });
+    document.querySelectorAll('[data-curriculum-tab]').forEach(function (btn) { return btn.classList.remove('active'); });
+    var pane = document.getElementById('curriculum-pane-' + next);
+    if (pane)
+        pane.classList.add('active');
+    if (el)
+        el.classList.add('active');
+    else {
+        var btn = document.querySelector("[data-curriculum-tab=\"".concat(next, "\"]"));
+        if (btn)
+            btn.classList.add('active');
+    }
+    saveUiState({ curriculumSubtab: next });
+    if (next === 'units')
+        loadInit();
+    if (next === 'subject')
+        loadSubjectEditor();
+}
+function switchRecordSubtab(name, el) {
+    var next = String(name || 'aggregate');
+    document.querySelectorAll('.record-pane').forEach(function (p) { return p.classList.remove('active'); });
+    document.querySelectorAll('[data-record-tab]').forEach(function (btn) { return btn.classList.remove('active'); });
+    var pane = document.getElementById('record-pane-' + next);
+    if (pane)
+        pane.classList.add('active');
+    if (el)
+        el.classList.add('active');
+    else {
+        var btn = document.querySelector("[data-record-tab=\"".concat(next, "\"]"));
+        if (btn)
+            btn.classList.add('active');
+    }
+    saveUiState({ recordSubtab: next });
+    if (next === 'aggregate')
+        loadAgg();
+    if (next === 'portfolio')
+        loadPortfolioTab();
+    if (next === 'grading')
+        loadAgg();
+}
+function switchPromptSubtab(name, el) {
+    var next = String(name || 'ai');
+    document.querySelectorAll('.prompt-pane').forEach(function (p) { return p.classList.remove('active'); });
+    document.querySelectorAll('[data-prompt-tab]').forEach(function (btn) { return btn.classList.remove('active'); });
+    var pane = document.getElementById('prompt-pane-' + next);
+    if (pane)
+        pane.classList.add('active');
+    if (el)
+        el.classList.add('active');
+    else {
+        var btn = document.querySelector("[data-prompt-tab=\"".concat(next, "\"]"));
+        if (btn)
+            btn.classList.add('active');
+    }
+    saveUiState({ promptSubtab: next });
+    if (next === 'update')
+        ensureTeacherHelpLoaded();
+}
+function hasTeacherAiFlagOnClient_() {
+    var cfg = ((preloadCache.prompts || {}).globalCfg) || {};
+    return Object.prototype.hasOwnProperty.call(cfg, 'teacher_ai_enabled');
+}
+function isTeacherAiReadyOnClient_() {
+    var cfg = ((preloadCache.prompts || {}).globalCfg) || {};
+    var apiReady = Boolean(cfg.api_key_configured);
+    if (hasTeacherAiFlagOnClient_()) {
+        return Boolean(cfg.teacher_ai_enabled) && apiReady;
+    }
+    return apiReady;
+}
+function setButtonDisabledState_(id, disabled) {
+    var btn = document.getElementById(id);
+    if (btn)
+        btn.disabled = Boolean(disabled);
+}
+function syncTeacherAiUi_() {
+    var ready = isTeacherAiReadyOnClient_();
+    setButtonDisabledState_('aggSummaryAiBtn', !ready);
+    setButtonDisabledState_('portfolioSummaryAiBtn', !ready);
+    setButtonDisabledState_('gradingDraftAiBtn', !ready);
+    var note = ready ? '' : 'AI未設定です。プロンプトタブでAPIキーを保存すると、先生AIの生成ボタンが使えるようになります。';
+    var portfolioDebug = document.getElementById('portfolioDebug');
+    var gradeDebug = document.getElementById('gradeDebug');
+    if (portfolioDebug && !String(portfolioDebug.dataset.baseText || '').trim()) {
+        portfolioDebug.dataset.baseText = portfolioDebug.textContent || '';
+    }
+    if (gradeDebug && !String(gradeDebug.dataset.baseText || '').trim()) {
+        gradeDebug.dataset.baseText = gradeDebug.textContent || '';
+    }
+    if (portfolioDebug && !ready && !String((document.getElementById('pfStudent') || {}).value || '').trim()) {
+        portfolioDebug.textContent = note;
+    }
+    else if (portfolioDebug && ready && portfolioDebug.dataset.baseText) {
+        portfolioDebug.textContent = portfolioDebug.dataset.baseText;
+    }
+    if (gradeDebug && !ready && /^評定に使う記録の取得状況/.test(String(gradeDebug.dataset.baseText || gradeDebug.textContent || ''))) {
+        gradeDebug.textContent = note;
+    }
+    else if (gradeDebug && ready && gradeDebug.dataset.baseText && /^AI未設定です。/.test(String(gradeDebug.textContent || ''))) {
+        gradeDebug.textContent = gradeDebug.dataset.baseText;
+    }
+}
+function setControlValue(id, value) {
+    var el = document.getElementById(id);
+    if (el)
+        el.value = value;
+}
+function ensureRosterPreload(force) {
+    if (preloadCache.roster || preloadCache.rosterLoading)
+        return;
+    preloadCache.rosterLoading = true;
+    google.script.run
+        .withSuccessHandler(function (d) {
+        preloadCache.rosterLoading = false;
+        preloadCache.roster = d || { roster: [] };
+        persistTeacherPreloadCache_();
+    })
+        .withFailureHandler(function () {
+        preloadCache.rosterLoading = false;
+    })
+        .teacherRosterInit();
+}
+function ensureEditorPreload(force) {
+    if (preloadCache.editor || preloadCache.editorLoading)
+        return;
+    preloadCache.editorLoading = true;
+    google.script.run
+        .withSuccessHandler(function (d) {
+        preloadCache.editorLoading = false;
+        preloadCache.editor = d || { presets: [], subjectDefaults: {}, subjects: [], recentCustomPresets: [] };
+        persistTeacherPreloadCache_();
+    })
+        .withFailureHandler(function () {
+        preloadCache.editorLoading = false;
+    })
+        .teacherEditorInit();
+}
+function ensurePromptPreload(force) {
+    if (preloadCache.prompts || preloadCache.promptsLoading)
+        return;
+    preloadCache.promptsLoading = true;
+    google.script.run
+        .withSuccessHandler(function (d) {
+        preloadCache.promptsLoading = false;
+        preloadCache.prompts = d || { globalCfg: {}, aiQueue: null };
+        persistTeacherPreloadCache_();
+        syncTeacherAiUi_();
+    })
+        .withFailureHandler(function () {
+        preloadCache.promptsLoading = false;
+        syncTeacherAiUi_();
+    })
+        .teacherPromptInit();
+}
+function renderBuildBar() {
+    var el = document.getElementById('buildBar');
+    if (!el)
+        return;
+    el.textContent = "build: ".concat(teacherBuild || 'unknown', " / ").concat(TEACHER_CLIENT_BUILD);
+}
+function populateUnitSelects() {
+    populateStatusSubjectFilter();
+    populateUnitListSubjectFilter();
+    var sel = document.getElementById('startUnit');
+    var cur = sel.value;
+    var visibleStartUnits = sortUnitsByLatestActivity(getFilteredStatusUnits());
+    if (!visibleStartUnits.length && allUnits.length) {
+        var subjectSel_1 = document.getElementById('startSubjectFilter');
+        var searchInput = document.getElementById('startUnitSearch');
+        var hadFilter = Boolean((subjectSel_1 && subjectSel_1.value) || String((searchInput && searchInput.value) || '').trim());
+        if (hadFilter) {
+            setControlValue('startSubjectFilter', '');
+            setControlValue('startUnitSearch', '');
+            saveUiState({
+                startSubjectFilter: '',
+                startUnitSearch: '',
+            });
+            visibleStartUnits = sortUnitsByLatestActivity(getFilteredStatusUnits());
+        }
+    }
+    sel.innerHTML = '<option value="">単元を選択…</option>' +
+        visibleStartUnits.map(function (u) { return "<option value=\"".concat(u.id, "\" ").concat(u.id == activeUnitId ? 'selected' : '', ">").concat(esc(u.subject), "\uFF1A").concat(esc(u.name), "</option>"); }).join('');
+    if (cur && visibleStartUnits.some(function (u) { return String(u.id) === String(cur); })) {
+        sel.value = cur;
+    }
+    else {
+        var suggestedUnit = getSuggestedStartUnit(visibleStartUnits);
+        if (suggestedUnit)
+            sel.value = String(suggestedUnit.id);
+    }
+    updatePeriodSelect();
+    var subjectSel = document.getElementById('aggSubject');
+    if (subjectSel) {
+        var subjectCur = subjectSel.value;
+        var subjects = uniqueValues(allUnits.map(function (u) { return u.subject; }).filter(Boolean));
+        subjectSel.innerHTML = '<option value="">全教科</option>' +
+            subjects.map(function (subject) { return "<option value=\"".concat(esc(subject), "\">").concat(esc(subject), "</option>"); }).join('');
+        if (subjectCur)
+            subjectSel.value = subjectCur;
+    }
+    var ag = document.getElementById('aggUnit');
+    if (ag)
+        populateAggUnitSelect();
+}
+function populateStatusSubjectFilter() {
+    var subjectSel = document.getElementById('startSubjectFilter');
+    if (!subjectSel)
+        return;
+    var cur = subjectSel.value;
+    var subjects = uniqueValues(allUnits.map(function (u) { return u.subject; }).filter(Boolean));
+    subjectSel.innerHTML = '<option value="">全教科</option>' +
+        subjects.map(function (subject) { return "<option value=\"".concat(esc(subject), "\">").concat(esc(subject), "</option>"); }).join('');
+    if (cur && subjects.includes(cur))
+        subjectSel.value = cur;
+}
+function getFilteredStatusUnits() {
+    var subject = (document.getElementById('startSubjectFilter') || {}).value || '';
+    var keyword = ((document.getElementById('startUnitSearch') || {}).value || '').trim().toLowerCase();
+    return allUnits.filter(function (unit) {
+        var subjectOk = !subject || String(unit.subject || '') === String(subject);
+        var keywordOk = !keyword || String(unit.name || '').toLowerCase().includes(keyword);
+        return subjectOk && keywordOk;
+    });
+}
+function getSuggestedStartUnit(units) {
+    var list = Array.isArray(units) ? units.slice() : [];
+    if (!list.length)
+        return null;
+    return list.sort(compareSuggestedStartUnit_)[0] || null;
+}
+function getUnitRecentSortValue_(unit) {
+    var progress = unitProgressByUnitId[String(unit && unit.id || '')] || {};
+    var activityValue = Date.parse(String(progress.latestActivityAt || '')) || 0;
+    var createdValue = Number(unit && unit.createdAtValue || 0) || toUnitCreatedAtValue(unit);
+    return Math.max(activityValue, createdValue);
+}
+function buildQrImageUrl(text) {
+    var value = String(text || '').trim();
+    if (!value)
+        return '';
+    return "https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=".concat(encodeURIComponent(value));
+}
+function buildQrFallbackUrl(text) {
+    var value = String(text || '').trim();
+    if (!value)
+        return '';
+    return "https://quickchart.io/qr?size=240&text=".concat(encodeURIComponent(value));
+}
+function applyQrImage(id, url) {
+    var el = document.getElementById(id);
+    if (!el)
+        return;
+    if (!url) {
+        el.removeAttribute('src');
+        el.style.display = 'none';
+        return;
+    }
+    el.style.display = 'block';
+    el.onerror = function () {
+        var fallback = buildQrFallbackUrl(url);
+        if (!fallback || el.dataset.qrFallbackApplied === '1') {
+            el.style.display = 'none';
+            return;
+        }
+        el.dataset.qrFallbackApplied = '1';
+        el.src = fallback;
+    };
+    el.dataset.qrFallbackApplied = '';
+    el.src = buildQrImageUrl(url);
+}
+function applyTeacherHelpData(data) {
+    teacherHelpData = data || {};
+    var links = teacherHelpData.links || {};
+    var shell = teacherHelpData.shell || {};
+    var teacherUrl = String(links.teacherUrl || '').trim();
+    var registrationUrl = String(links.registrationUrl || '').trim();
+    var studentUrl = String(links.studentUrl || '').trim();
+    var idsToValues = [
+        ['statusTeacherUrl', teacherUrl],
+        ['teacherPageUrl', teacherUrl],
+        ['registrationPageUrl', registrationUrl],
+        ['helpRegistrationUrl', registrationUrl],
+        ['statusStudentUrl', studentUrl],
+        ['studentPageUrl', studentUrl],
+        ['helpStudentUrl', studentUrl],
+    ];
+    idsToValues.forEach(function (_a) {
+        var id = _a[0], value = _a[1];
+        var el = document.getElementById(id);
+        if (el)
+            el.value = value;
+    });
+    applyQrImage('registrationQrImage', registrationUrl);
+    applyQrImage('studentQrImage', studentUrl);
+    applyTeacherHelpShellContent_(shell);
+    renderTeacherHelpUpdateInfo(teacherHelpData.app || {});
+    var app = teacherHelpData.app || {};
+    if (app.shellCacheStale && !teacherShellRefreshQueued) {
+        teacherShellRefreshQueued = true;
+        setTimeout(function () {
+            fetchTeacherHelpData_({
+                force: true,
+                onSuccess: function () { teacherShellRefreshQueued = false; },
+                onFailure: function () { teacherShellRefreshQueued = false; },
+            });
+        }, 10);
+    }
+}
+function setTextIfPresent_(id, value) {
+    var el = document.getElementById(id);
+    if (el && String(value || '').trim())
+        el.textContent = String(value || '').trim();
+}
+function applyTeacherHelpShellContent_(shell) {
+    var labels = shell && shell.labels && typeof shell.labels === 'object' ? shell.labels : {};
+    var toggles = shell && shell.featureToggles && typeof shell.featureToggles === 'object' ? shell.featureToggles : {};
+    var textMap = [
+        ['helpIntroText', labels.helpIntro],
+        ['helpStep1Title', labels.helpStep1Title],
+        ['helpStep1Item1', labels.helpStep1Item1],
+        ['helpStep1Item2', labels.helpStep1Item2],
+        ['helpStep1Item3', labels.helpStep1Item3],
+        ['helpStep1Item4', labels.helpStep1Item4],
+        ['helpStep2Title', labels.helpStep2Title],
+        ['helpStep2Item1', labels.helpStep2Item1],
+        ['helpStep2Item2', labels.helpStep2Item2],
+        ['helpStep2Item3', labels.helpStep2Item3],
+        ['helpStep2Item4', labels.helpStep2Item4],
+        ['helpStep2Item5', labels.helpStep2Item5],
+        ['helpStudentCardTitle', labels.helpStudentCardTitle],
+        ['helpRegistrationCardTitle', labels.helpRegistrationCardTitle],
+        ['helpStudentQrTitle', labels.helpStudentQrTitle],
+        ['helpRegistrationQrTitle', labels.helpRegistrationQrTitle],
+        ['helpDistributionNote', labels.helpDistributionNote],
+        ['helpStep3Title', labels.helpStep3Title],
+        ['helpStep4Title', labels.helpStep4Title],
+        ['helpStep5Title', labels.helpStep5Title],
+        ['helpStep5Item1', labels.helpStep5Item1],
+        ['helpStep5Item2', labels.helpStep5Item2],
+        ['helpStep5Item3', labels.helpStep5Item3],
+    ];
+    textMap.forEach(function (_a) {
+        var id = _a[0], value = _a[1];
+        return setTextIfPresent_(id, value);
+    });
+    setTextIfPresent_('helpStudentOpenBtn', labels.helpOpenLabel);
+    setTextIfPresent_('helpRegistrationOpenBtn', labels.helpOpenLabel);
+    setTextIfPresent_('helpStudentCopyBtn', labels.helpCopyLabel);
+    setTextIfPresent_('helpRegistrationCopyBtn', labels.helpCopyLabel);
+    setTextIfPresent_('helpApiStudioBtn', labels.helpApiStudioLabel);
+    setTextIfPresent_('helpOpenUpdateBtn', labels.helpOpenUpdateLabel);
+    var registrationCard = document.getElementById('helpRegistrationCard');
+    if (registrationCard) {
+        registrationCard.style.display = toggles.showRegistrationLink === false ? 'none' : '';
+    }
+    var updateGuideCard = document.getElementById('helpUpdateGuideCard');
+    if (updateGuideCard) {
+        updateGuideCard.style.display = toggles.showHelpUpdateGuide === false ? 'none' : '';
+    }
+}
+function fetchTeacherHelpData_(options) {
+    var opts = options || {};
+    if (teacherHelpLoading && !opts.force)
+        return;
+    teacherHelpLoading = true;
+    var runner = google.script.run
+        .withSuccessHandler(function (d) {
+        teacherHelpLoading = false;
+        teacherHelpAutoChecked = true;
+        applyTeacherHelpData(d);
+        if (typeof opts.onSuccess === 'function')
+            opts.onSuccess(teacherHelpData);
+    })
+        .withFailureHandler(function (err) {
+        teacherHelpLoading = false;
+        teacherHelpAutoChecked = true;
+        if (typeof opts.onFailure === 'function') {
+            opts.onFailure(err);
+        }
+    });
+    if (opts.force) {
+        runner.teacherHelpInit({ forceRefresh: true });
+        return;
+    }
+    runner.teacherHelpInit();
+}
+function ensureTeacherHelpLoaded(callback) {
+    if (teacherHelpData) {
+        if (typeof callback === 'function')
+            callback(teacherHelpData);
+        return;
+    }
+    fetchTeacherHelpData_({
+        onSuccess: function (data) {
+            if (typeof callback === 'function')
+                callback(data);
+        },
+    });
+}
+function preloadTeacherHelpInfo() {
+    if (teacherHelpData || teacherHelpLoading || teacherHelpAutoChecked)
+        return;
+    fetchTeacherHelpData_({});
+}
+function loadHelpTab() {
+    ensureTeacherHelpLoaded();
+}
+function switchToHelpTab() {
+    var tabBtn = document.querySelector(".tab[onclick*=\"'help'\"]");
+    switchTab('help', tabBtn || null);
+}
+function openStudentQrGuide() {
+    switchToHelpTab();
+    setTimeout(function () {
+        var qrCard = document.getElementById('studentQrImage');
+        if (qrCard && typeof qrCard.scrollIntoView === 'function') {
+            qrCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    }, 80);
+}
+function openUpdateSettingsTab() {
+    var tabBtn = document.querySelector(".tab[onclick*=\"'prompts'\"]");
+    switchTab('prompts', tabBtn || null);
+    switchPromptSubtab('update');
+}
+function openHelpLink(kind) {
+    ensureTeacherHelpLoaded(function (data) {
+        var links = (data && data.links) || {};
+        var urlMap = {
+            registration: links.registrationUrl || '',
+            student: links.studentUrl || '',
+            teacher: links.teacherUrl || '',
+            apiKey: links.apiKeyGuideUrl || '',
+        };
+        var url = String(urlMap[kind] || '').trim();
+        if (!url) {
+            alert('URLを取得できませんでした。');
+            return;
+        }
+        window.open(url, '_blank', 'noopener,noreferrer');
+    });
+}
+function copyHelpLink(kind) {
+    ensureTeacherHelpLoaded(function (data) {
+        var links = (data && data.links) || {};
+        var urlMap = {
+            registration: links.registrationUrl || '',
+            student: links.studentUrl || '',
+            teacher: links.teacherUrl || '',
+            apiKey: links.apiKeyGuideUrl || '',
+        };
+        var url = String(urlMap[kind] || '').trim();
+        if (!url) {
+            alert('URLを取得できませんでした。');
+            return;
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(url)
+                .then(function () { return alert('URLをコピーしました。'); })
+                .catch(function () { return alert('コピーに失敗しました。'); });
+            return;
+        }
+        try {
+            var temp = document.createElement('input');
+            temp.value = url;
+            document.body.appendChild(temp);
+            temp.select();
+            document.execCommand('copy');
+            temp.remove();
+            alert('URLをコピーしました。');
+        }
+        catch (_err) {
+            alert('コピーに失敗しました。');
+        }
+    });
+}
+function renderTeacherHelpUpdateInfo(app) {
+    var data = app || {};
+    var status = String(data.status || 'unknown').trim();
+    var statusMap = {
+        update_available: '更新あり',
+        up_to_date: '最新版',
+        current_only: '確認のみ',
+        unknown: '確認失敗',
+    };
+    var statusEl = document.getElementById('helpUpdateStatus');
+    var summaryEl = document.getElementById('helpUpdateSummary');
+    var latestEl = document.getElementById('helpUpdateLatest');
+    var currentEl = document.getElementById('helpUpdateCurrent');
+    var maintenanceEl = document.getElementById('helpUpdateMaintenance');
+    var bannerEl = document.getElementById('helpUpdateBanner');
+    var cacheEl = document.getElementById('helpUpdateCache');
+    var versionControlEl = document.getElementById('helpUpdateVersionControl');
+    var lastResultEl = document.getElementById('helpUpdateLastResult');
+    var reasonEl = document.getElementById('helpUpdateReason');
+    var messageEl = document.getElementById('helpUpdateMessage');
+    var actionBtn = document.getElementById('helpUpdateActionBtn');
+    var rollbackBtn = document.getElementById('helpRollbackBtn');
+    var latestBuild = String(data.latestBuild || '').trim();
+    var latestVersion = String(data.latestVersion || '').trim();
+    var currentBuild = String(data.currentBuild || '').trim();
+    var deploymentId = String(data.deploymentId || '').trim();
+    var checkedAt = String(data.checkedAt || '').trim();
+    var lastStatus = String(data.selfUpdateLastStatus || '').trim();
+    var lastBuild = String(data.selfUpdateLastBuild || '').trim();
+    var lastAt = String(data.selfUpdateLastAt || '').trim();
+    var lastError = String(data.selfUpdateLastError || '').trim();
+    var reason = String(data.selfUpdateReason || '').trim();
+    var actionMode = String(data.updateActionMode || 'disabled').trim();
+    var currentDeploymentVersion = Number(data.currentDeploymentVersion || 0);
+    var previousDeploymentVersion = Number(data.previousDeploymentVersion || 0);
+    var rollbackReason = String(data.rollbackReason || '').trim();
+    var recentVersions = Array.isArray(data.recentDeploymentVersions) ? data.recentDeploymentVersions : [];
+    var maintenanceMode = Boolean(data.maintenanceMode);
+    var noticeBanner = data.noticeBanner || {};
+    var shellCacheFetchedAt = String(data.shellCacheFetchedAt || '').trim();
+    var shellFetchError = String(data.shellFetchError || '').trim();
+    var shellConfigVersion = String(data.shellConfigVersion || '').trim();
+    var shellConfigSource = String(data.shellConfigSource || '').trim();
+    var shellMaintenanceSource = String(data.shellMaintenanceSource || '').trim();
+    var shellLabels = (data.shell && data.shell.labels) || {};
+    var getShellLabel = function (key, fallback) {
+        var value = String(shellLabels && shellLabels[key] != null ? shellLabels[key] : '').trim();
+        return value || fallback;
+    };
+    var describeShellSource = function (source, kind) {
+        if (source === 'cdn_primary')
+            return "".concat(kind, " ").concat(getShellLabel('teacherShellSourceCdnLabel', 'CDN配信'));
+        if (source === 'gas_fallback')
+            return "".concat(kind, " ").concat(getShellLabel('teacherShellSourceGasLabel', 'GAS予備経路'));
+        if (source === 'cache')
+            return "".concat(kind, " ").concat(getShellLabel('teacherShellSourceCacheLabel', 'ローカルキャッシュ'));
+        if (source === 'default')
+            return "".concat(kind, " ").concat(getShellLabel('teacherShellSourceDefaultLabel', '既定値'));
+        return source ? "".concat(kind, " ").concat(source) : '';
+    };
+    if (statusEl)
+        statusEl.textContent = statusMap[status] || '確認失敗';
+    if (summaryEl) {
+        if (maintenanceMode) {
+            summaryEl.textContent = '中央から緊急停止が出ています。保守案内を優先してください。';
+        }
+        else if (status === 'update_available') {
+            summaryEl.textContent = 'このアプリは最新版より古い可能性があります。';
+        }
+        else if (status === 'up_to_date') {
+            summaryEl.textContent = 'このアプリは最新の配布版です。';
+        }
+        else {
+            summaryEl.textContent = '最新版情報を確認できます。';
+        }
+    }
+    if (latestEl) {
+        var latestPrefix = getShellLabel('teacherLatestPrefix', '最新版:');
+        latestEl.textContent = latestBuild
+            ? "".concat(latestPrefix, " ").concat(latestBuild).concat(latestVersion ? " / version ".concat(latestVersion) : '')
+            : "".concat(latestPrefix, " \u53D6\u5F97\u3067\u304D\u307E\u305B\u3093\u3067\u3057\u305F");
+    }
+    if (currentEl) {
+        var currentPrefix = getShellLabel('teacherCurrentPrefix', 'このアプリ:');
+        currentEl.textContent = currentBuild
+            ? "".concat(currentPrefix, " ").concat(currentBuild).concat(deploymentId ? " / deployment ".concat(deploymentId) : '').concat(checkedAt ? " / \u78BA\u8A8D ".concat(checkedAt) : '')
+            : "".concat(currentPrefix, " \u53D6\u5F97\u3067\u304D\u307E\u305B\u3093\u3067\u3057\u305F");
+    }
+    if (maintenanceEl) {
+        maintenanceEl.textContent = maintenanceMode
+            ? getShellLabel('teacherMaintenanceOnLabel', '緊急停止: ON この個体は保守表示を優先します')
+            : getShellLabel('teacherMaintenanceOffLabel', '緊急停止: OFF');
+    }
+    if (bannerEl) {
+        var bannerText = [String(noticeBanner.title || '').trim(), String(noticeBanner.message || '').trim()]
+            .filter(Boolean)
+            .join(' / ');
+        var noticePrefix = getShellLabel('teacherNoticePrefix', 'お知らせ:');
+        bannerEl.textContent = bannerText ? "".concat(noticePrefix, " ").concat(bannerText) : getShellLabel('teacherNoticeEmptyLabel', 'お知らせ: なし');
+    }
+    if (cacheEl) {
+        var parts = [
+            data.shellCacheFresh
+                ? getShellLabel('teacherShellCacheFreshLabel', '設定キャッシュ: 新しい')
+                : getShellLabel('teacherShellCacheStaleLabel', '設定キャッシュ: 古いキャッシュ使用中'),
+            describeShellSource(shellConfigSource, getShellLabel('teacherShellSourceConfigLabel', '設定')),
+            describeShellSource(shellMaintenanceSource, getShellLabel('teacherShellSourceMaintenanceLabel', '保守')),
+            shellCacheFetchedAt ? "\u53D6\u5F97 ".concat(shellCacheFetchedAt) : '',
+            shellConfigVersion ? "config ".concat(shellConfigVersion) : '',
+            shellFetchError ? "\u66F4\u65B0\u5931\u6557 ".concat(shellFetchError) : '',
+        ].filter(Boolean);
+        cacheEl.textContent = parts.join(' / ') || getShellLabel('teacherShellCacheEmptyLabel', '設定キャッシュ: 取得前');
+    }
+    if (versionControlEl) {
+        if (currentDeploymentVersion > 0) {
+            versionControlEl.textContent = "\u7248\u7BA1\u7406: \u73FE\u5728 ".concat(currentDeploymentVersion).concat(previousDeploymentVersion > 0 ? " / 1\u3064\u524D ".concat(previousDeploymentVersion) : '').concat(recentVersions.length ? " / \u5C65\u6B74 ".concat(recentVersions.join(', ')) : '');
+        }
+        else {
+            versionControlEl.textContent = "\u7248\u7BA1\u7406: ".concat(rollbackReason || '取得できませんでした');
+        }
+    }
+    if (lastResultEl) {
+        var updateLastPrefix = getShellLabel('teacherUpdateLastPrefix', '前回更新:');
+        if (lastStatus === 'updated') {
+            lastResultEl.textContent = "".concat(updateLastPrefix, " \u6210\u529F").concat(lastBuild ? " / ".concat(lastBuild) : '').concat(lastAt ? " / ".concat(lastAt) : '');
+        }
+        else if (lastStatus === 'rolled_back') {
+            lastResultEl.textContent = "".concat(updateLastPrefix, " \u7248\u623B\u3057").concat(lastAt ? " / ".concat(lastAt) : '');
+        }
+        else if (lastStatus === 'error') {
+            lastResultEl.textContent = "".concat(updateLastPrefix, " \u5931\u6557").concat(lastAt ? " / ".concat(lastAt) : '').concat(lastError ? " / ".concat(lastError) : '');
+        }
+        else {
+            lastResultEl.textContent = "".concat(updateLastPrefix, " \u672A\u5B9F\u884C");
+        }
+    }
+    if (reasonEl) {
+        reasonEl.textContent = "".concat(getShellLabel('teacherUpdateConditionPrefix', '更新条件:'), " ").concat(reason || (data.canSelfUpdate ? '更新実行できます。' : '確認中です。'));
+    }
+    if (messageEl && !String(messageEl.dataset.busy || '').trim()) {
+        if (maintenanceMode) {
+            messageEl.textContent = String(noticeBanner.message || '').trim() || '現在メンテナンス中です。少し待ってから開き直してください。';
+        }
+        else if (status === 'update_available') {
+            messageEl.textContent = String(data.updateAvailableMessage || '').trim() || '新しい版があります。必要なら更新依頼を出してください。';
+        }
+        else if (status === 'up_to_date') {
+            messageEl.textContent = rollbackReason && !currentDeploymentVersion
+                ? "\u4ECA\u306E\u3068\u3053\u308D\u66F4\u65B0\u306F\u4E0D\u8981\u3067\u3059\u3002\u7248\u7BA1\u7406\u306F\u672A\u53D6\u5F97\u3067\u3059: ".concat(rollbackReason)
+                : '今のところ更新は不要です。';
+        }
+        else {
+            messageEl.textContent = '「更新を確認」で中央の最新版情報を取り直せます。';
+        }
+    }
+    if (actionBtn) {
+        actionBtn.textContent = String(data.updateActionLabel || '更新操作').trim() || '更新操作';
+        actionBtn.disabled = maintenanceMode || !(data.canSelfUpdate || data.canRequestUpdate);
+        actionBtn.dataset.actionMode = actionMode || 'disabled';
+        actionBtn.title = maintenanceMode
+            ? 'メンテナンス中は更新依頼を止めています。'
+            : ((data.canSelfUpdate || data.canRequestUpdate) ? '' : (reason || '更新条件が足りません。'));
+    }
+    if (rollbackBtn) {
+        rollbackBtn.disabled = !data.canRollbackDeployment;
+        rollbackBtn.title = data.canRollbackDeployment ? '' : (rollbackReason || '1つ前の版へ戻せません。');
+    }
+}
+function refreshTeacherUpdateInfo() {
+    var messageEl = document.getElementById('helpUpdateMessage');
+    if (messageEl) {
+        messageEl.dataset.busy = '1';
+        messageEl.textContent = '最新版情報を確認しています...';
+    }
+    fetchTeacherHelpData_({
+        force: true,
+        onSuccess: function (data) {
+            if (messageEl)
+                messageEl.dataset.busy = '';
+            if (messageEl) {
+                var app = (data && data.app) || {};
+                if (String(app.status || '') === 'update_available') {
+                    messageEl.textContent = String(app.updateAvailableMessage || '').trim() || '新しい版があります。';
+                }
+                else if (String(app.status || '') === 'up_to_date') {
+                    messageEl.textContent = 'このアプリは最新版です。';
+                }
+                else {
+                    messageEl.textContent = '最新版情報を更新しました。';
+                }
+            }
+        },
+        onFailure: function (err) {
+            if (messageEl) {
+                messageEl.dataset.busy = '';
+                messageEl.textContent = "\u66F4\u65B0\u78BA\u8A8D\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat(err && err.message ? err.message : err);
+            }
+        },
+    });
+}
+function requestTeacherUpdateFromHelp() {
+    var button = document.getElementById('helpUpdateActionBtn');
+    var messageEl = document.getElementById('helpUpdateMessage');
+    var reasonEl = document.getElementById('helpUpdateReason');
+    if (button)
+        button.disabled = true;
+    if (messageEl) {
+        messageEl.dataset.busy = '1';
+        messageEl.textContent = '更新依頼を送信しています...';
+    }
+    if (reasonEl)
+        reasonEl.textContent = '更新条件: 更新依頼を送信中です...';
+    google.script.run
+        .withSuccessHandler(function (result) {
+        if (button)
+            button.disabled = false;
+        if (messageEl) {
+            messageEl.dataset.busy = '';
+            messageEl.textContent = (result && result.ok)
+                ? (result.message || '更新依頼を記録しました。')
+                : "\u66F4\u65B0\u4F9D\u983C\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat(result && result.error ? result.error : 'unknown_error');
+        }
+        refreshTeacherUpdateInfo();
+    })
+        .withFailureHandler(function (err) {
+        if (button)
+            button.disabled = false;
+        if (messageEl) {
+            messageEl.dataset.busy = '';
+            messageEl.textContent = "\u66F4\u65B0\u4F9D\u983C\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat(err && err.message ? err.message : err);
+        }
+        if (reasonEl)
+            reasonEl.textContent = '更新条件: 依頼送信エラーが発生しました。';
+    })
+        .requestTeacherAppUpdate();
+}
+function runTeacherSelfUpdateFromHelp() {
+    var button = document.getElementById('helpUpdateActionBtn');
+    var messageEl = document.getElementById('helpUpdateMessage');
+    var reasonEl = document.getElementById('helpUpdateReason');
+    if (button)
+        button.disabled = true;
+    if (messageEl) {
+        messageEl.dataset.busy = '1';
+        messageEl.textContent = 'このアプリを更新しています...';
+    }
+    if (reasonEl)
+        reasonEl.textContent = '更新条件: 更新実行中です...';
+    google.script.run
+        .withSuccessHandler(function (result) {
+        if (button)
+            button.disabled = false;
+        if (messageEl) {
+            messageEl.dataset.busy = '';
+            if (result && result.ok) {
+                if (result.changed) {
+                    messageEl.textContent = "\u66F4\u65B0\u3057\u307E\u3057\u305F\u3002".concat(result.latestBuild ? " build ".concat(result.latestBuild) : '', " \u6570\u79D2\u5F8C\u306B\u518D\u8AAD\u307F\u8FBC\u307F\u3057\u307E\u3059\u3002");
+                    setTimeout(function () { return window.location.reload(); }, 4000);
+                }
+                else {
+                    messageEl.textContent = result.message || 'このアプリは最新版です。';
+                }
+            }
+            else {
+                messageEl.textContent = "\u66F4\u65B0\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat(result && result.error ? result.error : 'unknown_error');
+            }
+        }
+        refreshTeacherUpdateInfo();
+    })
+        .withFailureHandler(function (err) {
+        if (button)
+            button.disabled = false;
+        if (messageEl) {
+            messageEl.dataset.busy = '';
+            messageEl.textContent = "\u66F4\u65B0\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat(err && err.message ? err.message : err);
+        }
+        if (reasonEl)
+            reasonEl.textContent = '更新条件: 実行エラーが発生しました。';
+    })
+        .runTeacherSelfUpdate();
+}
+function rollbackTeacherDeploymentFromHelp() {
+    var button = document.getElementById('helpRollbackBtn');
+    var messageEl = document.getElementById('helpUpdateMessage');
+    var reasonEl = document.getElementById('helpUpdateReason');
+    var versionControlEl = document.getElementById('helpUpdateVersionControl');
+    var text = String(versionControlEl ? versionControlEl.textContent || '' : '').trim();
+    if (!window.confirm("\u3053\u306E\u30A2\u30D7\u30EA\u30921\u3064\u524D\u306E\u7248\u3078\u623B\u3057\u307E\u3059\u3002\n".concat(text || '').trim())) {
+        return;
+    }
+    if (button)
+        button.disabled = true;
+    if (messageEl) {
+        messageEl.dataset.busy = '1';
+        messageEl.textContent = '1つ前の版へ戻しています...';
+    }
+    if (reasonEl)
+        reasonEl.textContent = '更新条件: 版戻しを実行中です...';
+    google.script.run
+        .withSuccessHandler(function (result) {
+        if (button)
+            button.disabled = false;
+        if (messageEl) {
+            messageEl.dataset.busy = '';
+            if (result && result.ok) {
+                messageEl.textContent = result.message || '1つ前の版へ戻しました。';
+                if (result.changed) {
+                    setTimeout(function () { return window.location.reload(); }, 4000);
+                }
+            }
+            else {
+                messageEl.textContent = "\u7248\u623B\u3057\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat(result && result.error ? result.error : 'unknown_error');
+            }
+        }
+        refreshTeacherUpdateInfo();
+    })
+        .withFailureHandler(function (err) {
+        if (button)
+            button.disabled = false;
+        if (messageEl) {
+            messageEl.dataset.busy = '';
+            messageEl.textContent = "\u7248\u623B\u3057\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat(err && err.message ? err.message : err);
+        }
+        if (reasonEl)
+            reasonEl.textContent = '更新条件: 版戻しエラーが発生しました。';
+    })
+        .rollbackTeacherDeployment();
+}
+function runTeacherUpdateActionFromHelp() {
+    var button = document.getElementById('helpUpdateActionBtn');
+    var actionMode = String(button && button.dataset ? button.dataset.actionMode || '' : '').trim();
+    if (actionMode === 'self_update') {
+        runTeacherSelfUpdateFromHelp();
+        return;
+    }
+    if (actionMode === 'request_update') {
+        requestTeacherUpdateFromHelp();
+        return;
+    }
+    var reasonEl = document.getElementById('helpUpdateReason');
+    var messageEl = document.getElementById('helpUpdateMessage');
+    if (reasonEl)
+        reasonEl.textContent = '更新条件: まだ更新操作できません。';
+    if (messageEl)
+        messageEl.textContent = 'このアプリではまだ更新を実行できません。';
+}
+function sortUnitsByLatestActivity(units) {
+    return (Array.isArray(units) ? units.slice() : []).sort(compareSuggestedStartUnit_);
+}
+function compareSuggestedStartUnit_(a, b) {
+    var recentCmp = getUnitRecentSortValue_(b) - getUnitRecentSortValue_(a);
+    if (recentCmp !== 0)
+        return recentCmp;
+    var progressA = unitProgressByUnitId[String(a && a.id || '')] || {};
+    var progressB = unitProgressByUnitId[String(b && b.id || '')] || {};
+    var countCmp = Number(progressB.lessonCount || 0) - Number(progressA.lessonCount || 0);
+    if (countCmp !== 0)
+        return countCmp;
+    var idCmp = Number(b && b.id || 0) - Number(a && a.id || 0);
+    if (idCmp !== 0)
+        return idCmp;
+    return String(b && b.createdAt || '').localeCompare(String(a && a.createdAt || ''));
+}
+function getSuggestedPeriodForUnit(unit) {
+    if (!unit)
+        return '';
+    var max = (unit.maxPeriod === 0 || unit.maxPeriod > 20) ? 20 : Number(unit.maxPeriod || 10);
+    var progress = unitProgressByUnitId[String(unit.id || '')] || {};
+    var lastActivityPeriod = Math.max(0, Number(progress.lastActivityPeriod || 0));
+    var next = Math.max(1, lastActivityPeriod > 0 ? lastActivityPeriod + 1 : 1);
+    return String(Math.min(next, max));
+}
+function onStatusUnitFilterChange() {
+    saveUiState({
+        startSubjectFilter: (document.getElementById('startSubjectFilter') || {}).value || '',
+        startUnitSearch: (document.getElementById('startUnitSearch') || {}).value || '',
+    });
+    populateUnitSelects();
+}
+function populateUnitListSubjectFilter() {
+    var subjectSel = document.getElementById('unitListSubjectFilter');
+    if (!subjectSel)
+        return;
+    var cur = subjectSel.value;
+    var subjects = uniqueValues(allUnits.map(function (u) { return u.subject; }).filter(Boolean));
+    subjectSel.innerHTML = '<option value="">全教科</option>' +
+        subjects.map(function (subject) { return "<option value=\"".concat(esc(subject), "\">").concat(esc(subject), "</option>"); }).join('');
+    if (cur && subjects.includes(cur))
+        subjectSel.value = cur;
+}
+function populateAggUnitSelect() {
+    var ag = document.getElementById('aggUnit');
+    if (!ag)
+        return;
+    var agCur = ag.value;
+    var selectedSubject = (document.getElementById('aggSubject') || {}).value || '';
+    var visibleUnits = sortUnitsByLatestActivity(allUnits.filter(function (u) { return !selectedSubject || String(u.subject || '') === String(selectedSubject); }));
+    if (!visibleUnits.length && allUnits.length && selectedSubject) {
+        var subjectSel = document.getElementById('aggSubject');
+        if (subjectSel)
+            subjectSel.value = '';
+        visibleUnits = sortUnitsByLatestActivity(allUnits);
+    }
+    ag.innerHTML = '<option value="">単元を選択…</option>' +
+        visibleUnits.map(function (u) { return "<option value=\"".concat(u.id, "\">").concat(esc(u.subject), "\uFF1A").concat(esc(u.name), "</option>"); }).join('');
+    if (agCur && visibleUnits.some(function (u) { return String(u.id) === String(agCur); }))
+        ag.value = agCur;
+}
+function updatePeriodSelect() {
+    var unitId = document.getElementById('startUnit').value;
+    var unit = allUnits.find(function (u) { return u.id == unitId; });
+    var max = unit ? (unit.maxPeriod === 0 || unit.maxPeriod > 20 ? 20 : unit.maxPeriod) : 10;
+    var sel = document.getElementById('startPeriod');
+    var suggested = unit ? getSuggestedPeriodForUnit(unit) : '';
+    sel.innerHTML = '<option value="">時間目を選択…</option>' +
+        Array.from({ length: max }, function (_, i) { return i + 1; })
+            .map(function (i) { return "<option value=\"".concat(i, "\" ").concat(suggested && String(suggested) === String(i) ? 'selected' : '', ">").concat(i, "\u3058\u304B\u3093\u3081</option>"); }).join('');
+}
+// =====================================
+//  アクティブバナー
+// =====================================
+function renderActiveBanner(active) {
+    var el = document.getElementById('activeBanner');
+    var period = Number(active && active.period || activePeriod || 0);
+    var unitId = String(active && active.unitId || activeUnitId || '').trim();
+    var unit = (active && active.unit) || allUnits.find(function (u) { return String(u && u.id || '').trim() === unitId; }) || null;
+    if (unit && period > 0) {
+        el.innerHTML = "<div class=\"lesson-banner\">\n      <div class=\"lesson-banner-top\">\n        <div>\n          <div class=\"lbl\">\u2705 \u6388\u696D\u4E2D</div>\n          <div class=\"name\">".concat(esc(unit.subject), "\uFF1A").concat(esc(unit.name), "</div>\n          <div class=\"meta\">").concat(period, "\u3058\u304B\u3093\u3081</div>\n        </div>\n        <div class=\"lesson-banner-actions\">\n          <button class=\"btn-subtle lesson-action-btn\" type=\"button\" onclick=\"openLessonFieldEditor()\">\uD83D\uDD52 \u3053\u306E\u6642\u9593\u3060\u3051\u9805\u76EE\u3092\u7DE8\u96C6</button>\n          <button class=\"btn-ai lesson-action-btn\" type=\"button\" onclick=\"genStatusSummary()\">\uD83E\uDD16 \u3053\u306E\u6642\u9593\u306E\u3075\u308A\u304B\u3048\u308A\u30EC\u30DD\u30FC\u30C8</button>\n          <button class=\"btn-end lesson-action-btn\" type=\"button\" onclick=\"endLesson()\">\uD83D\uDD1A \u6388\u696D\u7D42\u4E86</button>\n        </div>\n      </div>\n      <div class=\"stat-row lesson-banner-stats\">\n        <div class=\"stat-box\"><div class=\"stat-num\" id=\"statTotal\">-</div><div class=\"stat-lbl\">\u5168\u54E1</div></div>\n        <div class=\"stat-box\"><div class=\"stat-num\" id=\"statWritten\">-</div><div class=\"stat-lbl\">\u8A18\u5165\u4E2D</div></div>\n        <div class=\"stat-box\"><div class=\"stat-num\" id=\"statSubmitted\">-</div><div class=\"stat-lbl\">\u63D0\u51FA\u6E08</div></div>\n        <div class=\"stat-box\"><div class=\"stat-num\" id=\"statAI\">-</div><div class=\"stat-lbl\">AI\u5B8C\u4E86</div></div>\n      </div>\n    </div>\n    <div class=\"ai-report\" id=\"statusAiReport\" style=\"display:none;\"></div>");
+    }
+    else {
+        el.innerHTML = "<div class=\"lesson-banner\" style=\"background:linear-gradient(135deg,#FAFAFA,#F1F5F9);border-color:#CFD8DC;\">\n      <div class=\"lesson-banner-top\">\n        <div>\n          <div class=\"lbl\" style=\"color:#607D8B;\">\u6388\u696D\u5F85\u6A5F\u4E2D</div>\n          <div class=\"name\" style=\"font-size:16px;\">\u73FE\u5728\u30A2\u30AF\u30C6\u30A3\u30D6\u306A\u6388\u696D\u306F\u3042\u308A\u307E\u305B\u3093\u3002</div>\n          <div class=\"meta\">\u5358\u5143\u3068\u6642\u9593\u76EE\u3092\u9078\u3093\u3067\u6388\u696D\u3092\u958B\u59CB\u3057\u3066\u304F\u3060\u3055\u3044\u3002</div>\n        </div>\n      </div>\n      <div class=\"stat-row lesson-banner-stats\">\n        <div class=\"stat-box\"><div class=\"stat-num\" id=\"statTotal\">0</div><div class=\"stat-lbl\">\u5168\u54E1</div></div>\n        <div class=\"stat-box\"><div class=\"stat-num\" id=\"statWritten\">0</div><div class=\"stat-lbl\">\u8A18\u5165\u4E2D</div></div>\n        <div class=\"stat-box\"><div class=\"stat-num\" id=\"statSubmitted\">0</div><div class=\"stat-lbl\">\u63D0\u51FA\u6E08</div></div>\n        <div class=\"stat-box\"><div class=\"stat-num\" id=\"statAI\">0</div><div class=\"stat-lbl\">AI\u5B8C\u4E86</div></div>\n      </div>\n    </div>";
+    }
+    var reportBox = document.getElementById('statusAiReport');
+    if (reportBox) {
+        reportBox.textContent = '';
+        reportBox.classList.remove('ready');
+        reportBox.style.display = 'none';
+    }
+}
+function renderTimelineFieldSelect(active) {
+    var sel = document.getElementById('timelineFieldSelect');
+    if (!sel)
+        return;
+    var unit = (active && active.unit) || allUnits.find(function (u) { return u.id == activeUnitId; }) || null;
+    var fields = (((active && active.fields) || (unit && unit.fields) || [])).filter(function (f) { return f.enabled !== false; });
+    var current = active && active.timelineFieldKey || '';
+    sel.innerHTML = '<option value="">自動（入力中にあわせる）</option>' +
+        fields.map(function (f) { return "<option value=\"".concat(esc(f.key || ''), "\" ").concat(String(f.key || '') === String(current) ? 'selected' : '', ">").concat(esc(f.emoji || '📌'), " ").concat(esc(f.label || f.key || '項目'), "</option>"); }).join('');
+    sel.disabled = !unit || !activePeriod;
+}
+function saveTimelineFieldSelection() {
+    var sel = document.getElementById('timelineFieldSelect');
+    google.script.run.setActiveTimelineField(sel ? sel.value || '' : '');
+}
+// =====================================
+//  授業開始・終了
+// =====================================
+function startLesson() {
+    var unitId = document.getElementById('startUnit').value;
+    var period = document.getElementById('startPeriod').value;
+    if (!unitId || !period) {
+        alert('単元と時間目を選択してください');
+        return;
+    }
+    google.script.run
+        .withSuccessHandler(function (res) {
+        invalidateTeacherDataRequests_();
+        lastTeacherStartAtMs = Date.now();
+        teacherEndingLesson = false;
+        if (res && res.active) {
+            applyTeacherInitData({
+                active: res.active,
+                unitProgress: res.unitProgress || unitProgressByUnitId,
+            }, { includeRoster: false, renderUnitList: true, schedulePreload: false, source: 'teacherStartLesson' });
+        }
+        if (res && res.status) {
+            renderStatus(res.status);
+        }
+        loadStatusInit({ lightweight: false, startPolling: true });
+        showToast('授業を開始しました！', { tone: 'success' });
+    })
+        .teacherStartLesson(unitId, parseInt(period));
+}
+function openUnitSettingsTab() {
+    var tabBtn = document.querySelector(".tab[onclick*='curriculum']");
+    switchTab('curriculum', tabBtn || null);
+    if (typeof switchCurriculumSubtab === 'function') {
+        switchCurriculumSubtab('units');
+    }
+}
+function openLessonFieldEditor() {
+    if (!activeUnitId || !activePeriod) {
+        alert('先に授業を開始してください');
+        return;
+    }
+    google.script.run
+        .withSuccessHandler(function (cfg) {
+        openUnitSettingsTab();
+        if (typeof startLessonFieldEditFromConfig_ === 'function') {
+            startLessonFieldEditFromConfig_(cfg);
+        }
+    })
+        .withFailureHandler(function (err) {
+        alert(err && err.message ? err.message : 'この時間の項目設定を開けませんでした。');
+    })
+        .getLessonFieldConfig(activeUnitId, activePeriod);
+}
+function endLesson() {
+    teacherEndingLesson = true;
+    google.script.run.withSuccessHandler(function () { return loadStatusInit({ startPolling: true }); }).teacherEndLesson();
+}
+function resetLesson() {
+    teacherEndingLesson = true;
+    google.script.run.withSuccessHandler(function () { loadStatusInit({ startPolling: true }); alert('児童選択モードにしました'); }).teacherEndLesson();
+}
+function awardMedals() {
+    if (!activeUnitId || !activePeriod) {
+        alert('先に授業を開始してください');
+        return;
+    }
+    var btn = document.getElementById('awardMedalsBtn');
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = '集計中...';
+    }
+    google.script.run
+        .withSuccessHandler(function () {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = '🏅 メダル発表';
+        }
+        loadStatus();
+        alert('メダルを発表しました！');
+    })
+        .withFailureHandler(function (err) {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = '🏅 メダル発表';
+        }
+        alert((err && err.message) ? err.message : 'メダル発表に失敗しました');
+    })
+        .teacherAwardMedals(activeUnitId, activePeriod);
+}
+// =====================================
+//  授業状況
+// =====================================
+function startStatusPoll(skipImmediate) {
+    clearInterval(statusTimer);
+    if (!skipImmediate)
+        loadStatus();
+    statusTimer = setInterval(loadStatus, 8000);
+}
+</script>

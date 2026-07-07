@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>先生画面</title>
+<?!= include('teacher_styles'); ?>
+</head>
+<body>
+
+<?!= include('teacher_nav'); ?>
+
+<div class="container">
+<?!= include('teacher_section_status'); ?>
+<?!= include('teacher_section_curriculum'); ?>
+<?!= include('teacher_section_roster'); ?>
+<?!= include('teacher_section_prompts'); ?>
+<?!= include('teacher_section_help'); ?>
+<?!= include('teacher_section_logs'); ?>
+<?!= include('teacher_section_records'); ?>
+</div><!-- /container -->
+
+<?!= include('teacher_modal'); ?>
+<div id="teacherFatalError" style="display:none;position:sticky;top:0;z-index:9999;margin:0 12px 12px;padding:12px 14px;border-radius:12px;background:#FFF3E0;color:#B71C1C;border:1px solid #FFCC80;font-weight:700;"></div>
+<div class="toast-stack" id="toastStack" aria-live="polite" aria-atomic="true"></div>
+
+<?!= include('teacher_polyfills'); ?>
+<?!= include('teacher_preflight'); ?>
+<script>
+window.__TEACHER_BOOTSTRAP__ = <?!= bootstrapTeacherJson || 'null' ?>;
+</script>
+<?!= include('teacher_script_core_legacy'); ?>
+<?!= include('teacher_script_units_legacy'); ?>
+<?!= include('teacher_script_admin_legacy'); ?>
+<?!= include('teacher_script_reports_legacy'); ?>
+</body>
+</html>

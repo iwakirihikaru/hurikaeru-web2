@@ -1,0 +1,1712 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>じぶんまとめ</title>
+<style>
+:root{
+  --sky:#29B6F6;--green:#66BB6A;--yellow:#FFD54F;--coral:#FF7043;
+  --purple:#AB47BC;--ink:#1A237E;--muted:#78909C;
+  --bg:#E8F5E9;--card:#fff;--r:16px;--sh:0 3px 12px rgba(0,0,0,.10);
+  --font:'Hiragino Maru Gothic ProN','BIZ UDPGothic',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;font-family:var(--font);background:var(--bg);color:var(--ink);}
+.screen{display:none;flex-direction:column;}
+.screen.active{display:flex;}
+.system-banner{
+  position:sticky;top:0;z-index:980;display:none;padding:10px 14px;
+  font-size:13px;line-height:1.5;font-weight:bold;
+}
+.system-banner.show{display:block;}
+.system-banner.info{background:#FFF8E1;color:#8D6E63;border-bottom:2px solid #FFE082;}
+.system-banner.warn{background:#FFF3E0;color:#BF6000;border-bottom:2px solid #FFCC80;}
+.system-banner.stop{background:#FFEBEE;color:#B71C1C;border-bottom:2px solid #EF9A9A;}
+
+/* 番号選択 */
+#screen-select{align-items:center;justify-content:center;min-height:100vh;padding:24px 16px;}
+.sel-title{font-size:26px;font-weight:bold;margin-bottom:4px;text-align:center;}
+.sel-sub{font-size:14px;color:var(--muted);margin-bottom:20px;text-align:center;}
+.resume-box{
+  width:100%;max-width:560px;margin:0 auto 14px;padding:12px 14px;border-radius:14px;
+  background:#FFF8E1;border:2px solid #FFE082;box-shadow:var(--sh);display:none;
+}
+.resume-title{font-size:13px;font-weight:bold;color:#8D6E63;}
+.resume-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;}
+.resume-btn{
+  border:none;border-radius:999px;padding:9px 14px;font-family:var(--font);font-size:12px;font-weight:bold;cursor:pointer;
+}
+.resume-btn.primary{background:linear-gradient(135deg,var(--green),#388E3C);color:#fff;}
+.resume-btn.secondary{background:#E3F2FD;color:#4E6F8B;}
+.num-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:8px;width:100%;max-width:560px;}
+@media(max-width:480px){.num-grid{grid-template-columns:repeat(5,1fr);}}
+.num-btn{
+  background:#fff;border:2.5px solid var(--sky);border-radius:12px;
+  font-size:18px;font-weight:bold;color:var(--sky);aspect-ratio:1;cursor:pointer;
+  box-shadow:var(--sh);display:flex;align-items:center;justify-content:center;
+  transition:transform .12s,background .12s;
+}
+.num-btn:active{transform:scale(.9);background:var(--sky);color:#fff;}
+
+/* 時間目選択 */
+#screen-period{align-items:center;justify-content:center;min-height:100vh;padding:24px 16px;}
+.period-title{font-size:22px;font-weight:bold;text-align:center;margin-bottom:6px;}
+.period-sub{font-size:14px;color:var(--muted);text-align:center;margin-bottom:20px;}
+.period-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;max-width:400px;width:100%;}
+.period-btn{
+  background:#fff;border:2.5px solid var(--green);border-radius:12px;
+  font-size:16px;font-weight:bold;color:var(--green);aspect-ratio:1;cursor:pointer;
+  box-shadow:var(--sh);display:flex;align-items:center;justify-content:center;
+  flex-direction:column;gap:2px;transition:transform .12s,background .12s;
+}
+.period-btn:active{transform:scale(.9);background:var(--green);color:#fff;}
+.period-btn .sub{font-size:10px;font-weight:normal;opacity:.7;}
+
+/* ヘッダー */
+.app-header{
+  background:linear-gradient(135deg,var(--sky),#0288D1);color:#fff;
+  padding:10px 14px;display:flex;align-items:center;justify-content:space-between;
+  flex-shrink:0;box-shadow:0 2px 6px rgba(0,0,0,.2);position:sticky;top:0;z-index:200;
+}
+.app-header h1{font-size:15px;letter-spacing:.03em;}
+.app-header .meta{font-size:11px;opacity:.85;margin-top:1px;}
+.auto-ctrl{display:flex;align-items:center;gap:5px;font-size:11px;}
+
+/* 2分割 */
+.split{display:flex;flex:1;overflow:hidden;}
+@media(max-width:700px){
+  .split{flex-direction:column;}
+  .pane-tl{width:100%!important;max-height:36vh;border-right:none;border-bottom:2px solid #e0e0e0;}
+  .student-top-tabs{justify-content:flex-start;margin-top:6px;}
+}
+.pane-tl{width:38%;flex-shrink:0;overflow-y:auto;padding:10px;border-right:2px solid #e0e0e0;background:#F0F7FF;}
+.pane-form{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;}
+
+/* タイムライン */
+.pane-label{font-size:11px;font-weight:bold;color:var(--muted);letter-spacing:.06em;
+  margin-bottom:7px;display:flex;align-items:center;gap:5px;}
+.live-dot{width:7px;height:7px;border-radius:50%;background:var(--coral);
+  animation:blink 1.4s ease-in-out infinite;}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:.2;}}
+.tl-card{
+  background:#fff;border-radius:10px;padding:9px 11px;margin-bottom:7px;
+  box-shadow:0 2px 6px rgba(0,0,0,.07);border-left:4px solid #B0BEC5;
+}
+.tl-card.submitted{border-left-color:var(--green);}
+.tl-card.is-me{border-left-color:var(--sky);background:#E3F2FD;}
+.tl-top{display:flex;align-items:center;gap:6px;margin-bottom:4px;}
+.tl-num{min-width:26px;height:26px;border-radius:50%;background:var(--sky);
+  color:#fff;font-size:12px;font-weight:bold;
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.tl-card.is-me .tl-num,.tl-card.submitted .tl-num{background:var(--green);}
+.tl-name{font-size:11px;color:var(--muted);}
+.tl-rank{font-size:10px;font-weight:bold;color:var(--purple);margin-left:2px;}
+.tl-medal-wrap{margin-left:auto;font-size:16px;}
+.medal-num{display:inline-flex;align-items:center;justify-content:center;
+  width:22px;height:22px;border-radius:50%;color:#fff;font-size:11px;font-weight:bold;}
+.tl-text{font-size:12px;line-height:1.5;word-break:break-all;color:#37474F;}
+.tl-fields{display:flex;flex-direction:column;gap:4px;margin-top:4px;}
+.tl-field{font-size:12px;line-height:1.5;color:#37474F;background:#F8FBFF;border-radius:8px;padding:6px 8px;}
+.tl-field.is-focus{background:#E3F2FD;border:1px solid #90CAF9;}
+.tl-field-label{font-size:10px;font-weight:bold;color:var(--muted);margin-bottom:2px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+.tl-chip-row,.entry-chip-row,.history-chip-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;}
+.tl-chip,.entry-chip{
+  display:inline-flex;align-items:center;gap:4px;max-width:100%;
+  padding:3px 8px;border-radius:999px;background:#E8F5E9;color:#2E7D32;
+  font-size:10px;font-weight:bold;line-height:1.4;
+}
+.entry-chip-row{margin:4px 0 8px;}
+.entry-chip{background:#FFF3E0;color:#BF6000;font-size:11px;}
+.count-chip{background:#E8F5E9 !important;color:#2E7D32 !important;}
+.inline-chip{
+  display:inline-flex;align-items:center;vertical-align:middle;margin:1px 4px 1px 0;
+  padding:1px 9px;border-radius:999px;background:transparent;color:#1976D2;
+  border:1.8px solid #64B5F6;
+  font-size:.92em;font-weight:bold;line-height:1.5;
+}
+.tl-empty{text-align:center;color:var(--muted);font-size:12px;padding:14px;}
+
+/* フォーム */
+.card{background:var(--card);border-radius:var(--r);padding:13px 15px;box-shadow:var(--sh);}
+.card-title{font-size:12px;font-weight:bold;color:var(--muted);margin-bottom:7px;
+  display:flex;align-items:center;gap:4px;}
+.prev-box{font-size:12px;line-height:1.6;color:#546E7A;
+  background:#ECEFF1;border-radius:8px;padding:9px 11px;}
+.student-top-tabs{display:flex;justify-content:flex-end;gap:8px;margin:8px 0 0;}
+.student-view-tabs{
+  display:flex;gap:8px;flex-wrap:wrap;
+}
+.student-view-tab{
+  border:none;border-radius:999px;padding:9px 14px;font-family:var(--font);
+  font-size:12px;font-weight:bold;background:#E3F2FD;color:#5C6F82;cursor:pointer;
+}
+.student-view-tab.active{background:linear-gradient(135deg,var(--sky),#0288D1);color:#fff;}
+.student-view-tab:disabled{opacity:.5;cursor:default;}
+.tab-panel{display:none;flex-direction:column;gap:10px;}
+.tab-panel.active{display:flex;}
+.choice-group{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+.choice-btn{
+  min-height:52px;padding:10px 8px;border:2px solid #CFD8DC;border-radius:12px;
+  background:#fff;color:#546E7A;cursor:pointer;text-align:center;font-size:13px;font-weight:bold;line-height:1.4;
+}
+.choice-btn.selected{border-color:var(--sky);background:#E3F2FD;color:var(--sky);}
+.choice-btn.missing{border-color:#E53935;background:#FFEBEE;}
+
+/* フィールドラベル */
+.field-wrap{margin-bottom:10px;}
+.field-label{font-size:13px;font-weight:bold;margin-bottom:4px;display:block;}
+.field-hint{font-size:11px;font-weight:normal;color:var(--muted);margin-left:4px;}
+.field-required{
+  display:inline-flex;align-items:center;margin-left:6px;padding:2px 7px;border-radius:999px;
+  background:#FFEBEE;color:#C62828;font-size:10px;font-weight:bold;vertical-align:middle;
+}
+.field-wrap.understanding-wrap{
+  background:#F8FBFF;border:1.5px solid #D6EAF8;
+  border-radius:12px;padding:10px 10px 8px;margin-bottom:12px;
+}
+.field-wrap.understanding-wrap .field-label{font-size:14px;margin-bottom:6px;color:var(--ink);}
+.understanding-group{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+.understanding-btn{
+  min-height:58px;padding:10px 8px;border:2px solid #FFE082;border-radius:12px;
+  background:#fff;color:#6D4C41;cursor:pointer;text-align:center;font-size:13px;font-weight:bold;line-height:1.4;
+}
+.understanding-btn{border-color:#CFD8DC;color:#546E7A;}
+.understanding-btn.selected{border-color:var(--sky);background:#E3F2FD;color:var(--sky);}
+.understanding-btn.missing{border-color:#E53935;background:#FFEBEE;}
+@media(max-width:520px){.understanding-group{grid-template-columns:1fr;}.choice-group{grid-template-columns:1fr;}}
+
+/* テキストエリア */
+textarea.f,select.f{
+  width:100%;border:2px solid #CFD8DC;border-radius:9px;
+  padding:9px 11px;font-family:var(--font);font-size:15px;color:var(--ink);
+  background:#F9FAFB;resize:vertical;transition:border-color .2s;-webkit-appearance:none;
+}
+textarea.f:focus,select.f:focus{outline:none;border-color:var(--sky);background:#fff;}
+textarea.f{min-height:70px;}
+
+/* ラジオボタン */
+.radio-group{display:flex;gap:8px;flex-wrap:wrap;margin-top:2px;}
+.radio-btn{
+  flex:1;min-width:80px;padding:10px 6px;border:2px solid #CFD8DC;border-radius:10px;
+  text-align:center;cursor:pointer;font-size:13px;font-weight:bold;
+  color:var(--muted);background:#F9FAFB;transition:.15s;
+}
+.radio-btn.selected{border-color:var(--sky);color:var(--sky);background:#E3F2FD;}
+.radio-btn:active{transform:scale(.95);}
+
+/* ふりかえりヒント */
+.hints-wrap{
+  display:flex;gap:5px;flex-wrap:wrap;margin-bottom:6px;
+}
+.hint-tag{
+  font-size:11px;padding:3px 9px;border-radius:12px;
+  background:#E3F2FD;color:var(--sky);cursor:pointer;border:1.5px solid var(--sky);
+  transition:.12s;
+}
+.hint-tag:active{background:var(--sky);color:#fff;}
+.hint-tag.used{background:#E8F5E9;color:var(--green);border-color:var(--green);}
+
+/* ボタン */
+.btn-row{display:flex;gap:8px;margin-top:6px;}
+.btn{
+  flex:1;border:none;border-radius:11px;padding:13px;
+  font-size:15px;font-weight:bold;cursor:pointer;
+  box-shadow:var(--sh);transition:transform .1s,opacity .2s;
+  font-family:var(--font);letter-spacing:.03em;
+}
+.btn:active{transform:scale(.97);}
+.btn:disabled{opacity:.45;cursor:default;}
+.btn-save{background:linear-gradient(135deg,#90CAF9,var(--sky));color:#fff;}
+.btn-submit{background:linear-gradient(135deg,var(--green),#388E3C);color:#fff;}
+.btn-rewrite{background:linear-gradient(135deg,#FFB74D,var(--coral));color:#fff;width:100%;margin-top:6px;}
+#rewriteRow{display:none;}
+.submit-note{font-size:11px;color:var(--muted);margin-top:5px;text-align:center;}
+.link-btn{
+  border:none;background:transparent;color:#1976D2;font-size:11px;font-weight:bold;cursor:pointer;padding:0;
+}
+
+/* AIコメント */
+.ai-box{
+  background:linear-gradient(135deg,#FFF8E1,#FFF3CD);
+  border:2px solid var(--yellow);border-radius:var(--r);padding:13px;display:none;
+}
+.ai-box.arrival-highlight{
+  animation:aiArrivalGlow 1.8s ease-out 1;
+  box-shadow:0 0 0 4px rgba(255,213,79,.18),0 8px 24px rgba(255,193,7,.28);
+}
+.ai-label{font-size:11px;font-weight:bold;color:#E65100;margin-bottom:5px;}
+.ai-comment{font-size:14px;line-height:1.7;}
+.rank-badge{
+  display:inline-block;margin-top:7px;padding:3px 13px;border-radius:18px;
+  font-size:16px;font-weight:bold;letter-spacing:.06em;
+  background:linear-gradient(135deg,var(--purple),#7B1FA2);color:#fff;
+}
+.medal-big{font-size:32px;text-align:center;margin-top:5px;}
+@keyframes aiArrivalGlow{
+  0%{transform:scale(.985);box-shadow:0 0 0 0 rgba(255,213,79,.05);}
+  30%{transform:scale(1.01);box-shadow:0 0 0 6px rgba(255,213,79,.24),0 10px 28px rgba(255,193,7,.34);}
+  100%{transform:scale(1);box-shadow:0 0 0 0 rgba(255,213,79,0);}
+}
+.history-list{display:flex;flex-direction:column;gap:8px;margin-top:10px;}
+.history-item{
+  background:#F8FBFF;border:1px solid #D9EAF7;border-radius:12px;padding:9px 10px;
+}
+.history-meta{font-size:11px;font-weight:bold;color:#607D8B;line-height:1.6;}
+.history-review{font-size:12px;line-height:1.7;color:#37474F;margin-top:4px;white-space:pre-wrap;word-break:break-word;}
+.history-empty{font-size:12px;line-height:1.7;color:var(--muted);margin-top:8px;}
+.history-note{font-size:12px;line-height:1.8;color:#546E7A;}
+.history-scope-tabs,.history-tabs{display:flex;gap:7px;overflow-x:auto;padding:6px 0 2px;}
+.history-tab{
+  flex:0 0 auto;border:none;border-radius:999px;padding:7px 12px;background:#E3F2FD;color:#4E6F8B;
+  font-family:var(--font);font-size:11px;font-weight:bold;cursor:pointer;
+}
+.history-tab.active{background:#4FC3F7;color:#fff;}
+.history-chip{
+  display:inline-flex;align-items:center;padding:3px 8px;border-radius:999px;
+  background:#FFF3E0;color:#BF6000;font-size:10px;font-weight:bold;
+}
+
+.arrival-banner{
+  position:fixed;left:50%;top:68px;transform:translate(-50%,-12px);
+  width:min(92vw,520px);background:linear-gradient(135deg,#FFF3CD,#FFE082);
+  color:#6D4C41;border:2px solid #F9A825;border-radius:14px;padding:10px 14px;
+  box-shadow:0 10px 24px rgba(0,0,0,.18);z-index:950;display:none;cursor:pointer;
+  opacity:0;transition:opacity .22s ease,transform .22s ease;
+}
+.arrival-banner.show{display:block;opacity:1;transform:translate(-50%,0);}
+.arrival-banner-title{font-size:13px;font-weight:bold;line-height:1.4;}
+.arrival-banner-sub{font-size:11px;opacity:.88;margin-top:2px;}
+
+/* トースト */
+#toast{
+  position:fixed;bottom:18px;left:50%;transform:translateX(-50%) translateY(60px);
+  background:#212121;color:#fff;border-radius:18px;padding:9px 20px;
+  font-size:13px;opacity:0;transition:all .3s;z-index:999;white-space:nowrap;
+}
+#toast.show{transform:translateX(-50%) translateY(0);opacity:1;}
+.spinner{display:inline-block;width:15px;height:15px;border:2px solid #CFD8DC;
+  border-top-color:var(--sky);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;}
+@keyframes spin{to{transform:rotate(360deg);}}
+</style>
+</head>
+<body>
+<div id="systemBanner" class="system-banner"></div>
+
+<!-- ① 出席番号 -->
+<div id="screen-select" class="screen active">
+  <div class="sel-title" id="studentSelectTitle">✏️ じぶんまとめ</div>
+  <div class="sel-sub" id="studentSelectSubtitle">きみのばんごうをタップしてね</div>
+  <div id="resumeBox" class="resume-box">
+    <div class="resume-title" id="resumeLabel"></div>
+    <div class="resume-row">
+      <button type="button" class="resume-btn primary" id="resumeContinueBtn">この番号ではじめる</button>
+      <button type="button" class="resume-btn secondary" id="resumeChangeBtn" onclick="forgetRememberedStudent_()">えらびなおす</button>
+    </div>
+  </div>
+  <div class="num-grid" id="numGrid"></div>
+</div>
+
+<!-- ② 時間目選択 -->
+<div id="screen-period" class="screen">
+  <div class="period-title" id="studentPeriodTitle">📚 なんじかんめ？</div>
+  <div class="period-sub" id="periodUnitLabel"></div>
+  <div class="period-grid" id="periodGrid"></div>
+</div>
+
+<!-- ③ メイン -->
+<div id="screen-main" class="screen" style="height:100vh;">
+  <div class="app-header">
+    <div>
+      <h1>✏️ じぶんまとめ &nbsp;<span id="hdrUnit" style="font-size:12px;opacity:.85;"></span></h1>
+      <div class="meta" id="hdrMeta"></div>
+      <button type="button" class="link-btn" id="changeStudentBtn" onclick="changeStudentNumber_()" style="display:none;">番号をえらびなおす</button>
+    </div>
+    <div>
+      <div class="auto-ctrl" id="studentAutoSaveLabel">
+        ⏱️ 30びょうごとにじどうほぞん
+      </div>
+      <div class="student-top-tabs">
+        <div class="student-view-tabs">
+          <button type="button" id="tabCurrentBtn" class="student-view-tab active" onclick="showStudentTab('current')">✏️ こんかい</button>
+          <button type="button" id="tabHistoryBtn" class="student-view-tab" onclick="showStudentTab('history')" disabled>📚 これまで</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="aiArrivalBanner" class="arrival-banner" onclick="handleAiArrivalBannerClick()">
+    <div class="arrival-banner-title">🤖 AIせんせいからコメントがとどいたよ</div>
+    <div class="arrival-banner-sub">タップするとコメントのところへいくよ</div>
+  </div>
+
+  <div class="split">
+    <!-- 左：タイムライン -->
+    <div class="pane-tl">
+      <div class="pane-label"><div class="live-dot"></div><span id="studentTimelineLabel">みんなのきろく</span></div>
+      <div id="tlList"><div class="tl-empty"><span class="spinner"></span></div></div>
+    </div>
+
+    <!-- 右：入力フォーム -->
+    <div class="pane-form">
+      <div id="currentTabPanel" class="tab-panel active">
+        <!-- 前回ふりかえり -->
+        <div class="card" id="prevCard" style="display:none;">
+          <div class="card-title">📖 まえのじゅぎょうのふりかえり</div>
+          <div class="prev-box" id="prevReviewBox"></div>
+        </div>
+
+        <!-- 入力フォーム（動的生成） -->
+        <div class="card">
+          <div class="card-title"><span id="studentMyRecordTitle">🙋</span> <span id="myNameLabel">わたしのきろく</span></div>
+          <div id="fieldContainer"></div>
+
+          <div class="btn-row">
+            <button type="button" class="btn btn-submit" id="submitBtn" onclick="doSubmit()">🚀 ていしゅつ</button>
+          </div>
+          <div id="rewriteRow">
+            <button type="button" class="btn btn-rewrite" id="studentRewriteBtn" onclick="doRewrite(event)">✏️ かきなおす（さいていしゅつできるよ）</button>
+          </div>
+          <div class="submit-note" id="submitNote"></div>
+        </div>
+
+        <!-- AIフィードバック -->
+        <div class="ai-box" id="aiBox">
+          <div class="ai-label" id="studentAiCommentTitle">🤖 AIせんせいからのコメント</div>
+          <div class="ai-comment" id="aiComment"></div>
+          <div><span class="rank-badge" id="myRank"></span></div>
+          <div class="medal-big" id="myMedal"></div>
+        </div>
+      </div>
+
+      <div id="historyTabPanel" class="tab-panel">
+        <div class="card">
+          <div class="card-title" id="studentHistoryCardTitle">📚 これまでのきろく</div>
+          <div class="history-note" id="studentHistoryNote">じゅぎょうのあとで、これまでの自分のきろくを見くらべられるよ。</div>
+          <div id="studentHistoryScopes" class="history-scope-tabs" style="display:none;"></div>
+          <div id="studentHistoryTabs" class="history-tabs" style="display:none;"></div>
+          <div id="studentHistoryList" class="history-list"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// =====================================
+//  State
+// =====================================
+let myNum      = null;
+let myUnitId   = null;
+let myPeriod   = null;
+let myFields   = [];   // 有効フィールド定義
+let submitted  = false;
+let focusField = 'review';
+let teacherTimelineFieldKey = '';
+let autoTimer  = null;
+let pollTimer  = null;
+let initBusy   = false;
+let pollBusy   = false;
+let lastAiCommentText = '';
+let aiCommentAutoScrolled = false;
+let studentStateReady = false;
+let submitInFlight = false;
+let lastTimelineServerNow = '';
+let lastAiArrivalMetricKey = '';
+let lastAiArrivalNoteText = '';
+let lastAiArrivalBannerKey = '';
+let aiArrivalBannerTimer = null;
+let studentAiEnabled = false;
+let studentAiAutoSubmitEnabled = false;
+let lastKnownAiStatus = '';
+let activeStudentTab = 'current';
+let studentHistoryGroups = [];
+let studentHistoryScopeKey = 'unit';
+let studentHistoryRows = [];
+let studentHistoryIndex = 0;
+let studentMaintenanceMode = false;
+let currentStudentShellState = {};
+const AUTO_SAVE_MS = 30000;
+const POLL_IDLE_MS = 4000;
+const POLL_WAITING_AI_MS = 2500;
+const POLL_DONE_MS = 6000;
+const STUDENT_CACHE_TTL_MS = 5 * 60 * 1000;
+const STUDENT_NUMBER_CACHE_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+
+function getStudentCacheKey_(kind, suffix){
+  return `furikaeri:${kind}:${String(suffix||'')}`;
+}
+
+function readStudentCache_(kind, suffix){
+  try{
+    const raw=localStorage.getItem(getStudentCacheKey_(kind,suffix));
+    if(!raw) return null;
+    const parsed=JSON.parse(raw);
+    if(!parsed || !parsed.savedAt || Date.now()-Number(parsed.savedAt)>STUDENT_CACHE_TTL_MS) return null;
+    return parsed.payload||null;
+  }catch(e){
+    return null;
+  }
+}
+
+function writeStudentCache_(kind, suffix, payload){
+  try{
+    localStorage.setItem(getStudentCacheKey_(kind,suffix), JSON.stringify({
+      savedAt: Date.now(),
+      payload: payload||null
+    }));
+  }catch(e){}
+}
+
+function readRememberedStudentNumber_(){
+  try{
+    const raw=localStorage.getItem('furikaeri:rememberedStudentNumber');
+    if(!raw) return '';
+    const parsed=JSON.parse(raw);
+    if(!parsed || !parsed.savedAt || Date.now()-Number(parsed.savedAt)>STUDENT_NUMBER_CACHE_TTL_MS) return '';
+    return String(parsed.number||'').trim();
+  }catch(e){
+    return '';
+  }
+}
+
+function rememberStudentNumber_(num){
+  try{
+    localStorage.setItem('furikaeri:rememberedStudentNumber', JSON.stringify({
+      savedAt: Date.now(),
+      number: String(num||'').trim()
+    }));
+  }catch(e){}
+}
+
+function forgetRememberedStudent_(){
+  try{ localStorage.removeItem('furikaeri:rememberedStudentNumber'); }catch(e){}
+  const box=document.getElementById('resumeBox');
+  if(box) box.style.display='none';
+}
+
+// =====================================
+//  番号ボタン生成
+// =====================================
+const bootstrapStudentOptions = <?!= JSON.stringify(typeof bootstrapStudentOptions !== 'undefined' ? bootstrapStudentOptions : {students:[]}) ?>;
+applyStudentShellState_(bootstrapStudentOptions.shell||{});
+renderNumberButtons(bootstrapStudentOptions.students||[]);
+setupRememberedStudentResume_(bootstrapStudentOptions.students||[]);
+
+function getStudentShellLabels_(shell){
+  const state=shell||{};
+  return state.labels && typeof state.labels==='object' ? state.labels : {};
+}
+
+function getStudentShellLabel_(key, fallback){
+  const labels=getStudentShellLabels_(currentStudentShellState);
+  const value=String(labels[key] || '').trim();
+  return value || fallback;
+}
+
+function setStudentText_(id, value){
+  const el=document.getElementById(id);
+  if(el && String(value||'').trim()) el.textContent=String(value||'').trim();
+}
+
+function formatStudentTemplate_(template, values){
+  const text=String(template||'').trim();
+  if(!text) return '';
+  return text.replace(/\{\{\s*(\w+)\s*\}\}/g, (_m, key)=>String(values && values[key] != null ? values[key] : ''));
+}
+
+function applyStudentShellState_(shell){
+  const state=shell||{};
+  currentStudentShellState=state;
+  const labels=getStudentShellLabels_(state);
+  const banner=document.getElementById('systemBanner');
+  const maintenanceMode=Boolean(state.maintenanceMode);
+  const notice=state.noticeBanner||{};
+  studentMaintenanceMode=maintenanceMode;
+  setStudentText_('studentSelectTitle', labels.studentSelectTitle);
+  setStudentText_('studentSelectSubtitle', labels.studentSelectSubtitle);
+  setStudentText_('resumeContinueBtn', labels.studentResumeStartLabel);
+  setStudentText_('resumeChangeBtn', labels.studentResumeChangeLabel);
+  setStudentText_('studentPeriodTitle', labels.studentPeriodTitle);
+  setStudentText_('changeStudentBtn', labels.studentChangeNumberLabel);
+  setStudentText_('studentAutoSaveLabel', labels.studentAutoSaveLabel);
+  setStudentText_('tabCurrentBtn', labels.studentCurrentTabLabel);
+  setStudentText_('tabHistoryBtn', labels.studentHistoryTabLabel);
+  setStudentText_('studentTimelineLabel', labels.studentTimelineLabel);
+  setStudentText_('studentMyRecordTitle', labels.studentMyRecordTitle);
+  setStudentText_('studentRewriteBtn', labels.studentRewriteLabel);
+  setStudentText_('studentAiCommentTitle', labels.studentAiCommentTitle);
+  setStudentText_('studentHistoryCardTitle', labels.studentHistoryCardTitle);
+  setStudentText_('studentHistoryNote', labels.studentHistoryNote);
+  if(!banner) return;
+  const message=String(notice.message||'').trim();
+  const title=String(notice.title||'').trim();
+  const level=maintenanceMode ? 'stop' : (notice.level==='warn' ? 'warn' : 'info');
+  if(maintenanceMode || notice.enabled===true || message || title){
+    banner.className=`system-banner show ${level}`;
+    banner.textContent=maintenanceMode
+      ? (message || String(labels.studentMaintenanceMessage || '').trim() || 'ただいまメンテナンス中です。しばらく待ってからひらいてね。')
+      : [title,message].filter(Boolean).join(' ');
+  }else{
+    banner.className='system-banner';
+    banner.textContent='';
+  }
+  const submitBtn=document.getElementById('submitBtn');
+  if(submitBtn){
+    submitBtn.disabled=maintenanceMode;
+    if(maintenanceMode){
+      submitBtn.textContent=getStudentShellLabel_('studentMaintenanceSubmitLabel', '⏸️ メンテナンス中');
+    }else if(!submitInFlight){
+      submitBtn.textContent=getStudentShellLabel_('studentSubmitLabel', '🚀 ていしゅつ');
+    }
+  }
+  const submitNote=document.getElementById('submitNote');
+  if(submitNote && maintenanceMode){
+    submitNote.textContent=message || getStudentShellLabel_('studentMaintenanceSubmitNote', 'メンテナンス中はていしゅつできません。');
+  }else if(submitNote && /メンテナンス/.test(String(submitNote.textContent||''))){
+    submitNote.textContent='';
+  }
+}
+
+function renderNumberButtons(students){
+  const g=document.getElementById('numGrid');
+  const list=students||[];
+  if(!list.length){
+    const emptyMessage=getStudentShellLabel_('studentRosterEmptyMessage', '名簿がまだ設定されていません。先生に伝えてね。');
+    g.innerHTML=`<div style="grid-column:1/-1;text-align:center;color:#78909C;font-size:14px;">${esc(emptyMessage)}</div>`;
+    return;
+  }
+  g.innerHTML='';
+  list.forEach(student=>{
+    const b=document.createElement('button');
+    b.className='num-btn';b.textContent=student.number;
+    b.onclick=()=>selectNumber(student.number);
+    g.appendChild(b);
+  });
+}
+
+function setupRememberedStudentResume_(students){
+  const remembered=readRememberedStudentNumber_();
+  const match=(students||[]).find(student=>String(student.number)===remembered);
+  const box=document.getElementById('resumeBox');
+  const label=document.getElementById('resumeLabel');
+  const button=document.getElementById('resumeContinueBtn');
+  if(!box||!label||!button) return;
+  if(!match){
+    box.style.display='none';
+    return;
+  }
+  label.textContent=formatStudentTemplate_(
+    getStudentShellLabel_('studentResumeMessageTemplate', '前につかった {{number}}ばん でそのままはじめられるよ。'),
+    { number: match.number }
+  );
+  button.onclick=()=>selectNumber(match.number,{remember:true});
+  if(document.getElementById('screen-select').classList.contains('active') && !initBusy){
+    selectNumber(match.number,{remember:true,auto:true});
+    return;
+  }
+  box.style.display='block';
+}
+
+// =====================================
+//  出席番号選択
+// =====================================
+function selectNumber(num, options){
+  if(initBusy) return;
+  const opts=options||{};
+  initBusy=true;
+  myNum=num;
+  if(opts.remember!==false) rememberStudentNumber_(num);
+  document.querySelectorAll('.num-btn').forEach(btn=>btn.disabled=true);
+  google.script.run
+    .withSuccessHandler(d=>{initBusy=false;onInit(d);})
+    .withFailureHandler(e=>{
+      initBusy=false;
+      document.querySelectorAll('.num-btn').forEach(btn=>btn.disabled=false);
+      showToast(opts.auto ? '前の番号で入れなかったので、えらびなおしてね。' : 'エラー:'+e);
+    })
+    .studentInit(num,0);
+}
+
+function onInit(d){
+  applyStudentShellState_(d && d.shell || {});
+  if(d.needPeriodSelect){
+    showScreen('screen-period');
+    const unit=d.unit;
+    document.getElementById('periodUnitLabel').textContent=
+      unit?`【${unit.subject}】${unit.name}`:'単元が設定されていません';
+    const max=unit?(unit.maxPeriod===0?20:Math.min(unit.maxPeriod,20)):10;
+    const grid=document.getElementById('periodGrid');
+    grid.innerHTML='';
+    for(let i=1;i<=max;i++){
+      const b=document.createElement('button');
+      b.className='period-btn';
+      b.innerHTML=`${i}<span class="sub">じかんめ</span>`;
+      b.onclick=()=>{
+        if(initBusy) return;
+        initBusy=true;
+        document.querySelectorAll('.period-btn').forEach(btn=>btn.disabled=true);
+        google.script.run
+          .withSuccessHandler(d2=>{initBusy=false;loadMain(d2);})
+          .withFailureHandler(e=>{
+            initBusy=false;
+            document.querySelectorAll('.period-btn').forEach(btn=>btn.disabled=false);
+            showToast('エラー:'+e);
+          })
+          .studentInit(myNum,i);
+      };
+      grid.appendChild(b);
+    }
+    return;
+  }
+  loadMain(d);
+}
+
+// =====================================
+//  メイン画面
+// =====================================
+function loadMain(d){
+  clearInterval(autoTimer);
+  stopPolling();
+  pollBusy=false;
+  rememberStudentNumber_(d.num);
+  myUnitId  = d.unit?.id   || null;
+  myPeriod  = d.period      || null;
+  myFields  = d.fields      || [];
+  submitted = d.submitted   || false;
+  focusField = 'review';
+  teacherTimelineFieldKey = d.teacherTimelineFieldKey || '';
+  studentAiEnabled = Boolean(d.studentAiEnabled);
+  studentAiAutoSubmitEnabled = Boolean(d.studentAiAutoSubmitEnabled);
+  applyStudentShellState_(d && d.shell || {});
+  const initialAiDone = String(d.aiStatus || '') === 'done';
+  lastAiCommentText = initialAiDone ? String(d.comment || '').trim() : '';
+  aiCommentAutoScrolled = Boolean(lastAiCommentText);
+  lastAiArrivalMetricKey = '';
+  lastAiArrivalNoteText = '';
+  lastAiArrivalBannerKey = '';
+  hideAiArrivalBanner_();
+  studentStateReady = false;
+
+  showScreen('screen-main');
+  document.getElementById('prevCard').style.display='none';
+  document.getElementById('rewriteRow').style.display='none';
+  document.getElementById('submitNote').textContent='';
+  document.getElementById('aiBox').style.display='none';
+  document.getElementById('studentHistoryList').innerHTML='';
+  document.getElementById('studentHistoryScopes').innerHTML='';
+  document.getElementById('studentHistoryScopes').style.display='none';
+  document.getElementById('studentHistoryTabs').innerHTML='';
+  document.getElementById('studentHistoryTabs').style.display='none';
+  document.getElementById('submitBtn').textContent=getStudentShellLabel_('studentSubmitLabel', '🚀 ていしゅつ');
+  document.getElementById('hdrUnit').textContent=
+    d.unit?`【${d.unit.subject}】${d.unit.name}・${d.period}じかんめ`:'';
+  document.getElementById('hdrMeta').textContent=`${d.num}ばん ${d.name||''} さん`;
+  document.getElementById('myNameLabel').textContent=`${d.num}ばん ${d.name||''} さん`;
+  document.getElementById('changeStudentBtn').style.display='inline-block';
+
+  activeStudentTab='current';
+  studentHistoryGroups=[];
+  studentHistoryScopeKey='unit';
+  studentHistoryRows=[];
+  studentHistoryIndex=0;
+  showStudentTab('current');
+  setFieldInteractivity(false);
+  document.getElementById('submitNote').textContent='よみこみ中…';
+  applyStudentState(d);
+  loadStudentSupplemental();
+  resetAutoSave();
+}
+
+function loadStudentState(){
+  const cacheKey=[myUnitId,myPeriod,myNum].join('_');
+  const cached=readStudentCache_('state',cacheKey);
+  if(cached) applyStudentState(cached);
+  google.script.run
+    .withSuccessHandler(payload=>{
+      writeStudentCache_('state',cacheKey,payload);
+      applyStudentState(payload);
+      refreshTimeline();
+    })
+    .withFailureHandler(()=>{
+      studentStateReady=true;
+      setFieldInteractivity(true);
+      document.getElementById('submitNote').textContent='';
+    })
+    .studentLoadState(myUnitId,myPeriod,myNum);
+}
+
+function loadStudentSupplemental(){
+  loadPreviousReview();
+  const timelineCacheKey=[myUnitId,myPeriod,myNum].join('_');
+  const cachedTimeline=readStudentCache_('timeline',timelineCacheKey);
+  if(cachedTimeline) applyTimelinePayload(cachedTimeline);
+  refreshTimeline();
+}
+
+function loadPreviousReview(){
+  if(!myUnitId||!myPeriod||!myNum||Number(myPeriod)<=1){
+    document.getElementById('prevCard').style.display='none';
+    return;
+  }
+  const cacheKey=[myUnitId,myPeriod,myNum].join('_');
+  const cached=readStudentCache_('prevReview',cacheKey);
+  if(cached){
+    const cachedText=String(cached.prevReview||'').trim();
+    if(cachedText){
+      document.getElementById('prevCard').style.display='block';
+      document.getElementById('prevReviewBox').textContent=cachedText;
+    }
+  }
+  google.script.run
+    .withSuccessHandler(res=>{
+      const text=String(res?.prevReview||'').trim();
+      writeStudentCache_('prevReview',cacheKey,res||{prevReview:''});
+      if(text){
+        document.getElementById('prevCard').style.display='block';
+        document.getElementById('prevReviewBox').textContent=text;
+      }else{
+        document.getElementById('prevCard').style.display='none';
+      }
+    })
+    .withFailureHandler(()=>{})
+    .getStudentPreviousReview(myUnitId,myPeriod,myNum);
+}
+
+function applyStudentState(d){
+  if(!d) return;
+  myFields=d.fields||myFields;
+  if(typeof d.studentAiEnabled!=='undefined') studentAiEnabled=Boolean(d.studentAiEnabled);
+  if(typeof d.studentAiAutoSubmitEnabled!=='undefined') studentAiAutoSubmitEnabled=Boolean(d.studentAiAutoSubmitEnabled);
+  document.getElementById('hdrMeta').textContent=`${d.num}ばん ${d.name||''} さん`;
+  document.getElementById('myNameLabel').textContent=`${d.num}ばん ${d.name||''} さん`;
+  buildFields(myFields, d.customs||[]);
+  writeStudentCache_('state',[myUnitId,myPeriod,myNum].join('_'),{
+    num:d.num,
+    name:d.name,
+    fields:myFields,
+    customs:d.customs||[],
+    submitted:Boolean(d.submitted),
+    comment:d.comment||'',
+    rank:d.rank||'',
+    medal:d.medal||'',
+    medalColor:d.medalColor||'',
+    aiStatus:d.aiStatus||'',
+    studentAiEnabled:studentAiEnabled,
+    studentAiAutoSubmitEnabled:studentAiAutoSubmitEnabled
+  });
+  submitted=Boolean(d.submitted);
+  const aiStatus=String(d.aiStatus||'');
+  const returnedComment=String(d.comment||'').trim();
+  lastKnownAiStatus=aiStatus;
+  const aiDone=aiStatus==='done';
+  const aiError=aiStatus==='error';
+  const hasAiComment=studentAiEnabled&&aiDone;
+  lastAiCommentText=returnedComment;
+  aiCommentAutoScrolled=Boolean(lastAiCommentText);
+  if(!returnedComment && !aiDone){
+    lastAiArrivalMetricKey='';
+    lastAiArrivalNoteText='';
+    lastAiArrivalBannerKey='';
+    hideAiArrivalBanner_();
+  }
+  studentStateReady=true;
+  setFieldInteractivity(true);
+  document.getElementById('submitNote').textContent='';
+  if(d.submitted){
+    lockSubmitted();
+    loadStudentPastRecords_();
+  }
+  syncStudentTabState_();
+  const aiWaiting=studentAiEnabled&&['pending','processing'].includes(String(d.aiStatus||''));
+  if(returnedComment) {
+    setStudentCommentTitle_(hasAiComment);
+    showAIBox(returnedComment,d.rank,d.medal,d.medalColor);
+    if(hasAiComment) updateAiArrivalNote_(d);
+  } else if(studentAiEnabled&&aiError) {
+    setStudentCommentTitle_(true);
+    showAIBox(d.comment||'AIのコメント作成に失敗しました。先生に伝えてね。','','','');
+  } else if(aiWaiting) {
+    setStudentCommentTitle_(true);
+    showAIBox('AIコメントをつくっています。少しまってね。','','','');
+  } else {
+    document.getElementById('aiBox').style.display='none';
+  }
+  if(d.prevReview){
+    document.getElementById('prevCard').style.display='block';
+    document.getElementById('prevReviewBox').textContent=d.prevReview;
+  }
+}
+
+// =====================================
+//  フィールド動的生成
+// =====================================
+function buildFields(fields, values){
+  const container=document.getElementById('fieldContainer');
+  container.innerHTML='';
+  let reviewChipInserted=false;
+  const displayFields=fields.map((f,i)=>({field:f,idx:i}));
+  displayFields.forEach(({field:f,idx:i})=>{
+    const wrap=document.createElement('div');
+    wrap.className='field-wrap';
+    if(isUnderstandingFieldDef(f)) wrap.classList.add('understanding-wrap');
+    wrap.dataset.idx=i;
+    wrap.dataset.key=f.key;
+    const requiredBadge='';
+    const lbl=`<span class="field-label">${esc(f.emoji||'📌')} ${esc(f.label)}${requiredBadge}</span>`;
+
+    if(f.type==='text'){
+      wrap.innerHTML=`${lbl}
+        <textarea class="f field-inp" data-idx="${i}" rows="2"
+          placeholder="${esc(f.placeholder||'')}"
+          onfocus="setFocus('${f.key}')">${esc(values[i]||'')}</textarea>`;
+
+    } else if(f.type==='review'){
+      // ヒントタグ＋大きめテキストエリア
+      const hints=(f.hints||'').split(',').filter(Boolean);
+      const hintHtml=hints.map(h=>
+        `<span class="hint-tag" onclick="insertHint(this,'${esc(h)}')">${esc(h)}</span>`
+      ).join('');
+      const reviewChipBox=!reviewChipInserted ? '<div id="studentReviewChips" class="entry-chip-row" style="display:none;"></div>' : '';
+      reviewChipInserted=true;
+      wrap.innerHTML=`${lbl}
+        <div class="hints-wrap" id="hintsWrap_${i}">${hintHtml}</div>
+        ${reviewChipBox}
+        <textarea class="f field-inp" data-idx="${i}" rows="5"
+          placeholder="${esc(f.placeholder||'くわしくかいてみよう！')}"
+          onfocus="setFocus('${f.key}')">${esc(values[i]||'')}</textarea>`;
+
+    } else if(f.type==='select' && isUnderstandingFieldDef(f)){
+      const opts=(f.options||'').split(',').map(o=>o.trim()).filter(Boolean);
+      const cur=values[i]||'';
+      const labels={
+        'よくわかった':'😀 よくわかった',
+        'だいたいわかった':'🙂 だいたいわかった',
+        'あまりわからなかった':'😐 あまりわからなかった',
+        'わからなかった':'😢 わからなかった',
+      };
+      const buttonHtml=opts.map(o=>
+        `<button type="button" class="understanding-btn ${cur===o?'selected':''}" data-val="${esc(o)}"
+          onclick="selectUnderstanding(this,${i},'${esc(o)}')">${esc(labels[o]||o)}</button>`
+      ).join('');
+      wrap.innerHTML=`${lbl}
+        <div class="understanding-group">${buttonHtml}</div>
+        <input type="hidden" class="field-inp" data-idx="${i}" value="${esc(cur)}">`;
+
+    } else if(f.type==='select'){
+      const opts=(f.options||'').split(',').map(o=>o.trim()).filter(Boolean);
+      const optHtml=opts.map(o=>
+        `<option value="${esc(o)}" ${values[i]===o?'selected':''}>${esc(o)}</option>`
+      ).join('');
+      wrap.innerHTML=`${lbl}
+        <select class="f field-inp" data-idx="${i}" onfocus="setFocus('${f.key}')">
+          <option value="">えらんでね</option>${optHtml}
+        </select>`;
+
+    } else if(f.type==='radio'){
+      const opts=(f.options||'').split(',').map(o=>o.trim()).filter(Boolean);
+      const cur=values[i]||'';
+      const radioHtml=opts.map(o=>
+        `<div class="radio-btn ${cur===o?'selected':''}" data-val="${esc(o)}"
+          onclick="selectRadio(this,${i},'${esc(o)}')">${esc(o)}</div>`
+      ).join('');
+      wrap.innerHTML=`${lbl}
+        <div class="radio-group" data-idx="${i}">${radioHtml}</div>
+        <input type="hidden" class="field-inp" data-idx="${i}" value="${esc(cur)}">`;
+    }
+
+    container.appendChild(wrap);
+  });
+  bindFieldInputEvents_();
+  renderStudentEntryChips();
+}
+
+function bindFieldInputEvents_(){
+  document.querySelectorAll('.field-inp').forEach(el=>{
+    const handler=()=>handleFieldValueChanged_();
+    el.oninput=handler;
+    el.onchange=handler;
+  });
+}
+
+function handleFieldValueChanged_(){
+  renderStudentEntryChips();
+  if(window._lastTl) renderTl(window._lastTl);
+}
+
+function setFieldInteractivity(enabled){
+  document.querySelectorAll('.field-inp').forEach(el=>{ el.disabled=!enabled; });
+  document.querySelectorAll('.understanding-btn,.radio-btn,.hint-tag').forEach(el=>{
+    el.style.pointerEvents=enabled?'':'none';
+    el.style.opacity=enabled?'1':'0.55';
+  });
+  const submitBtn=document.getElementById('submitBtn');
+  if(submitBtn) submitBtn.disabled=!enabled;
+}
+
+function isUnderstandingFieldDef(field){
+  const text=`${field?.key||''} ${field?.label||''} ${field?.type||''}`.toLowerCase();
+  return /理解|りかい|わか|自己評価|じこひょうか|達成|たっせい|self|score|check|eval/.test(text);
+}
+
+function selectUnderstanding(el, idx, val){
+  const wrap=el.closest('.understanding-wrap');
+  wrap.querySelectorAll('.understanding-btn').forEach(btn=>{
+    btn.classList.remove('selected');
+    btn.classList.remove('missing');
+  });
+  el.classList.add('selected');
+  const hidden=wrap.querySelector(`.field-inp[data-idx="${idx}"][type="hidden"]`);
+  if(hidden) hidden.value=val;
+  setFocus(wrap.dataset.key);
+  handleFieldValueChanged_();
+}
+
+function selectRadio(el, idx, val){
+  el.closest('.radio-group').querySelectorAll('.radio-btn')
+    .forEach(b=>b.classList.remove('selected'));
+  el.classList.add('selected');
+  document.querySelector(`.field-inp[data-idx="${idx}"][type="hidden"]`).value=val;
+  setFocus(el.closest('.field-wrap').dataset.key);
+  handleFieldValueChanged_();
+}
+
+function insertHint(el, hint){
+  const wrap=el.closest('.field-wrap');
+  const idx=parseInt(wrap.dataset.idx);
+  const ta=wrap.querySelector('textarea.field-inp');
+  if(!ta) return;
+  const cur=ta.value;
+  const start=typeof ta.selectionStart==='number' ? ta.selectionStart : cur.length;
+  const end=typeof ta.selectionEnd==='number' ? ta.selectionEnd : cur.length;
+  const before=cur.slice(0,start);
+  const after=cur.slice(end);
+  const needsSpacerBefore=before && !/[\s\n]$/.test(before);
+  const needsSpacerAfter=after && !/^[\s\n]/.test(after);
+  const insertText=`${needsSpacerBefore?' ':''}${hint}${needsSpacerAfter?' ':''}`;
+  ta.value=before+insertText+after;
+  const caret=before.length+insertText.length;
+  if(typeof ta.setSelectionRange==='function') ta.setSelectionRange(caret,caret);
+  ta.focus();
+  el.classList.add('used');
+  handleFieldValueChanged_();
+}
+
+function getCustomValues(){
+  const vals=[];
+  myFields.forEach((f,i)=>{
+    const el=document.querySelector(`.field-inp[data-idx="${i}"]`);
+    vals.push(el?el.value:'');
+  });
+  return vals;
+}
+
+// =====================================
+//  フォーカス
+// =====================================
+function setFocus(key){
+  focusField=key;
+  if(window._lastTl) renderTl(window._lastTl);
+}
+
+function getChipFieldLabel_(field){
+  return String(field?.label||field?.key||'').trim();
+}
+
+function getReviewFieldDef_(){
+  return myFields.find(field=>field&&field.type==='review') || null;
+}
+
+function getReviewHintLabels_(field){
+  return String(field?.hints||'')
+    .split(',')
+    .map(text=>String(text||'').trim())
+    .filter(Boolean);
+}
+
+function escapeRegex_(text){
+  return String(text||'').replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+}
+
+function renderInlineChipText_(text, labels){
+  const source=String(text||'');
+  const normalizedLabels=(labels||[]).map(label=>String(label||'').trim()).filter(Boolean);
+  if(!normalizedLabels.length) return esc(source).replace(/\n/g,'<br>');
+  const uniqueLabels=[...new Set(normalizedLabels)].sort((a,b)=>b.length-a.length);
+  const labelMap={};
+  uniqueLabels.forEach(label=>{ labelMap[label]=true; });
+  const pattern=new RegExp(`(${uniqueLabels.map(escapeRegex_).join('|')})`,'g');
+  return source
+    .split(pattern)
+    .map(part=>labelMap[part] ? `<span class="inline-chip">${esc(part)}</span>` : esc(part).replace(/\n/g,'<br>'))
+    .join('');
+}
+
+function extractReviewChipLabelsFromText_(text, field){
+  const source=String(text||'');
+  return getReviewHintLabels_(field).filter(label=>label && source.indexOf(label)>=0).slice(0,6);
+}
+
+function stripReviewHintLines_(text, field){
+  const labels=getReviewHintLabels_(field);
+  if(!labels.length) return String(text||'').trim();
+  let stripped=String(text||'');
+  labels.forEach(label=>{
+    if(!label) return;
+    stripped=stripped.split(label).join('');
+  });
+  return stripped.replace(/\n{3,}/g,'\n\n').trim();
+}
+
+function renderStudentEntryChips(){
+  const box=document.getElementById('studentReviewChips');
+  if(!box) return;
+  const values=getCustomValues();
+  const count=getReviewTextLength_(values);
+  const countHtml=count>0?`<span class="entry-chip count-chip">${count}もじ</span>`:'';
+  if(!countHtml){
+    box.style.display='none';
+    box.innerHTML='';
+    return;
+  }
+  box.style.display='flex';
+  box.innerHTML=countHtml;
+}
+
+function getReviewText_(values){
+  const reviewIdx=myFields.findIndex(field=>field&&field.type==='review');
+  if(reviewIdx<0) return '';
+  return String(values && values[reviewIdx] || '');
+}
+
+function getReviewTextLength_(values){
+  const reviewField=getReviewFieldDef_();
+  return stripReviewHintLines_(getReviewText_(values), reviewField).length;
+}
+
+function buildChipMarkup_(labels, count, cls){
+  const chipClass=cls||'history-chip';
+  const parts=[];
+  (labels||[]).forEach(label=>{
+    parts.push(`<span class="${chipClass}">${esc(label)}</span>`);
+  });
+  if(Number(count||0)>0){
+    parts.push(`<span class="${chipClass} count-chip">${Number(count)}もじ</span>`);
+  }
+  return parts.join('');
+}
+
+// =====================================
+//  自動保存
+// =====================================
+function resetAutoSave(){
+  clearInterval(autoTimer);
+  if(!submitted){
+    autoTimer=setInterval(()=>doSave(true),AUTO_SAVE_MS);
+  }
+}
+
+function doSave(silent){
+  if(submitted||submitInFlight) return;
+  google.script.run
+    .withSuccessHandler(()=>{if(!silent)showToast('✅ ほぞんしたよ！');})
+    .withFailureHandler(()=>{})
+    .autoSave(myUnitId,myPeriod,myNum,getCustomValues());
+}
+
+// =====================================
+//  提出
+// =====================================
+function doSubmit(){
+  if(studentMaintenanceMode){
+    showToast('いまはメンテナンス中だよ。少したってからもう一どひらいてね。');
+    return;
+  }
+  if(submitInFlight) return;
+  submitInFlight=true;
+  clearInterval(autoTimer);
+  const btn=document.getElementById('submitBtn');
+  btn.disabled=true;btn.textContent='✅ ていしゅつずみ';
+  const values=getCustomValues();
+  submitted=true;
+  lockSubmitted();
+  document.getElementById('submitNote').textContent='⏳ ていしゅつ中…そのまままっててね';
+
+  google.script.run
+    .withSuccessHandler(res=>{
+      if(!res.ok){
+        unlockAfterSubmitError_();
+        showToast('⚠️ '+res.error);
+        return;
+      }
+      submitInFlight=false;
+      lastKnownAiStatus=res.queuedAi?'pending':'';
+      if(res.queuedAi){
+        google.script.run
+          .withFailureHandler(()=>{})
+          .kickAiNow();
+        google.script.run
+          .withFailureHandler(()=>{})
+          .queueAiRescueTrigger();
+        showToast('🎉 ていしゅつできたよ！AIのコメントをまっててね✨');
+      } else {
+        showToast('🎉 ていしゅつできたよ！');
+        if(res.studentAiEnabled){
+          document.getElementById('submitNote').textContent='✅ ていしゅつずみ！AIコメントは先生のタイミングで返ってくるよ。';
+        }
+      }
+      syncStudentTabState_();
+      loadStudentPastRecords_();
+      refreshTimeline();
+    })
+    .withFailureHandler(e=>{
+      unlockAfterSubmitError_();
+      showToast('エラー:'+e);
+    })
+    .submitReview(myUnitId,myPeriod,myNum,values);
+}
+
+function lockSubmitted(){
+  document.querySelectorAll('.field-inp').forEach(el=>el.disabled=true);
+  document.querySelectorAll('.understanding-btn,.radio-btn').forEach(el=>el.style.pointerEvents='none');
+  document.querySelectorAll('.hint-tag').forEach(el=>el.style.pointerEvents='none');
+  document.getElementById('submitBtn').disabled=true;
+  document.getElementById('rewriteRow').style.display='block';
+  document.getElementById('submitNote').textContent=studentAiEnabled&&studentAiAutoSubmitEnabled
+    ? '✅ ていしゅつずみ！AIのコメントをしばらくまっててね😊'
+    : (studentAiEnabled
+      ? '✅ ていしゅつずみ！AIコメントは先生のタイミングで返ってくるよ。'
+      : '✅ ていしゅつずみ！');
+  syncStudentTabState_();
+}
+
+function doRewrite(evt){
+  if(evt){
+    if(typeof evt.preventDefault==='function') evt.preventDefault();
+    if(typeof evt.stopPropagation==='function') evt.stopPropagation();
+  }
+  submitted=false;
+  lastKnownAiStatus='';
+  lastAiCommentText='';
+  aiCommentAutoScrolled=false;
+  lastAiArrivalMetricKey='';
+  lastAiArrivalNoteText='';
+  lastAiArrivalBannerKey='';
+  hideAiArrivalBanner_();
+  document.querySelectorAll('.field-inp').forEach(el=>el.disabled=false);
+  document.querySelectorAll('.understanding-btn,.radio-btn').forEach(el=>el.style.pointerEvents='');
+  document.querySelectorAll('.hint-tag').forEach(el=>el.style.pointerEvents='');
+  document.getElementById('submitBtn').disabled=false;
+  document.getElementById('submitBtn').textContent='🚀 さいていしゅつ';
+  document.getElementById('rewriteRow').style.display='none';
+  document.getElementById('submitNote').textContent='✏️ かきなおしてもういちどていしゅつしてね！';
+  document.getElementById('studentHistoryList').innerHTML='';
+  document.getElementById('studentHistoryScopes').innerHTML='';
+  document.getElementById('studentHistoryScopes').style.display='none';
+  document.getElementById('studentHistoryTabs').innerHTML='';
+  document.getElementById('studentHistoryTabs').style.display='none';
+  studentHistoryGroups=[];
+  studentHistoryScopeKey='unit';
+  studentHistoryRows=[];
+  studentHistoryIndex=0;
+  syncStudentTabState_();
+  showStudentTab('current');
+  resetAutoSave();
+}
+
+function unlockAfterSubmitError_(){
+  submitInFlight=false;
+  submitted=false;
+  lastKnownAiStatus='';
+  lastAiArrivalMetricKey='';
+  lastAiArrivalNoteText='';
+  lastAiArrivalBannerKey='';
+  hideAiArrivalBanner_();
+  document.querySelectorAll('.field-inp').forEach(el=>el.disabled=false);
+  document.querySelectorAll('.understanding-btn,.radio-btn').forEach(el=>el.style.pointerEvents='');
+  document.querySelectorAll('.hint-tag').forEach(el=>el.style.pointerEvents='');
+  document.getElementById('submitBtn').disabled=false;
+  document.getElementById('submitBtn').textContent=getStudentShellLabel_('studentSubmitLabel', '🚀 ていしゅつ');
+  document.getElementById('rewriteRow').style.display='none';
+  document.getElementById('submitNote').textContent='';
+  document.getElementById('studentHistoryList').innerHTML='';
+  document.getElementById('studentHistoryScopes').innerHTML='';
+  document.getElementById('studentHistoryScopes').style.display='none';
+  document.getElementById('studentHistoryTabs').innerHTML='';
+  document.getElementById('studentHistoryTabs').style.display='none';
+  studentHistoryGroups=[];
+  studentHistoryScopeKey='unit';
+  studentHistoryRows=[];
+  studentHistoryIndex=0;
+  syncStudentTabState_();
+  showStudentTab('current');
+  resetAutoSave();
+}
+
+// =====================================
+//  タイムライン
+// =====================================
+function refreshTimeline(){
+  if(!myUnitId||!myPeriod) return;
+  if(pollBusy) return;
+  pollBusy=true;
+  const cacheKey=[myUnitId,myPeriod,myNum].join('_');
+  google.script.run
+    .withSuccessHandler(payload=>{
+      writeStudentCache_('timeline',cacheKey,payload);
+      const me=applyTimelinePayload(payload);
+      pollBusy=false;
+      scheduleNextPoll(resolvePollDelay(me));
+    })
+    .withFailureHandler(()=>{
+      pollBusy=false;
+      scheduleNextPoll(POLL_IDLE_MS);
+    })
+    .getTimeline(myUnitId,myPeriod);
+}
+
+function applyTimelinePayload(payload){
+  const rows=Array.isArray(payload)?payload:(payload?.rows||[]);
+  lastTimelineServerNow=String(payload?.serverNow||'');
+  teacherTimelineFieldKey = payload?.teacherTimelineFieldKey || teacherTimelineFieldKey || '';
+  if(typeof payload?.studentAiEnabled!=='undefined') studentAiEnabled=Boolean(payload.studentAiEnabled);
+  if(typeof payload?.studentAiAutoSubmitEnabled!=='undefined') studentAiAutoSubmitEnabled=Boolean(payload.studentAiAutoSubmitEnabled);
+  applyStudentShellState_(payload?.shell||{});
+  window._lastTl=rows;
+  renderTl(rows);
+  const me=rows.find(r=>r.num===myNum);
+  lastKnownAiStatus=String(me?.aiStatus||lastKnownAiStatus||'');
+  const meAiDone=String(me?.aiStatus||'')==='done';
+  const meAiError=String(me?.aiStatus||'')==='error';
+  const meAiWaiting=studentAiEnabled&&['pending','processing'].includes(String(me?.aiStatus||''));
+  if(studentAiEnabled&&me&&meAiDone&&me.comment){
+    const nextComment=String(me.comment||'').trim();
+    const hadComment=Boolean(lastAiCommentText);
+    showAIBox(me.comment,me.rank,me.medal,me.medalColor);
+    updateAiArrivalNote_(me);
+    if(submitted && nextComment && !hadComment && !aiCommentAutoScrolled){
+      aiCommentAutoScrolled=true;
+      showAiArrivalBanner_(me);
+      highlightAiBox_();
+      scrollToAiCommentBox_();
+    }
+    lastAiCommentText=nextComment;
+  } else if(studentAiEnabled&&me&&meAiError){
+    showAIBox(me.comment||'AIのコメント作成に失敗しました。先生に伝えてね。','','','');
+    lastAiCommentText='';
+  } else if(me&&meAiWaiting){
+    showAIBox('AIコメントをつくっています。少しまってね。','','','');
+    lastAiCommentText='';
+  } else {
+    document.getElementById('aiBox').style.display='none';
+  }
+  syncStudentTabState_();
+  return me;
+}
+
+function syncStudentTabState_(){
+  const historyBtn=document.getElementById('tabHistoryBtn');
+  if(historyBtn) historyBtn.disabled=!submitted;
+  if(!submitted && activeStudentTab==='history'){
+    showStudentTab('current');
+  }
+}
+
+function showStudentTab(tabName){
+  const target=(tabName==='history' && submitted)?'history':'current';
+  activeStudentTab=target;
+  const currentPanel=document.getElementById('currentTabPanel');
+  const historyPanel=document.getElementById('historyTabPanel');
+  const currentBtn=document.getElementById('tabCurrentBtn');
+  const historyBtn=document.getElementById('tabHistoryBtn');
+  if(currentPanel) currentPanel.classList.toggle('active',target==='current');
+  if(historyPanel) historyPanel.classList.toggle('active',target==='history');
+  if(currentBtn) currentBtn.classList.toggle('active',target==='current');
+  if(historyBtn) historyBtn.classList.toggle('active',target==='history');
+}
+
+function loadStudentPastRecords_(){
+  if(!submitted||!myNum) return;
+  const list=document.getElementById('studentHistoryList');
+  if(list) list.innerHTML='<div class="history-empty"><span class="spinner"></span> よみこみ中…</div>';
+  const cacheKey=[myNum,myUnitId].join('_');
+  const cached=readStudentCache_('history',cacheKey);
+  if(cached) renderStudentPastRecords_(cached);
+  google.script.run
+    .withSuccessHandler(res=>{
+      writeStudentCache_('history',cacheKey,res||{groups:[]});
+      renderStudentPastRecords_(res||{groups:[]});
+    })
+    .withFailureHandler(()=>{
+      renderStudentPastRecords_({groups:[]});
+    })
+    .getStudentPastRecords(myNum,myUnitId,6);
+}
+
+function renderStudentPastRecords_(payload){
+  studentHistoryGroups=Array.isArray(payload?.groups)?payload.groups:[];
+  studentHistoryScopeKey=studentHistoryGroups[0]?.key||'unit';
+  const currentGroup=getActiveStudentHistoryGroup_();
+  studentHistoryRows=Array.isArray(currentGroup?.rows)?currentGroup.rows:[];
+  studentHistoryIndex=0;
+  renderStudentHistoryScopes_();
+  renderStudentHistoryTabs_();
+  renderStudentHistoryDetail_();
+}
+
+function getActiveStudentHistoryGroup_(){
+  return studentHistoryGroups.find(group=>String(group?.key||'')===String(studentHistoryScopeKey||'')) || studentHistoryGroups[0] || null;
+}
+
+function renderStudentHistoryScopes_(){
+  const box=document.getElementById('studentHistoryScopes');
+  if(!box) return;
+  if(!studentHistoryGroups.length){
+    box.style.display='none';
+    box.innerHTML='';
+    return;
+  }
+  box.style.display='flex';
+  box.innerHTML=studentHistoryGroups.map((group,idx)=>
+    `<button type="button" class="history-tab ${String(group?.key||'')===String(studentHistoryScopeKey||'')?'active':''}" onclick="selectStudentHistoryScope(${idx})">${esc(group?.label||'これまで')}</button>`
+  ).join('');
+}
+
+function selectStudentHistoryScope(index){
+  const selectedGroup=studentHistoryGroups[Math.max(0,Math.min(studentHistoryGroups.length-1,Number(index)||0))] || studentHistoryGroups[0] || null;
+  studentHistoryScopeKey=String(selectedGroup?.key||'');
+  const activeGroup=getActiveStudentHistoryGroup_();
+  studentHistoryRows=Array.isArray(activeGroup?.rows)?activeGroup.rows:[];
+  studentHistoryIndex=0;
+  renderStudentHistoryScopes_();
+  renderStudentHistoryTabs_();
+  renderStudentHistoryDetail_();
+}
+
+function renderStudentHistoryTabs_(){
+  const box=document.getElementById('studentHistoryTabs');
+  if(!box) return;
+  if(!studentHistoryRows.length){
+    box.style.display='none';
+    box.innerHTML='';
+    return;
+  }
+  box.style.display='flex';
+  box.innerHTML=studentHistoryRows.map((row,idx)=>{
+    const parts=[row.unitName||row.subject||'', row.period?`${row.period}時間目`:''].filter(Boolean);
+    const label=parts.join(' ');
+    return `<button type="button" class="history-tab ${idx===studentHistoryIndex?'active':''}" onclick="selectStudentHistoryTab(${idx})">${esc(label||`記録${idx+1}`)}</button>`;
+  }).join('');
+}
+
+function selectStudentHistoryTab(index){
+  studentHistoryIndex=Math.max(0,Math.min(studentHistoryRows.length-1,Number(index)||0));
+  renderStudentHistoryTabs_();
+  renderStudentHistoryDetail_();
+}
+
+function renderStudentHistoryDetail_(){
+  const list=document.getElementById('studentHistoryList');
+  if(!list) return;
+  if(!studentHistoryRows.length){
+    list.innerHTML='<div class="history-empty">まだためているきろくは少ないよ。これからふえていくよ。</div>';
+    return;
+  }
+  const row=studentHistoryRows[studentHistoryIndex]||studentHistoryRows[0];
+  const meta=[row.date, row.subject&&row.unitName?`【${row.subject}】${row.unitName}`:(row.subject||row.unitName||''), row.period?`${row.period}時間目`:'']
+    .filter(Boolean).join(' / ');
+  const countChip=Number(row.reviewLength||0)>0?`<div class="history-chip-row"><span class="history-chip count-chip">${Number(row.reviewLength||0)}もじ</span></div>`:'';
+  list.innerHTML=`<div class="history-item">
+    <div class="history-meta">${esc(meta)}</div>
+    ${countChip}
+    <div class="history-review">${renderInlineChipText_(truncateText_(normalizeDisplayText_(row.review||''),220), row.chips||[])}</div>
+  </div>`;
+}
+
+function updateAiArrivalNote_(row){
+  lastAiArrivalMetricKey=[
+    String(row?.aiProcessedAt||''),
+    String(row?.responseUpdatedAt||''),
+    String(row?.comment||'').trim()
+  ].join('|');
+  lastAiArrivalNoteText='';
+}
+
+function formatDurationLabel_(ms){
+  const totalSec=Math.max(0, Math.round(Number(ms||0)/1000));
+  if(totalSec<60) return `${totalSec}秒`;
+  const min=Math.floor(totalSec/60);
+  const sec=totalSec%60;
+  return `${min}分${sec}秒`;
+}
+
+function resolvePollDelay(me){
+  if(!studentAiEnabled) return POLL_IDLE_MS;
+  if(!me) return POLL_IDLE_MS;
+  const aiStatus=String(me.aiStatus||'');
+  const aiDone=aiStatus==='done';
+  const aiError=aiStatus==='error';
+  if(me.submitted && (aiStatus==='pending' || aiStatus==='processing')) return POLL_WAITING_AI_MS;
+  if(me.submitted && aiDone && me.comment) return POLL_DONE_MS;
+  if(me.submitted && aiError) return POLL_DONE_MS;
+  return POLL_IDLE_MS;
+}
+
+function scheduleNextPoll(ms){
+  stopPolling();
+  pollTimer=setTimeout(refreshTimeline, ms);
+}
+
+function stopPolling(){
+  if(pollTimer){
+    clearTimeout(pollTimer);
+    pollTimer=null;
+  }
+}
+
+function changeStudentNumber_(){
+  stopPolling();
+  clearInterval(autoTimer);
+  initBusy=false;
+  pollBusy=false;
+  myNum=null;
+  myUnitId=null;
+  myPeriod=null;
+  submitted=false;
+  document.querySelectorAll('.num-btn').forEach(btn=>btn.disabled=false);
+  forgetRememberedStudent_();
+  document.getElementById('changeStudentBtn').style.display='none';
+  showScreen('screen-select');
+}
+
+function renderTl(rows){
+  const list=document.getElementById('tlList');
+  const reviewField=getReviewFieldDef_();
+  const reviewIdx=myFields.findIndex(field=>field&&field.type==='review');
+
+  // フォーカス中フィールドのインデックスを取得
+  const focusIdx=myFields.findIndex(f=>f.key===focusField);
+  const visibleIdxs=getTimelineVisibleIndexes(focusIdx);
+
+  const posted=rows
+    .filter(r=>visibleIdxs.some(idx=>r.customs[idx]))
+    .sort(compareTimelineRows_);
+
+  if(!posted.length){
+    list.innerHTML='<div class="tl-empty">まだだれもかいていないよ✨</div>';
+    return;
+  }
+
+  list.innerHTML=posted.map(r=>{
+    const fieldEntries=myFields
+      .map((f,i)=>({
+        idx:i,
+        label:f.label||`項目${i+1}`,
+        value:r.customs[i]||'',
+      }))
+      .filter(item=>visibleIdxs.includes(item.idx) && item.value);
+    const sortedEntries=fieldEntries.sort((a,b)=>{
+      if(a.idx===focusIdx) return -1;
+      if(b.idx===focusIdx) return 1;
+      return a.idx-b.idx;
+    });
+    const reviewText=reviewIdx>=0 ? String(r?.customs?.[reviewIdx] || '') : '';
+    const reviewCount=getRowReviewLength_(r, reviewField, reviewIdx);
+    const reviewFieldIdx=sortedEntries.findIndex(item=>isReviewField(myFields[item.idx]));
+    const medalHtml=renderMedal(r.medal,r.medalColor);
+    return `
+    <div class="tl-card ${r.num===myNum?'is-me':''} ${r.submitted?'submitted':''}">
+      <div class="tl-top">
+        <div class="tl-num">${r.num}</div>
+        <span class="tl-name">${esc(r.name)||r.num+'ばん'} さん</span>
+        ${r.rank?`<span class="tl-rank">${esc(r.rank)}</span>`:''}
+        <span class="tl-medal-wrap">${medalHtml}</span>
+      </div>
+      <div class="tl-fields">${sortedEntries.map(item=>`
+        <div class="tl-field ${item.idx===focusIdx?'is-focus':''}">
+          <div class="tl-field-label">${esc(item.label)}${item.idx===sortedEntries[reviewFieldIdx]?.idx && reviewCount>0 ? `<span class="tl-chip count-chip">${reviewCount}もじ</span>` : ''}</div>
+          <div class="tl-text">${item.idx===sortedEntries[reviewFieldIdx]?.idx ? renderInlineChipText_(normalizeDisplayText_(item.value), extractReviewChipLabelsFromText_(reviewText, reviewField)) : esc(normalizeDisplayText_(item.value)).replace(/\n/g,'<br>')}</div>
+        </div>
+      `).join('')}</div>
+    </div>`;
+  }).join('');
+}
+
+function getRowReviewLength_(row, reviewField, reviewIdx){
+  if(reviewIdx<0) return 0;
+  return stripReviewHintLines_(String(row?.customs?.[reviewIdx] || ''), reviewField).length;
+}
+
+function getTimelineMedalScore_(medal){
+  const value=String(medal||'').trim();
+  if(!value) return 999;
+  if(value==='🥇') return 1;
+  if(value==='🥈') return 2;
+  if(value==='🥉') return 3;
+  const numeric=parseInt(value.replace('th',''),10);
+  return Number.isFinite(numeric) ? numeric + 3 : 999;
+}
+
+function getTimelineTextVolume_(row){
+  return (row.customs||[]).reduce((sum,value)=>sum+String(value||'').trim().length,0);
+}
+
+function compareTimelineRows_(a,b){
+  const submittedDiff=Number(Boolean(b&&b.submitted))-Number(Boolean(a&&a.submitted));
+  if(submittedDiff) return submittedDiff;
+  const scoreDiff=(Number(b&&b.score||0)-Number(a&&a.score||0));
+  if(scoreDiff) return scoreDiff;
+  const medalDiff=getTimelineMedalScore_(a&&a.medal)-getTimelineMedalScore_(b&&b.medal);
+  if(medalDiff) return medalDiff;
+  const textDiff=getTimelineTextVolume_(b)-getTimelineTextVolume_(a);
+  if(textDiff) return textDiff;
+  return Number(a&&a.num||0)-Number(b&&b.num||0);
+}
+
+function getTimelineVisibleIndexes(focusIdx){
+  const forcedIdx=teacherTimelineFieldKey?myFields.findIndex(f=>String(f.key||'')===String(teacherTimelineFieldKey)): -1;
+  if(forcedIdx>=0){
+    const forcedField=myFields[forcedIdx]||{};
+    const pairMode=isReviewField(forcedField)||isUnderstandingField(forcedField);
+    if(!pairMode) return [forcedIdx];
+    const forcedIdxs=myFields
+      .map((field,idx)=>({field,idx}))
+      .filter(({field})=>isReviewField(field)||isUnderstandingField(field))
+      .map(({idx})=>idx);
+    return forcedIdxs.length?forcedIdxs:[forcedIdx];
+  }
+  if(focusIdx<0){
+    return myFields.map((_,idx)=>idx);
+  }
+  const focusFieldDef=myFields[focusIdx]||{};
+  const pairMode=isReviewField(focusFieldDef)||isUnderstandingField(focusFieldDef);
+  if(!pairMode) return [focusIdx];
+  const idxs=myFields
+    .map((field,idx)=>({field,idx}))
+    .filter(({field})=>isReviewField(field)||isUnderstandingField(field))
+    .map(({idx})=>idx);
+  return idxs.length?idxs:[focusIdx];
+}
+
+function isReviewField(field){
+  return field?.type==='review';
+}
+
+function isUnderstandingField(field){
+  const text=`${field?.key||''} ${field?.label||''}`.toLowerCase();
+  return /理解|りかい|わか|自己評価|じこひょうか|達成|たっせい|self|score|check/.test(text);
+}
+
+function renderMedal(medal,color){
+  if(!medal) return '';
+  if(['🥇','🥈','🥉'].includes(medal)) return medal;
+  const num=medal.replace('th','');
+  return `<span class="medal-num" style="background:${color||'#999'}">${num}</span>`;
+}
+
+// =====================================
+//  AIコメント
+// =====================================
+function showAIBox(comment,rank,medal,medalColor){
+  document.getElementById('aiComment').textContent=comment||'';
+  document.getElementById('myRank').textContent=rank?'ランク：'+rank:'';
+  const mb=document.getElementById('myMedal');
+  if(['🥇','🥈','🥉'].includes(medal)){
+    mb.textContent=medal;
+  } else if(medal){
+    const num=medal.replace('th','');
+    mb.innerHTML=`<span class="medal-num" style="background:${medalColor||'#999'};font-size:20px;width:36px;height:36px;">${num}</span>`;
+  } else { mb.textContent=''; }
+  document.getElementById('aiBox').style.display='block';
+}
+
+function setStudentCommentTitle_(hasAiComment){
+  const el=document.getElementById('studentAiCommentTitle');
+  if(!el) return;
+  el.textContent=hasAiComment ? '🤖 AIせんせいからのコメント' : '💬 せんせいからのコメント';
+}
+
+function scrollToAiCommentBox_(){
+  const box=document.getElementById('aiBox');
+  if(!box) return;
+  setTimeout(()=>{
+    const pane=box.closest('.pane-form');
+    if(pane&&typeof pane.scrollTo==='function'){
+      pane.scrollTo({top:Math.max(0,box.offsetTop-12),behavior:'smooth'});
+      return;
+    }
+    box.scrollIntoView({behavior:'smooth',block:'start'});
+  },180);
+}
+
+function showAiArrivalBanner_(row){
+  const banner=document.getElementById('aiArrivalBanner');
+  if(!banner) return;
+  const key=[String(row?.aiProcessedAt||''),String(row?.comment||'').trim()].join('|');
+  if(key && key===lastAiArrivalBannerKey) return;
+  lastAiArrivalBannerKey=key;
+  if(aiArrivalBannerTimer){
+    clearTimeout(aiArrivalBannerTimer);
+    aiArrivalBannerTimer=null;
+  }
+  banner.classList.add('show');
+  aiArrivalBannerTimer=setTimeout(()=>hideAiArrivalBanner_(),5000);
+}
+
+function hideAiArrivalBanner_(){
+  const banner=document.getElementById('aiArrivalBanner');
+  if(!banner) return;
+  banner.classList.remove('show');
+  if(aiArrivalBannerTimer){
+    clearTimeout(aiArrivalBannerTimer);
+    aiArrivalBannerTimer=null;
+  }
+}
+
+function handleAiArrivalBannerClick(){
+  hideAiArrivalBanner_();
+  highlightAiBox_();
+  scrollToAiCommentBox_();
+}
+
+function highlightAiBox_(){
+  const box=document.getElementById('aiBox');
+  if(!box) return;
+  box.classList.remove('arrival-highlight');
+  void box.offsetWidth;
+  box.classList.add('arrival-highlight');
+  setTimeout(()=>box.classList.remove('arrival-highlight'),1900);
+}
+
+// =====================================
+//  画面切替 / Toast / esc
+// =====================================
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(s=>{s.classList.remove('active');s.style.display='none';});
+  const el=document.getElementById(id);
+  el.style.display='flex';el.classList.add('active');
+}
+function showToast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg;t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2600);
+}
+function esc(s){
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function truncateText_(text, maxLen){
+  const value=String(text||'').trim();
+  if(!maxLen||value.length<=maxLen) return value;
+  return value.slice(0,Math.max(0,maxLen-1))+'…';
+}
+
+function normalizeDisplayText_(text){
+  return String(text||'').replace(/^[・\-●]\s*/gm,'').trim();
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+    <div class="card">
+      <h2>🧒 児童別ポートフォリオ・AI所見</h2>
+      <div class="agg-toolbar">
+        <select id="pfStudent" onchange="loadPortfolioData()"><option value="">児童を選択…</option></select>
+        <select id="pfUnit" onchange="loadPortfolioData()"><option value="">全単元</option></select>
+        <button class="btn-ai" onclick="generatePortfolioSummary()">🤖 AI所見下書きを生成</button>
+      </div>
+      <div class="debug-note">AIには児童名を送らず出席番号だけを送信します。表示名は名簿とローカル照合して付けています。</div>
+      <div class="debug-note" id="portfolioDebug">児童を選ぶと取得件数を表示します。</div>
+      <div class="ai-report" id="portfolioReport"></div>
+      <div class="portfolio-list">
+        <div class="portfolio-table-wrap">
+          <table class="tbl">
+            <thead><tr><th>教科</th><th>単元</th><th>時間</th><th>日付</th><th>ふりかえり</th><th>ランク</th></tr></thead>
+            <tbody id="portfolioBody"><tr><td colspan="6" style="text-align:center;padding:14px;color:#999;">児童を選択してください</td></tr></tbody>
+          </table>
+        </div>
+        <div class="portfolio-cards" id="portfolioCards">
+          <div class="portfolio-empty">児童を選択してください</div>
+        </div>
+      </div>
+    </div>

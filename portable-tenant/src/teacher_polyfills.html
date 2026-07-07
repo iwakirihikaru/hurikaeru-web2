@@ -1,0 +1,132 @@
+<script>
+(function(){
+  if (!Array.prototype.find) {
+    Array.prototype.find = function(predicate, thisArg) {
+      if (this == null) throw new TypeError('Array.prototype.find called on null or undefined');
+      if (typeof predicate !== 'function') throw new TypeError('predicate must be a function');
+      var list = Object(this);
+      var length = list.length >>> 0;
+      for (var i = 0; i < length; i += 1) {
+        var value = list[i];
+        if (predicate.call(thisArg, value, i, list)) return value;
+      }
+      return void 0;
+    };
+  }
+
+  if (!Array.prototype.includes) {
+    Array.prototype.includes = function(search, start) {
+      var list = Object(this);
+      var length = list.length >>> 0;
+      if (!length) return false;
+      var index = start | 0;
+      if (index < 0) index = Math.max(length + index, 0);
+      for (; index < length; index += 1) {
+        if (list[index] === search || (search !== search && list[index] !== list[index])) return true;
+      }
+      return false;
+    };
+  }
+
+  if (!String.prototype.includes) {
+    String.prototype.includes = function(search, start) {
+      return this.indexOf(search, start || 0) !== -1;
+    };
+  }
+
+  if (!Array.from) {
+    Array.from = function(source) {
+      if (!source) return [];
+      var out = [];
+      var length = typeof source.length === 'number' ? source.length : 0;
+      for (var i = 0; i < length; i += 1) out.push(source[i]);
+      return out;
+    };
+  }
+
+  if (!Object.assign) {
+    Object.assign = function(target) {
+      if (target == null) throw new TypeError('Cannot convert undefined or null to object');
+      var to = Object(target);
+      for (var i = 1; i < arguments.length; i += 1) {
+        var source = arguments[i];
+        if (source == null) continue;
+        for (var key in source) {
+          if (Object.prototype.hasOwnProperty.call(source, key)) {
+            to[key] = source[key];
+          }
+        }
+      }
+      return to;
+    };
+  }
+
+  if (typeof window.requestAnimationFrame !== 'function') {
+    window.requestAnimationFrame = function(callback) {
+      return window.setTimeout(function(){ callback(Date.now ? Date.now() : new Date().getTime()); }, 16);
+    };
+  }
+
+  if (typeof window.requestIdleCallback !== 'function') {
+    window.requestIdleCallback = function(callback) {
+      return window.setTimeout(function(){
+        callback({
+          didTimeout: false,
+          timeRemaining: function(){ return 0; }
+        });
+      }, 1);
+    };
+  }
+
+  if (typeof window.Map !== 'function') {
+    window.Map = function(iterable) {
+      this._keys = [];
+      this._values = [];
+      if (iterable && typeof iterable.length === 'number') {
+        for (var i = 0; i < iterable.length; i += 1) {
+          this.set(iterable[i][0], iterable[i][1]);
+        }
+      }
+    };
+    window.Map.prototype.set = function(key, value) {
+      var index = this._keys.indexOf(key);
+      if (index === -1) {
+        this._keys.push(key);
+        this._values.push(value);
+      } else {
+        this._values[index] = value;
+      }
+      return this;
+    };
+    window.Map.prototype.get = function(key) {
+      var index = this._keys.indexOf(key);
+      return index === -1 ? void 0 : this._values[index];
+    };
+    window.Map.prototype.has = function(key) {
+      return this._keys.indexOf(key) !== -1;
+    };
+    window.Map.prototype.values = function() {
+      return this._values.slice();
+    };
+  }
+
+  if (typeof window.Set !== 'function') {
+    window.Set = function(iterable) {
+      this._values = [];
+      if (iterable && typeof iterable.length === 'number') {
+        for (var i = 0; i < iterable.length; i += 1) this.add(iterable[i]);
+      }
+    };
+    window.Set.prototype.add = function(value) {
+      if (this._values.indexOf(value) === -1) this._values.push(value);
+      return this;
+    };
+    window.Set.prototype.has = function(value) {
+      return this._values.indexOf(value) !== -1;
+    };
+    window.Set.prototype.values = function() {
+      return this._values.slice();
+    };
+  }
+})();
+</script>

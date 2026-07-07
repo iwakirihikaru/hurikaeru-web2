@@ -1,0 +1,1324 @@
+<script>
+function loadPortfolioTab(){
+  const body=document.getElementById('portfolioBody');
+  body.innerHTML='<tr><td colspan="6" style="text-align:center;padding:14px;"><span class="spinner"></span></td></tr>';
+  syncTeacherAiUi_();
+  ensurePromptPreload();
+  google.script.run
+    .withSuccessHandler(d=>{
+      allUnits=d.units||[];
+      rosterEntries=(d.roster||[]).filter(row=>row.active!==false);
+      teacherBuild=d.build||teacherBuild||'';
+      renderPortfolioSelectors();
+      loadPortfolioData();
+    })
+    .withFailureHandler(err=>{
+      body.innerHTML=`<tr><td colspan="6" style="text-align:center;padding:14px;color:#C62828;">${esc((err && err.message)||err||'ポートフォリオの読み込みに失敗しました')}</td></tr>`;
+    })
+    .teacherInit();
+}
+
+function renderPortfolioSelectors(){
+  const studentSel=document.getElementById('pfStudent');
+  const studentCur=studentSel.value;
+  studentSel.innerHTML='<option value="">児童を選択…</option>'+
+    rosterEntries.map(row=>`<option value="${row.number}">${row.number} ${esc(row.name||'')}</option>`).join('');
+  if(studentCur) studentSel.value=studentCur;
+
+  const unitSel=document.getElementById('pfUnit');
+  const unitCur=unitSel.value;
+  unitSel.innerHTML='<option value="">全単元</option>'+
+    sortUnitsByLatestActivity(allUnits).map(u=>`<option value="${u.id}">${esc(u.subject)}：${esc(u.name)}</option>`).join('');
+  if(unitCur) unitSel.value=unitCur;
+}
+
+function loadPortfolioData(){
+  const studentNumber=document.getElementById('pfStudent').value;
+  const unitId=document.getElementById('pfUnit').value;
+  const body=document.getElementById('portfolioBody');
+  const debugBox=document.getElementById('portfolioDebug');
+  if(debugBox && !String(debugBox.dataset.baseText||'').trim()){
+    debugBox.dataset.baseText='児童を選ぶと取得件数を表示します。';
+  }
+  document.getElementById('portfolioReport').style.display='none';
+  if(!studentNumber){
+    body.innerHTML='<tr><td colspan="6" style="text-align:center;padding:14px;color:#999;">児童を選択してください</td></tr>';
+    debugBox.textContent='児童を選ぶと取得件数を表示します。';
+    return;
+  }
+  body.innerHTML='<tr><td colspan="6" style="text-align:center;padding:14px;"><span class="spinner"></span></td></tr>';
+  debugBox.textContent='取得状況を確認中…';
+  google.script.run
+    .withSuccessHandler(raw=>{
+      let res=null;
+      try{
+        res=raw?JSON.parse(raw):null;
+      }catch(e){
+        debugBox.textContent=`JSON parse error: ${e.message||e} / raw=${String(raw).slice(0,280)}`;
+        portfolioRows=[];
+        renderPortfolioRows();
+        return;
+      }
+      if(res && res.ok===false && res.error){
+        debugBox.textContent=`portfolio error: ${res.error} / build=${res.build||teacherBuild||'unknown'}`;
+        portfolioRows=[];
+        renderPortfolioRows();
+        return;
+      }
+      portfolioRows=res && res.rows || [];
+      if(res && res.debug){
+        res.debug.build=res.build||'';
+        renderPortfolioDebug(res.debug);
+      }else{
+        debugBox.textContent=formatPortfolioDebugFallback(res);
+      }
+      renderPortfolioRows();
+    })
+    .withFailureHandler(err=>{
+      debugBox.textContent='デバッグ情報の取得に失敗しました。';
+      body.innerHTML=`<tr><td colspan="6" style="text-align:center;padding:14px;color:#C62828;">${esc((err && err.message)||err||'ポートフォリオデータの読み込みに失敗しました')}</td></tr>`;
+    })
+    .getStudentPortfolioDataJson(studentNumber, unitId||null);
+}
+
+function renderPortfolioDebug(debug){
+  const box=document.getElementById('portfolioDebug');
+  if(!debug){
+    box.innerHTML=`<div class="debug-summary">取得件数を表示できませんでした。</div><details><summary>詳細を見る</summary><code>teacherInit build=${esc(teacherBuild||'unknown')}</code></details>`;
+    return;
+  }
+  const sample=(debug.sampleMatchedRows||[])
+    .map((row,idx)=>`${idx+1}. ${row.subject}/${row.unitName}/${row.period}時間目\n   ${row.date}\n   ${row.preview}`)
+    .join('\n\n');
+  const summary=`記録 ${debug.responseCount||0}件 / 児童一致 ${debug.matchedStudentCount||0}件 / 単元一致 ${debug.matchedUnitCount||0}件`;
+  const buildLine=`teacher=${teacherBuild||'unknown'} / portfolio=${debug.build||'unknown'}`;
+  box.innerHTML=
+    `<div class="debug-summary">${esc(summary)}</div><details><summary>詳細を見る</summary><code>${esc(buildLine)}${sample?`\n\n${sample}`:''}</code></details>`;
+}
+
+function formatPortfolioDebugFallback(res){
+  if(!res) return `空の応答です。teacherInit build=${teacherBuild||'unknown'}`;
+  const keys=Object.keys(res||{});
+  const preview=JSON.stringify(res).slice(0,280);
+  return `debug がありません。teacherInit build=${teacherBuild||'unknown'} / response keys=${keys.join(',')||'(none)'} / response=${preview}`;
+}
+
+function renderPortfolioRows(){
+  const body=document.getElementById('portfolioBody');
+  const cards=document.getElementById('portfolioCards');
+  if(!portfolioRows.length){
+    body.innerHTML='<tr><td colspan="6" style="text-align:center;padding:14px;color:#999;">データがありません</td></tr>';
+    cards.innerHTML='<div class="portfolio-empty">データがありません</div>';
+    return;
+  }
+  body.innerHTML=portfolioRows.map(row=>`
+    <tr>
+      <td>${esc(row.subject)}</td>
+      <td>${esc(row.unitName)}</td>
+      <td>${row.period}時間目</td>
+      <td>${esc(formatDisplayDate(row.date))}</td>
+      <td style="max-width:320px;white-space:normal;word-break:break-word;">${renderTeacherReviewText_(row.review,row.fields||[])}</td>
+      <td>${row.rank?`<span class="rank-chip r-${row.rank.replace('+','p')}">${row.rank}</span>`:'-'}</td>
+    </tr>
+  `).join('');
+  cards.innerHTML=portfolioRows.map(row=>`
+    <div class="portfolio-card">
+      <div class="portfolio-card-top">
+        <div>
+          <div class="portfolio-card-title">${esc(row.subject)} / ${esc(row.unitName)}</div>
+          <div class="portfolio-card-meta">${row.period}時間目 ・ ${esc(formatDisplayDate(row.date))}</div>
+        </div>
+        <div>${row.rank?`<span class="rank-chip r-${row.rank.replace('+','p')}">${row.rank}</span>`:'-'}</div>
+      </div>
+      <div class="portfolio-card-block">
+        <div class="portfolio-card-label">ふりかえり</div>
+        <div class="portfolio-card-text">${renderTeacherReviewText_(row.review,row.fields||[])}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function generatePortfolioSummary(){
+  if(!isTeacherAiReadyOnClient_()){
+    showToast('AI未設定です。プロンプトタブでAPIキーを保存してください',{tone:'error'});
+    return;
+  }
+  const studentNumber=document.getElementById('pfStudent').value;
+  const unitId=document.getElementById('pfUnit').value;
+  if(!studentNumber){showToast('児童を選択してください');return;}
+  const box=document.getElementById('portfolioReport');
+  box.style.display='block';
+  box.classList.add('ready');
+  box.textContent='🤖 所見下書きを生成中…';
+  google.script.run
+    .withSuccessHandler(res=>{
+      if(!res.ok){
+        box.textContent='エラー: '+res.error;
+        showToast('AI所見下書きの生成に失敗しました',{tone:'error'});
+        return;
+      }
+      box.textContent=`【${res.studentName}】所見下書き\n\n${res.summary}`;
+      showToast('AI所見下書きを生成しました',{tone:'success'});
+    })
+    .withFailureHandler(err=>{
+      box.textContent='エラー: '+((err && err.message)||err||'所見生成に失敗しました');
+      showToast('AI所見下書きの生成に失敗しました',{tone:'error'});
+    })
+    .generateStudentPortfolioSummary(studentNumber, unitId||null);
+}
+
+// =====================================
+//  単元集約
+// =====================================
+function loadAgg(){
+  syncTeacherAiUi_();
+  ensurePromptPreload();
+  google.script.run.withSuccessHandler(d=>{
+    allUnits=d.units||[];
+    rosterEntries=(d.roster||[]).filter(row=>row.active!==false);
+    populateUnitSelects();
+    populateGradingSelects();
+  }).teacherInit();
+  google.script.run
+    .withSuccessHandler(raw=>{
+      let res=null;
+      try{
+        res=raw?JSON.parse(raw):null;
+      }catch(e){
+        showToast('単元記録の読み込みに失敗しました',{tone:'error'});
+        allAggData=[];
+        filterAgg();
+        return;
+      }
+      if(res && res.ok===false && res.error){
+        showToast(`単元記録の読み込みに失敗しました: ${res.error}`,{tone:'error',duration:4200});
+        allAggData=[];
+        filterAgg();
+        return;
+      }
+      allAggData=res && res.rows || [];
+      filterAgg();
+      filterGrading();
+    })
+    .withFailureHandler(err=>{
+      showToast(`単元記録の読み込みに失敗しました: ${(err && err.message)||err||'unknown'}`,{tone:'error',duration:4200});
+      const gradeDebug=document.getElementById('gradeDebug');
+      if(gradeDebug) gradeDebug.textContent=`評定データの読み込みに失敗しました: ${(err && err.message)||err||'unknown'}`;
+      allAggData=[];
+      filterAgg();
+      filterGrading();
+    })
+    .getAggregateDataJson(null);
+}
+function filterAgg(){
+  populateAggUnitSelect();
+  const subject=document.getElementById('aggSubject').value;
+  const unitId=document.getElementById('aggUnit').value;
+  const period=document.getElementById('aggPeriod').value;
+  const preset=(document.getElementById('aggPreset')||{}).value||'standard';
+  const showComment=Boolean((document.getElementById('aggShowComment')||{}).checked);
+
+  const rows=allAggData.filter(r=>{
+    if(subject&&String(r.subject||'')!==String(subject)) return false;
+    if(unitId&&String(r.unitId||'')!==String(unitId)) return false;
+    if(period&&r.period!=period) return false;
+    return true;
+  }).sort((a,b)=>{
+    const numDiff=(Number(a.num)||0)-(Number(b.num)||0);
+    if(numDiff!==0) return numDiff;
+    return String(a.name||'').localeCompare(String(b.name||''),'ja');
+  });
+
+  const periods=uniqueValues(allAggData
+    .filter(r=>(!subject||String(r.subject||'')===String(subject)) && (!unitId||String(r.unitId||'')===String(unitId)))
+    .map(r=>r.period)).sort((a,b)=>a-b);
+  const pSel=document.getElementById('aggPeriod');
+  const pCur=pSel.value;
+  pSel.innerHTML='<option value="">全時間</option>'+
+    periods.map(p=>`<option value="${p}" ${p==pCur?'selected':''}>${p}じかんめ</option>`).join('');
+
+  const body=document.getElementById('aggBody');
+  const cards=document.getElementById('aggCards');
+  const head=document.getElementById('aggHead');
+  const fieldMeta=resolveAggPresetFields(rows,preset,showComment);
+  head.innerHTML=buildAggHeaderHtml(fieldMeta);
+  if(!rows.length){
+    renderAggSummary([]);
+    const emptyCols=(5+fieldMeta.fields.length+1);
+    body.innerHTML=`<tr><td colspan="${emptyCols}" style="text-align:center;color:#999;padding:14px;">データがありません</td></tr>`;
+    cards.innerHTML='<div class="portfolio-empty">データがありません</div>';
+    return;
+  }
+  renderAggSummary(rows);
+  body.innerHTML=rows.map(r=>`
+    <tr>
+      <td>${esc(r.unitName)}</td><td>${r.period}時間目</td>
+      <td>${r.num}</td><td>${esc(r.name)}</td><td>${esc(formatDisplayDate(r.date))}</td>
+      ${fieldMeta.fields.map(field=>`<td style="max-width:260px;white-space:normal;word-break:break-word;">${renderAggFieldValue(r, field)}</td>`).join('')}
+      <td>${r.rank?`<span class="rank-chip r-${r.rank.replace('+','p')}">${r.rank}</span>`:'-'}</td>
+    </tr>`).join('');
+  cards.innerHTML=rows.map(r=>`
+    <div class="agg-card">
+      <div class="agg-card-top">
+        <div>
+          <div class="agg-card-title">${esc(r.unitName)}</div>
+          <div class="agg-card-meta">${r.period}時間目 ・ ${r.num} ${esc(r.name||'')} ・ ${esc(formatDisplayDate(r.date))}</div>
+        </div>
+        <div>${r.rank?`<span class="rank-chip r-${r.rank.replace('+','p')}">${r.rank}</span>`:'-'}</div>
+      </div>
+      ${fieldMeta.fields.map(field=>{
+        const text=renderAggCardFieldValue(r, field);
+        if(!text) return '';
+        const chips=renderAggFieldValueChips(r, field);
+        return `
+        <div class="agg-card-block">
+          <div class="agg-card-label">${esc(field.label)}</div>
+          ${chips}
+          <div class="agg-card-text">${text}</div>
+        </div>
+      `;
+      }).join('')}
+    </div>
+  `).join('');
+}
+
+function populateGradingSelects(){
+  populateGradingUnitSelect();
+}
+
+function populateGradingUnitSelect(){
+  const mode=(document.getElementById('gradeMode')||{}).value||'unit';
+  const subjectSel=document.getElementById('gradeSubject');
+  if(subjectSel){
+    const cur=subjectSel.value;
+    const subjects=uniqueValues(allUnits.map(u=>u.subject).filter(Boolean));
+    subjectSel.innerHTML='<option value="">全教科</option>'+
+      subjects.map(subject=>`<option value="${esc(subject)}">${esc(subject)}</option>`).join('');
+    if(cur) subjectSel.value=cur;
+  }
+  const unitSel=document.getElementById('gradeUnit');
+  if(!unitSel) return;
+  const cur=unitSel.value;
+  const subject=(document.getElementById('gradeSubject')||{}).value||'';
+  const visibleUnits=sortUnitsByLatestActivity(allUnits.filter(u=>!subject||String(u.subject||'')===String(subject)));
+  unitSel.innerHTML='<option value="">単元を選択…</option>'+
+    visibleUnits.map(u=>`<option value="${u.id}">${esc(u.subject)}：${esc(u.name)}</option>`).join('');
+  if(cur && visibleUnits.some(u=>String(u.id)===String(cur))) unitSel.value=cur;
+  unitSel.disabled=(mode==='subject');
+  const periodSel=document.getElementById('gradePeriod');
+  if(periodSel) periodSel.disabled=(mode==='subject');
+}
+
+function filterGrading(){
+  const gradeBody=document.getElementById('gradeBody');
+  const gradeCards=document.getElementById('gradeCards');
+  const gradeHead=document.getElementById('gradeHead');
+  const gradeDebug=document.getElementById('gradeDebug');
+  const gradingModeNote=document.getElementById('gradingModeNote');
+  if(!gradeBody||!gradeCards||!gradeHead) return;
+  populateGradingUnitSelect();
+  const mode=(document.getElementById('gradeMode')||{}).value||'unit';
+  const subject=(document.getElementById('gradeSubject')||{}).value||'';
+  const unitId=(document.getElementById('gradeUnit')||{}).value||'';
+  const period=(document.getElementById('gradePeriod')||{}).value||'';
+  const gradingCategory=(document.getElementById('gradeCategory')||{}).value||'thinking';
+
+  const rows=allAggData.filter(r=>{
+    if(subject&&String(r.subject||'')!==String(subject)) return false;
+    if(unitId&&String(r.unitId||'')!==String(unitId)) return false;
+    if(period&&r.period!=period) return false;
+    return true;
+  }).sort((a,b)=>{
+    const numDiff=(Number(a.num)||0)-(Number(b.num)||0);
+    if(numDiff!==0) return numDiff;
+    return String(a.name||'').localeCompare(String(b.name||''),'ja');
+  });
+  const periods=uniqueValues(allAggData
+    .filter(r=>(!subject||String(r.subject||'')===String(subject)) && (!unitId||String(r.unitId||'')===String(unitId)))
+    .map(r=>r.period)).sort((a,b)=>a-b);
+  const pSel=document.getElementById('gradePeriod');
+  const pCur=pSel.value;
+  pSel.innerHTML='<option value="">全時間</option>'+
+    periods.map(p=>`<option value="${p}" ${p==pCur?'selected':''}>${p}じかんめ</option>`).join('');
+
+  if(gradingModeNote){
+    gradingModeNote.textContent=mode==='subject'
+      ? '教科内の各単元を横並びで入力できます。'
+      : '単元ごとの根拠を見ながら評定できます。';
+  }
+
+  if(mode==='subject'){
+    renderGradingFieldChipsForSubject(subject, gradingCategory);
+    renderGradingSubjectMatrix(subject, gradingCategory);
+    return;
+  }
+
+  renderAggFieldChips({fields:[]},'', 'grading', gradingCategory, rows);
+  gradeHead.innerHTML=buildAggProcessingHeaderHtml(periods, gradingCategory);
+  if(gradeDebug){
+    gradeDebug.textContent=unitId
+      ? `${FIELD_CATEGORY_LABELS[gradingCategory]} の評定用に ${rows.length} 件の記録を表示中です。`
+      : '評定する単元を選択してください。';
+  }
+  if(!unitId){
+    gradeBody.innerHTML='<tr><td colspan="6" style="text-align:center;color:#999;padding:14px;">成績入力をするには単元を選択してください</td></tr>';
+    gradeCards.innerHTML='<div class="portfolio-empty">成績入力をするには単元を選択してください</div>';
+    return;
+  }
+  if(!rows.length){
+    gradeBody.innerHTML=`<tr><td colspan="${3+periods.length}" style="text-align:center;color:#999;padding:14px;">データがありません</td></tr>`;
+    gradeCards.innerHTML='<div class="portfolio-empty">データがありません</div>';
+    return;
+  }
+  const processedRows=buildAggProcessingRows(rows, periods, gradingCategory);
+  gradeBody.innerHTML=processedRows.map(r=>`
+    <tr>
+      <td>${r.num}</td>
+      <td>${esc(r.name)}</td>
+      <td>
+        ${renderAggAssessmentSelect(r,gradingCategory)}
+        <div style="margin-top:8px;">${r.rank?`<span class="rank-chip r-${r.rank.replace('+','p')}">${r.rank}</span>`:'-'}</div>
+      </td>
+      ${periods.map(currentPeriod=>`<td class="agg-period-cell">${renderAggPeriodCell(r.periodMap[currentPeriod], gradingCategory)}</td>`).join('')}
+    </tr>`).join('');
+  gradeCards.innerHTML=processedRows.map(r=>`
+    <div class="agg-card">
+      <div class="agg-card-top">
+        <div>
+          <div class="agg-card-title">${r.num} ${esc(r.name||'')} / ${FIELD_CATEGORY_LABELS[gradingCategory]}</div>
+          <div class="agg-card-meta">${esc(r.unitName)} ・ ${r.periodSummary||'-'}</div>
+        </div>
+        <div>${r.rank?`<span class="rank-chip r-${r.rank.replace('+','p')}">${r.rank}</span>`:'-'}</div>
+      </div>
+      <div class="agg-processing-card-grid">
+        <div class="agg-card-block">
+          <div class="agg-card-label">最終評定</div>
+          ${renderAggAssessmentSelect(r,gradingCategory)}
+        </div>
+        ${periods.map(currentPeriod=>`
+          <div class="agg-card-block">
+            <div class="agg-card-label">${currentPeriod}時間目</div>
+            <div class="agg-card-text">${renderAggPeriodCardCell(r.periodMap[currentPeriod], gradingCategory)}</div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `).join('');
+}
+
+function getGradingUnitsForSubject(subject){
+  return sortUnitsByLatestActivity(
+    allUnits.filter(unit=>subject && String(unit.subject||'')===String(subject))
+  );
+}
+
+function buildGradingSubjectRows(subject, category){
+  const units=getGradingUnitsForSubject(subject);
+  const studentMap=new Map();
+  rosterEntries.forEach(row=>{
+    const num=String(row.number||'').trim();
+    if(!num) return;
+    studentMap.set(num,{
+      num,
+      name:row.name||'',
+      units:{},
+    });
+  });
+  allAggData.forEach(row=>{
+    if(String(row.subject||'')!==String(subject)) return;
+    const num=String(row.num||'').trim();
+    if(!num) return;
+    if(!studentMap.has(num)){
+      studentMap.set(num,{num,name:row.name||'',units:{}});
+    }else if(!studentMap.get(num).name && row.name){
+      studentMap.get(num).name=row.name;
+    }
+    const student=studentMap.get(num);
+    const unitKey=String(row.unitId||'');
+    if(!student.units[unitKey]){
+      student.units[unitKey]={
+        unitId:unitKey,
+        unitName:row.unitName||'',
+        assessment:row.teacherAssessment||{knowledge:'',thinking:'',attitude:'',memo:''},
+        evidence:[],
+        evidenceHtml:[],
+        ranks:[],
+        periods:[],
+      };
+    }
+    const entry=student.units[unitKey];
+    if(row.teacherAssessment) entry.assessment=row.teacherAssessment;
+    if(row.rank) entry.ranks.push(row.rank);
+    if(row.period) entry.periods.push(`${row.period}時間目`);
+    const categoryEntries=collectAggCategoryEntries(row, category);
+    if(categoryEntries.length){
+      entry.evidence.push(...categoryEntries.map(item=>`${item.label}: ${item.value}`).slice(0,2));
+      entry.evidenceHtml.push(...categoryEntries.map(item=>renderAggEvidenceEntry(item,row)).slice(0,2));
+    }else if(String(row.review||'').trim()){
+      entry.evidence.push(String(row.review||'').trim());
+      entry.evidenceHtml.push(renderTeacherReviewText_(String(row.review||'').trim(), row.fields||[]));
+    }
+  });
+  return Array.from(studentMap.values())
+    .sort((a,b)=>{
+      const numDiff=(Number(a.num)||0)-(Number(b.num)||0);
+      if(numDiff!==0) return numDiff;
+      return String(a.name||'').localeCompare(String(b.name||''),'ja');
+    })
+    .map(student=>({
+      ...student,
+      unitEntries:units.map(unit=>{
+        const existing=student.units[String(unit.id)]||null;
+        return existing||{
+          unitId:String(unit.id),
+          unitName:unit.name||'',
+          assessment:{knowledge:'',thinking:'',attitude:'',memo:''},
+          evidence:[],
+          evidenceHtml:[],
+          ranks:[],
+          periods:[],
+        };
+      }),
+    }));
+}
+
+function renderGradingFieldChipsForSubject(subject, gradingCategory){
+  const box=document.getElementById('gradeFieldChips');
+  if(!box) return;
+  if(!subject){
+    box.className='field-chip-empty';
+    box.textContent='教科を選ぶと、その教科の単元を横並びで評定できます。';
+    return;
+  }
+  const labels=collectAggVisibleFields(allAggData.filter(row=>String(row.subject||'')===String(subject)))
+    .filter(field=>matchesAggPresetField(field, gradingCategory))
+    .map(field=>field.label);
+  const unitLabels=getGradingUnitsForSubject(subject).map(unit=>unit.name||'');
+  box.className='field-chip-row';
+  box.innerHTML=[`<span class="field-chip">${esc(subject)}</span>`,`<span class="field-chip">${esc(FIELD_CATEGORY_LABELS[gradingCategory])}</span>`]
+    .concat(unitLabels.map(label=>`<span class="field-chip">${esc(label)}</span>`))
+    .concat(labels.slice(0,6).map(label=>`<span class="field-chip">${esc(label)}</span>`))
+    .join('');
+}
+
+function renderGradingSubjectMatrix(subject, gradingCategory){
+  const gradeBody=document.getElementById('gradeBody');
+  const gradeCards=document.getElementById('gradeCards');
+  const gradeHead=document.getElementById('gradeHead');
+  const gradeDebug=document.getElementById('gradeDebug');
+  const units=getGradingUnitsForSubject(subject);
+  if(!subject){
+    gradeHead.innerHTML='<tr><th>#</th><th>なまえ</th><th>単元別評定</th></tr>';
+    gradeBody.innerHTML='<tr><td colspan="3" style="text-align:center;color:#999;padding:14px;">教科を選択してください</td></tr>';
+    gradeCards.innerHTML='<div class="portfolio-empty">教科を選択してください</div>';
+    if(gradeDebug) gradeDebug.textContent='教科ごとの一覧入力では、まず教科を選択してください。';
+    return;
+  }
+  if(!units.length){
+    gradeHead.innerHTML='<tr><th>#</th><th>なまえ</th><th>単元別評定</th></tr>';
+    gradeBody.innerHTML='<tr><td colspan="3" style="text-align:center;color:#999;padding:14px;">この教科の単元がありません</td></tr>';
+    gradeCards.innerHTML='<div class="portfolio-empty">この教科の単元がありません</div>';
+    if(gradeDebug) gradeDebug.textContent=`${subject} の単元がまだありません。`;
+    return;
+  }
+  const rows=buildGradingSubjectRows(subject, gradingCategory);
+  gradeHead.innerHTML=`<tr><th>#</th><th>なまえ</th>${units.map(unit=>`<th>${esc(unit.name||'')}</th>`).join('')}</tr>`;
+  if(gradeDebug){
+    gradeDebug.textContent=`${subject} の ${units.length} 単元を横並び表示しています。${FIELD_CATEGORY_LABELS[gradingCategory]} を一覧で入力できます。`;
+  }
+  if(!rows.length){
+    gradeBody.innerHTML=`<tr><td colspan="${2+units.length}" style="text-align:center;color:#999;padding:14px;">名簿データがありません</td></tr>`;
+    gradeCards.innerHTML='<div class="portfolio-empty">名簿データがありません</div>';
+    return;
+  }
+  gradeBody.innerHTML=rows.map(row=>`
+    <tr>
+      <td>${row.num}</td>
+      <td>${esc(row.name)}</td>
+      ${row.unitEntries.map(unitEntry=>`<td class="grading-matrix-cell">${renderGradingMatrixCell(row, unitEntry, gradingCategory)}</td>`).join('')}
+    </tr>
+  `).join('');
+  gradeCards.innerHTML=rows.map(row=>`
+    <div class="agg-card">
+      <div class="agg-card-top">
+        <div>
+          <div class="agg-card-title">${row.num} ${esc(row.name||'')}</div>
+          <div class="agg-card-meta">${esc(subject)} / ${FIELD_CATEGORY_LABELS[gradingCategory]}</div>
+        </div>
+      </div>
+      <div class="grading-card-grid">
+        ${row.unitEntries.map(unitEntry=>`
+          <div class="agg-card-block">
+            <div class="agg-card-label">${esc(unitEntry.unitName||'')}</div>
+            <div class="agg-card-text">${renderGradingMatrixCardCell(row, unitEntry, gradingCategory)}</div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderGradingMatrixCell(row, unitEntry, category){
+  const evidence=buildGradingEvidenceHtml(unitEntry);
+  return `${renderAggAssessmentSelect({
+    unitId:unitEntry.unitId,
+    num:row.num,
+    assessment:unitEntry.assessment||{},
+  }, category)}
+  <div class="grading-matrix-evidence ${evidence==='—'?'grading-matrix-empty':''}">${evidence==='—' ? '—' : evidence}</div>`;
+}
+
+function renderGradingMatrixCardCell(row, unitEntry, category){
+  const evidence=buildGradingEvidenceHtml(unitEntry);
+  return `${renderAggAssessmentSelect({
+    unitId:unitEntry.unitId,
+    num:row.num,
+    assessment:unitEntry.assessment||{},
+  }, category)}
+  <div class="grading-matrix-evidence ${evidence==='—'?'grading-matrix-empty':''}">${evidence==='—' ? '—' : evidence}</div>`;
+}
+
+function buildGradingEvidenceText(unitEntry){
+  const lines=[];
+  const ranks=Array.from(new Set(unitEntry.ranks||[])).filter(Boolean);
+  const periods=Array.from(new Set(unitEntry.periods||[])).filter(Boolean);
+  const evidence=Array.from(new Set(unitEntry.evidence||[])).filter(Boolean).slice(0,2);
+  if(ranks.length) lines.push(`ランク: ${ranks.join(' / ')}`);
+  if(periods.length) lines.push(`時間: ${periods.join(' / ')}`);
+  evidence.forEach(item=>lines.push(item));
+  return lines.length ? lines.join('\n') : '—';
+}
+
+function buildGradingEvidenceHtml(unitEntry){
+  const lines=[];
+  const ranks=Array.from(new Set(unitEntry.ranks||[])).filter(Boolean);
+  const periods=Array.from(new Set(unitEntry.periods||[])).filter(Boolean);
+  const evidence=Array.from(new Set(unitEntry.evidenceHtml||[])).filter(Boolean).slice(0,2);
+  if(ranks.length) lines.push(`ランク: ${esc(ranks.join(' / '))}`);
+  if(periods.length) lines.push(`時間: ${esc(periods.join(' / '))}`);
+  evidence.forEach(function(item){ lines.push(item); });
+  return lines.length ? lines.join('<br>') : '—';
+}
+
+function buildAggProcessingHeaderHtml(periods, gradingCategory){
+  return `<tr><th>#</th><th>なまえ</th><th>${FIELD_CATEGORY_LABELS[gradingCategory]} 評定</th>${periods.map(currentPeriod=>`<th>${currentPeriod}時間目</th>`).join('')}</tr>`;
+}
+
+function buildAggHeaderHtml(fieldMeta){
+  return `<tr><th>単元</th><th>時間</th><th>#</th><th>なまえ</th><th>日付</th>${fieldMeta.fields.map(field=>`<th>${esc(field.label)}</th>`).join('')}<th>ランク</th></tr>`;
+}
+
+function renderAggFieldChips(fieldMeta,preset,viewMode,gradingCategory,rows){
+  const box=document.getElementById(viewMode==='grading' ? 'gradeFieldChips' : 'aggFieldChips');
+  if(!box) return;
+  if(viewMode==='grading'){
+    const labels=collectAggVisibleFields(rows)
+      .filter(field=>matchesAggPresetField(field, gradingCategory))
+      .map(field=>field.label)
+      .concat(collectAggChipLabels(rows));
+    if(!labels.length){
+      box.className='field-chip-empty';
+      box.textContent=`${FIELD_CATEGORY_LABELS[gradingCategory]} に使える文章がまだありません。`;
+      return;
+    }
+    box.className='field-chip-row';
+    box.innerHTML=[`<span class="field-chip">${esc(FIELD_CATEGORY_LABELS[gradingCategory])}</span>`]
+      .concat(Array.from(new Set(labels)).map(label=>`<span class="field-chip">${esc(label)}</span>`))
+      .join('');
+    return;
+  }
+  if(!fieldMeta.fields.length){
+    box.className='field-chip-empty';
+    box.textContent=`${AGG_PRESET_LABELS[preset]||'表示'}で使える入力項目がまだありません。`;
+    return;
+  }
+  box.className='field-chip-row';
+  box.innerHTML=fieldMeta.fields.map(field=>{
+    const extraClass=field.source==='comment' ? ' field-chip-prefix' : '';
+    return `<span class="field-chip${extraClass}">${esc(field.label)}</span>`;
+  }).join('');
+}
+
+function resolveAggPresetFields(rows,preset,showComment){
+  const fields=collectAggVisibleFields(rows);
+  const reviewField={key:'reviewText',label:'ふりかえり',source:'review'};
+  const commentField={key:'comment',label:'AIコメント',source:'comment'};
+  const shouldShowComment=showComment && rows.some(row=>String(row.comment||'').trim());
+  if(preset==='standard'){
+    return { fields:[reviewField] };
+  }
+  if(preset==='all'){
+    const merged=[reviewField].concat(fields.filter(field=>!isAggReviewLikeField(field)));
+    if(shouldShowComment) merged.push(commentField);
+    return { fields: merged };
+  }
+  const filtered=fields.filter(field=>matchesAggPresetField(field,preset));
+  if(shouldShowComment) filtered.push(commentField);
+  return { fields: filtered };
+}
+
+function collectAggVisibleFields(rows){
+  const map=new Map();
+  rows.forEach(row=>{
+    (row.fields||[]).forEach(field=>{
+      if(field.enabled===false) return;
+      const value=formatAggAnswerValue((row.answersMap||{})[field.key]);
+      if(!value) return;
+      if(!map.has(field.key)){
+        map.set(field.key,{
+          key:field.key,
+          label:field.label||field.key,
+          emoji:field.emoji||'',
+          type:field.type||'text',
+          categories:Array.isArray(field.categories)?field.categories:[],
+          source:'answer',
+        });
+      }
+    });
+  });
+  return Array.from(map.values()).sort((a,b)=>String(a.label||'').localeCompare(String(b.label||''),'ja'));
+}
+
+function isAggReviewLikeField(field){
+  const haystack=`${String(field && field.key || '')} ${String(field && field.label || '')}`.toLowerCase();
+  return /review|ふりかえり/.test(haystack);
+}
+
+function formatAggAnswerValue(value){
+  if(Array.isArray(value)){
+    return value.map(item=>String(item||'').trim()).filter(Boolean).join(' / ');
+  }
+  if(value===null||value===undefined) return '';
+  return String(value).trim();
+}
+
+function isAggReviewField(field){
+  return String(field&&field.type||'')==='review' || String(field&&field.source||'')==='review';
+}
+
+function isAggChipFriendlyField(field){
+  const haystack=`${String(field && field.key || '')} ${String(field && field.label || '')}`.toLowerCase();
+  return /わかった|りかい|できた|やり方|方法|工夫|考え|理由|まとめ|次|ふりかえり|review|method/.test(haystack);
+}
+
+function collectAggChipLabels(rows){
+  const labels=[];
+  (rows||[]).forEach(row=>{
+    (row.fields||[]).forEach(field=>{
+      const value=formatAggAnswerValue((row.answersMap||{})[field.key]);
+      if(!value || !isAggChipFriendlyField(field)) return;
+      labels.push(field.label||field.key||'項目');
+    });
+  });
+  return Array.from(new Set(labels));
+}
+
+function matchesAggPresetField(field,preset){
+  const categories=((field && field.categories) || []).filter(Boolean);
+  if(categories.includes(preset)) return true;
+  const haystack=`${String(field.key||'')} ${String(field.label||'')} ${String(field.type||'')}`.toLowerCase();
+  const match=(words)=>words.some(word=>haystack.includes(word));
+  if(preset==='knowledge'){
+    return match(['理解','できた','わかった','まとめ','用語','知識','技能','eval','summary']);
+  }
+  if(preset==='thinking'){
+    return match(['ふりかえり','review','やり方','方法','工夫','理由','考え','説明','まとめ']);
+  }
+  if(preset==='attitude'){
+    return match(['めあて','goal','ふりかえり','review','次','がんば','取り組','やり方','方法']);
+  }
+  return false;
+}
+
+function renderAggFieldValue(row, field){
+  const value=field.source==='review'
+    ? String(row.review||'')
+    : field.source==='comment'
+      ? String(row.comment||'')
+      : formatAggAnswerValue((row.answersMap||{})[field.key]);
+  if(!value) return '';
+  if(isAggReviewField(field)) return renderTeacherReviewText_(value, row.fields||[field]);
+  return esc(value).replace(/\n/g,'<br>');
+}
+
+function renderAggCardFieldValue(row, field){
+  const value=field.source==='review'
+    ? String(row.review||'')
+    : field.source==='comment'
+      ? String(row.comment||'')
+      : formatAggAnswerValue((row.answersMap||{})[field.key]);
+  if(!value) return '';
+  if(isAggReviewField(field)) return renderTeacherReviewText_(value, row.fields||[field]);
+  return esc(value).replace(/\n/g,'<br>');
+}
+
+function renderAggFieldValueChips(row, field){
+  if(field.source!=='answer' || !isAggChipFriendlyField(field)) return '';
+  return `<div class="field-chip-row"><span class="field-chip">${esc(field.label||field.key||'項目')}</span></div>`;
+}
+
+function buildAggProcessingRows(rows, periods, category){
+  const grouped=new Map();
+  rows.forEach(row=>{
+    const key=String(row.num||'');
+    if(!grouped.has(key)){
+      grouped.set(key,{
+        unitId: row.unitId || '',
+        unitName: row.unitName || '',
+        subject: row.subject || '',
+        num: row.num,
+        name: row.name || '',
+        periodSummary: [],
+        date: row.date || '',
+        rank: row.rank || '',
+        assessment: row.teacherAssessment || {knowledge:'',thinking:'',attitude:'',memo:''},
+        periodMap: {},
+      });
+    }
+    const item=grouped.get(key);
+    item.periodMap[String(row.period||'')] = row;
+    if(row.period) item.periodSummary.push(`${row.period}時間目`);
+    if(!item.rank && row.rank) item.rank=row.rank;
+    if(!item.date && row.date) item.date=row.date;
+    if(row.teacherAssessment) item.assessment=row.teacherAssessment;
+  });
+  return Array.from(grouped.values())
+    .sort((a,b)=>(Number(a.num)||0)-(Number(b.num)||0))
+    .map(row=>buildAggProcessingRow(row, periods, category));
+}
+
+function buildAggProcessingRow(row, periods, category){
+  return {
+    ...row,
+    periodSummary: Array.from(new Set(row.periodSummary||[])).join(' / '),
+    periods,
+    category,
+  };
+}
+
+function collectAggCategoryEntries(row, category){
+  const sourceRows=row.entries||[row];
+  const explicit=sourceRows.flatMap(sourceRow=>(sourceRow.fields||[])
+    .filter(field=>(((field && field.categories) || []).includes(category)))
+    .map(field=>({
+      label:field.label||field.key,
+      value:String((sourceRow.answersMap||{})[field.key]||'').trim(),
+      key:field.key,
+      emoji:field.emoji||'',
+      explicit:true,
+    })))
+    .filter(entry=>entry.value);
+  if(explicit.length) return explicit;
+  return sourceRows.flatMap(sourceRow=>(sourceRow.fields||[])
+    .filter(field=>matchesAggPresetField(field, category))
+    .map(field=>({
+      label:field.label||field.key,
+      value:String((sourceRow.answersMap||{})[field.key]||'').trim(),
+      key:field.key,
+      emoji:field.emoji||'',
+      explicit:false,
+    })))
+    .filter(entry=>entry.value);
+}
+
+function renderAggEntryChips(entries){
+  const list=(entries||[]).slice(0,4);
+  if(!list.length) return '';
+  return `<div class="field-chip-row">${list.map(entry=>`<span class="field-chip">${esc(((entry.emoji||'') ? `${entry.emoji} ` : '') + (entry.label||entry.key||'項目'))}</span>`).join('')}</div>`;
+}
+
+function renderAggAssessmentSelect(row, category){
+  return `<label class="agg-assess-note">${FIELD_CATEGORY_LABELS[category]}
+    <select class="agg-assess-select" onchange="saveAggTeacherAssessmentLevel('${escAttr(row.unitId)}','${escAttr(row.num)}','${category}',this.value)">
+      ${TEACHER_ASSESS_LEVELS.map(level=>`<option value="${level}" ${String((row.assessment||{})[category]||'')===String(level)?'selected':''}>${level||'未設定'}</option>`).join('')}
+    </select>
+  </label>`;
+}
+
+function saveAggTeacherAssessmentLevel(unitId, studentNumber, category, value){
+  google.script.run
+    .withSuccessHandler(res=>updateAggTeacherAssessmentLocal(res && res.assessment || null))
+    .withFailureHandler(err=>alert((err && err.message)||err||'評価の保存に失敗しました'))
+    .saveTeacherAssessment(unitId, studentNumber, {[category]:value});
+}
+
+function saveAggTeacherAssessmentMemo(unitId, studentNumber, value){
+  google.script.run
+    .withSuccessHandler(res=>updateAggTeacherAssessmentLocal(res && res.assessment || null))
+    .withFailureHandler(err=>alert((err && err.message)||err||'メモの保存に失敗しました'))
+    .saveTeacherAssessment(unitId, studentNumber, {memo:value});
+}
+
+function updateAggTeacherAssessmentLocal(assessment){
+  if(!assessment) return;
+  allAggData=allAggData.map(row=>{
+    if(String(row.unitId||'')!==String(assessment.unitId||'')) return row;
+    if(String(row.num||'')!==String(assessment.studentNumber||'')) return row;
+    return {...row, teacherAssessment:assessment};
+  });
+}
+
+function renderAggPeriodCell(row, category){
+  if(!row) return '<span class="agg-processing-cell empty">—</span>';
+  const entries=collectAggCategoryEntries(row, category);
+  if(!entries.length) return '<span class="agg-processing-cell empty">—</span>';
+  return `${renderAggEntryChips(entries)}<div class="agg-processing-cell">${entries.map(entry=>renderAggEvidenceEntry(entry,row)).join('<br>')}</div>`;
+}
+
+function renderAggPeriodCardCell(row, category){
+  if(!row) return '—';
+  const entries=collectAggCategoryEntries(row, category);
+  if(!entries.length) return '—';
+  return `${renderAggEntryChips(entries)}<div class="agg-processing-cell">${entries.map(entry=>renderAggEvidenceEntry(entry,row)).join('<br>')}</div>`;
+}
+
+function renderAggEvidenceEntry(entry,row){
+  const label=esc((entry&&entry.label)||'');
+  const value=String(entry&&entry.value||'');
+  const rowFields=(row&&row.fields) || [];
+  const field=rowFields.find(function(item){ return String(item&&item.key||'')===String(entry&&entry.key||''); }) || entry;
+  const body=isAggReviewField(field)
+    ? renderTeacherReviewText_(value, rowFields.length ? rowFields : [field])
+    : esc(value).replace(/\n/g,'<br>');
+  return label ? `${label}: ${body}` : body;
+}
+
+function renderAggDebug(debug, build){
+  const box=document.getElementById('aggDebug');
+  if(!debug){
+    box.innerHTML=`<div class="debug-summary">単元分析の取得件数を表示できませんでした。</div><details><summary>詳細を見る</summary><code>teacherInit build=${esc(teacherBuild||'unknown')}</code></details>`;
+    return;
+  }
+  const sample=(debug.sampleRows||[])
+    .map((row,idx)=>`${idx+1}. ${row.subject}/${row.unitName}/${row.period}時間目 ${row.num}番\n   ${formatDisplayDate(row.date)}\n   ${row.preview}`)
+    .join('\n\n');
+  const summary=`集約 ${debug.rowCount||0}件`;
+  const buildLine=`teacher=${teacherBuild||'unknown'} / aggregate=${build||'unknown'} / unitId=${debug.unitId||''}`;
+  box.innerHTML=`<div class="debug-summary">${esc(summary)}</div><details><summary>詳細を見る</summary><code>${esc(buildLine)}${sample?`\n\n${sample}`:''}</code></details>`;
+}
+
+function renderAggSummary(rows){
+  const box=document.getElementById('aggSummary');
+  if(!box) return;
+  if(!rows.length){
+    box.innerHTML=`
+      <div class="insight-grid">
+        <div class="insight-box"><div class="insight-k">対象人数</div><div class="insight-v">0</div></div>
+        <div class="insight-box"><div class="insight-k">理解度</div><div class="insight-v">-</div></div>
+        <div class="insight-box"><div class="insight-k">A以上</div><div class="insight-v">0</div></div>
+        <div class="insight-box"><div class="insight-k">要支援候補</div><div class="insight-v">0</div></div>
+      </div>`;
+    return;
+  }
+
+  const scoreMap={'C':0,'C+':1,'B':2,'B+':3,'A':4,'A+':5,'S':6,'S+':7};
+  const strong=rows
+    .filter(r=>((Object.prototype.hasOwnProperty.call(scoreMap, r.rank) ? scoreMap[r.rank] : -1))>=4)
+    .sort((a,b)=>((Object.prototype.hasOwnProperty.call(scoreMap, b.rank) ? scoreMap[b.rank] : -1)-(Object.prototype.hasOwnProperty.call(scoreMap, a.rank) ? scoreMap[a.rank] : -1))||String(b.review||'').length-String(a.review||'').length)
+    .slice(0,3);
+  const support=rows
+    .filter(r=>r.rank&&['C','C+','B'].includes(r.rank))
+    .sort((a,b)=>((Object.prototype.hasOwnProperty.call(scoreMap, a.rank) ? scoreMap[a.rank] : 99)-(Object.prototype.hasOwnProperty.call(scoreMap, b.rank) ? scoreMap[b.rank] : 99))||String(a.review||'').length-String(b.review||'').length)
+    .slice(0,3);
+  const rankCounts={};
+  rows.forEach(r=>{ if(r.rank) rankCounts[r.rank]=(rankCounts[r.rank]||0)+1; });
+  const rankOrder=['S+','S','A+','A','B+','B','C+','C'];
+  const understandingStats=collectAggregateUnderstandingStats(rows);
+
+  box.innerHTML=`
+    <div class="insight-grid">
+      <div class="insight-box">
+        <div class="insight-k">対象人数</div>
+        <div class="insight-v">${rows.length}</div>
+        <div class="insight-sub">記録のある児童</div>
+      </div>
+      <div class="insight-box">
+        <div class="insight-k">理解度</div>
+        <div class="insight-v">${understandingStats.label}</div>
+        <div class="insight-sub">${understandingStats.sub}</div>
+      </div>
+      <div class="insight-box">
+        <div class="insight-k">A以上</div>
+        <div class="insight-v">${rows.filter(r=>((Object.prototype.hasOwnProperty.call(scoreMap, r.rank) ? scoreMap[r.rank] : -1))>=4).length}</div>
+        <div class="insight-sub">方略や次への改善が見える記録</div>
+      </div>
+      <div class="insight-box">
+        <div class="insight-k">要支援候補</div>
+        <div class="insight-v">${rows.filter(r=>r.rank&&['C','C+','B'].includes(r.rank)).length}</div>
+        <div class="insight-sub">短文・感想止まりが中心の記録</div>
+      </div>
+    </div>
+    <div class="analysis-grid">
+      <div class="analysis-card">
+        <h3>ランク分布</h3>
+        <div class="dist-row">${rankOrder.filter(rank=>rankCounts[rank]).map(rank=>`<span class="dist-chip">${rank}<span class="n">${rankCounts[rank]}</span></span>`).join('')||'<span class="insight-sub">ランク未生成</span>'}</div>
+      </div>
+      <div class="analysis-card">
+        <h3>よく書けている児童</h3>
+        <ul class="mini-list">${strong.map(row=>`<li>${row.num} ${esc(row.name||'')} ${row.rank} / ${renderTeacherReviewText_(shortText(row.review,38),row.fields||[])}</li>`).join('')||'<li>まだ候補がありません</li>'}</ul>
+      </div>
+      <div class="analysis-card">
+        <h3>支援を見たい児童</h3>
+        <ul class="mini-list">${support.map(row=>`<li>${row.num} ${esc(row.name||'')} ${row.rank} / ${renderTeacherReviewText_(shortText(row.review,38),row.fields||[])}</li>`).join('')||'<li>候補はありません</li>'}</ul>
+      </div>
+    </div>`;
+}
+
+function collectAggregateUnderstandingStats(rows){
+  const counts={good:0, mid:0, support:0, none:0};
+  rows.forEach(row=>{
+    const value=getAggregateUnderstandingValue(row);
+    if(!value){ counts.none++; return; }
+    if(/よく/.test(value)){ counts.good++; return; }
+    if(/だいたい/.test(value)){ counts.mid++; return; }
+    if(/あまり|わから/.test(value)){ counts.support++; return; }
+    counts.none++;
+  });
+  const total=rows.length||0;
+  const understood=counts.good+counts.mid;
+  if(!total || !understood){
+    return { label:'未入力多め', sub:'理解度の入力がまだ少ないです' };
+  }
+  const ratio=Math.round((understood/total)*100);
+  return {
+    label:`${ratio}%`,
+    sub:`よく ${counts.good}人 / だいたい ${counts.mid}人 / 支援 ${counts.support}人`,
+  };
+}
+
+function getAggregateUnderstandingValue(row){
+  const fields=Array.isArray(row && row.fields)?row.fields:[];
+  const target=fields.find(field=>{
+    const text=`${field && field.key || ''} ${field && field.label || ''} ${field && field.type || ''}`.toLowerCase();
+    return /理解|りかい|わか|自己評価|じこひょうか|達成|たっせい|self|score|check|eval/.test(text);
+  });
+  if(!target) return '';
+  return formatAggAnswerValue((row.answersMap||{})[target.key]);
+}
+
+function shortText(text,max){
+  const s=String(text||'').replace(/\s+/g,' ').trim();
+  if(!s) return '記録なし';
+  return s.length>max?s.slice(0,max)+'…':s;
+}
+
+function formatDisplayDate(value){
+  if(!value) return '';
+  const text=String(value);
+  const m=text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(m) return `${m[1]}/${m[2]}/${m[3]}`;
+  return text;
+}
+
+function formatDisplayDateTime(value){
+  if(!value) return '';
+  const d=new Date(value);
+  if(Number.isNaN(d.getTime())) return String(value);
+  const yyyy=d.getFullYear();
+  const mm=String(d.getMonth()+1).padStart(2,'0');
+  const dd=String(d.getDate()).padStart(2,'0');
+  const hh=String(d.getHours()).padStart(2,'0');
+  const mi=String(d.getMinutes()).padStart(2,'0');
+  const ss=String(d.getSeconds()).padStart(2,'0');
+  return `${yyyy}/${mm}/${dd} ${hh}:${mi}:${ss}`;
+}
+
+function formatDurationShort(ms){
+  const num=Number(ms||0);
+  if(!Number.isFinite(num)||num<=0) return '';
+  if(num<1000) return `${Math.round(num)}ms`;
+  if(num<10000) return `${(num/1000).toFixed(1)}s`;
+  return `${Math.round(num/1000)}s`;
+}
+
+function renderStudentAiState(student){
+  if(!(student && student.submitted)){
+    return student && student.review ? '✍️記入中' : '';
+  }
+  if(String(student && student.draftStatus || '')==='draft' && String(student && student.draftComment || '').trim()){
+    return '📝 AI下書きあり';
+  }
+  if(String(student && student.draftStatus || '')==='returned' && String(student && student.comment || '').trim()){
+    return '📤 返却済';
+  }
+  const status=String(student.aiStatus||'');
+  const retry=Number(student.aiRetryCount||0);
+  const retryLabel=retry>0?` / retry ${retry}`:'';
+  if(status==='done'){
+    return `✅ AI完了${retryLabel?`<br><span style="font-size:11px;color:#607D8B;">retry ${retry}</span>`:''}`;
+  }
+  if(status==='error'){
+    const msg=esc(String(student.aiError||'AI失敗'));
+    return `⚠️ AI失敗<br><span style="font-size:11px;color:#C62828;">${msg}${retryLabel}</span>`;
+  }
+  if(status==='processing'){
+    return `🤖 AI処理中${retryLabel?`<br><span style="font-size:11px;color:#607D8B;">retry ${retry}</span>`:''}`;
+  }
+  if(status==='pending'){
+    return `⏳ AI待ち${retryLabel?`<br><span style="font-size:11px;color:#607D8B;">retry ${retry}</span>`:''}`;
+  }
+  return '✅提出済';
+}
+
+function calcElapsedMs(value){
+  if(!value) return 0;
+  const startedAt=new Date(value).getTime();
+  if(Number.isNaN(startedAt)) return 0;
+  return Math.max(0, Date.now()-startedAt);
+}
+
+function genSummary(){
+  if(!isTeacherAiReadyOnClient_()){
+    showToast('AI未設定です。プロンプトタブでAPIキーを保存してください',{tone:'error'});
+    return;
+  }
+  const unitId=document.getElementById('aggUnit').value;
+  const period=(document.getElementById('aggPeriod')||{}).value||'';
+  if(!unitId){showToast('単元を選択してください');return;}
+  requestUnitSummaryReport({
+    unitId,
+    period,
+    boxId:'aiReport',
+    loadingText:'🤖 単元指導レポートを生成中…',
+    successTitle:res=>`【${res.unitName}】単元指導レポート`,
+    successToast:'単元指導レポートを生成しました',
+    failureToast:'単元指導レポートの生成に失敗しました',
+  });
+}
+
+function genStatusSummary(){
+  if(!activeUnitId||!activePeriod){
+    showToast('授業中の単元がありません');
+    return;
+  }
+  requestUnitSummaryReport({
+    unitId:activeUnitId,
+    period:String(activePeriod||''),
+    boxId:'statusAiReport',
+    loadingText:'🤖 この時間のふりかえりレポートを生成中…',
+    successTitle:res=>`【${res.unitName} / ${activePeriod}時間目】この時間のふりかえりレポート`,
+    successToast:'この時間のふりかえりレポートを生成しました',
+    failureToast:'この時間のふりかえりレポートの生成に失敗しました',
+  });
+}
+
+function requestUnitSummaryReport(options){
+  const unitId=String(options && options.unitId || '').trim();
+  const period=String(options && options.period || '').trim();
+  const box=document.getElementById(options && options.boxId || '');
+  if(!unitId||!box){
+    showToast('レポート対象が見つかりません',{tone:'error'});
+    return;
+  }
+  box.style.display='block';
+  box.classList.add('ready');
+  box.textContent=options && options.loadingText || '🤖 レポートを生成中…';
+  google.script.run
+    .withSuccessHandler(res=>{
+      if(!res.ok){
+        box.textContent='エラー:'+res.error;
+        showToast(options && options.failureToast || 'レポートの生成に失敗しました',{tone:'error'});
+        return;
+      }
+      const title=typeof (options && options.successTitle)==='function' ? options.successTitle(res) : `【${res.unitName}】レポート`;
+      box.textContent=`${title}\n\n${res.summary}`;
+      showToast(options && options.successToast || 'レポートを生成しました',{tone:'success'});
+    })
+    .withFailureHandler(err=>{
+      box.textContent='エラー:'+((err && err.message)||err||(options && options.failureToast)||'レポートの生成に失敗しました');
+      showToast(options && options.failureToast || 'レポートの生成に失敗しました',{tone:'error'});
+    })
+    .generateUnitSummary(unitId, period);
+}
+
+function exportAggCsv(){
+  const unitId=document.getElementById('aggUnit').value||'';
+  const period=document.getElementById('aggPeriod').value||'';
+  google.script.run
+    .withSuccessHandler(res=>{
+      if(!(res && res.csv)){alert('CSVデータがありません');return;}
+      const blob=new Blob(['\uFEFF'+res.csv],{type:'text/csv;charset=utf-8;'});
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement('a');
+      a.href=url;
+      a.download=res.filename||'jibun-matome.csv';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      alert(`CSVを出力しました（${res.rowCount||0}件）`);
+    })
+    .withFailureHandler(err=>alert('CSV出力に失敗しました: '+((err && err.message)||err)))
+    .exportAggregateCsv(unitId, period);
+}
+
+function generateGradingDrafts(){
+  if(!isTeacherAiReadyOnClient_()){
+    showToast('AI未設定です。プロンプトタブでAPIキーを保存してください',{tone:'error'});
+    return;
+  }
+  const mode=(document.getElementById('gradeMode')||{}).value||'unit';
+  const subject=(document.getElementById('gradeSubject')||{}).value||'';
+  const unitId=(document.getElementById('gradeUnit')||{}).value||'';
+  const category=(document.getElementById('gradeCategory')||{}).value||'thinking';
+  const period=(document.getElementById('gradePeriod')||{}).value||'';
+  if(mode==='unit' && !unitId){
+    showToast('単元を選択してください');
+    return;
+  }
+  if(mode==='subject' && !subject){
+    showToast('教科を選択してください');
+    return;
+  }
+  const confirmMessage=mode==='subject'
+    ? '選択中の教科の各単元について、未設定の児童だけAI仮評定を入れます。よいですか？'
+    : '現在の観点について、未設定の児童だけAI仮評定を入れます。よいですか？';
+  if(!confirm(confirmMessage)) return;
+  const debugBox=document.getElementById('gradeDebug');
+  if(debugBox) debugBox.textContent='AI仮評定を作成中…';
+  const runner=google.script.run
+    .withSuccessHandler(res=>{
+      if(!(res && res.ok)){
+        if(debugBox) debugBox.textContent='AI仮評定の作成に失敗しました: '+(res && res.error || 'unknown');
+        showToast('AI仮評定の作成に失敗しました',{tone:'error'});
+        return;
+      }
+      loadAgg();
+      const warning=res.warning ? ` / 一部失敗 ${res.warning}` : '';
+      const summary=`AI仮評定を反映しました。対象 ${res.targetCount||0}人 / 反映 ${res.updatedCount||0}人 / 既存あり ${res.skippedCount||0}人${warning}`;
+      if(debugBox) debugBox.textContent=summary;
+      showToast(summary,{tone:warning?'info':'success',duration:4200});
+    })
+    .withFailureHandler(err=>{
+      const message=(err && err.message)||err||'unknown';
+      if(debugBox) debugBox.textContent='AI仮評定の作成に失敗しました: '+message;
+      showToast('AI仮評定の作成に失敗しました: '+message,{tone:'error',duration:4200});
+    });
+  if(mode==='subject'){
+    runner.generateTeacherAssessmentDraftsBySubject(subject, category, true);
+    return;
+  }
+  runner.generateTeacherAssessmentDrafts(unitId, category, period, true);
+}
+
+function exportGradingCsv(){
+  const mode=(document.getElementById('gradeMode')||{}).value||'unit';
+  const subject=(document.getElementById('gradeSubject')||{}).value||'';
+  const unitId=(document.getElementById('gradeUnit')||{}).value||'';
+  const period=(document.getElementById('gradePeriod')||{}).value||'';
+  const category=(document.getElementById('gradeCategory')||{}).value||'thinking';
+  const rows=buildGradingCsvRows(mode, subject, unitId, period, category);
+  if(!rows.length){
+    alert('CSVに出力できる評定データがありません');
+    return;
+  }
+  const csv=rows.map(toCsvLine).join('\r\n');
+  const filename=[
+    'jibun-matome-grading',
+    mode==='subject' ? sanitizeClientFileName(subject||'subject') : sanitizeClientFileName(getUnitNameById(unitId)||'unit'),
+    category,
+    new Date().toISOString().replace(/[:.]/g,'-'),
+  ].join('_')+'.csv';
+  downloadCsv(csv, filename);
+  alert(`評定CSVを出力しました（${rows.length-1}件）`);
+}
+
+function buildGradingCsvRows(mode, subject, unitId, period, category){
+  if(mode==='subject'){
+    if(!subject) return [];
+    const units=getGradingUnitsForSubject(subject);
+    const rows=buildGradingSubjectRows(subject, category);
+    return [
+      ['教科','番号','名前'].concat(units.map(unit=>unit.name||'')),
+    ].concat(rows.map(row=>[
+      subject,
+      row.num||'',
+      row.name||'',
+    ].concat(row.unitEntries.map(unitEntry=>String((unitEntry.assessment||{})[category]||'')))));
+  }
+
+  if(!unitId) return [];
+  const filtered=allAggData.filter(row=>{
+    if(subject&&String(row.subject||'')!==String(subject)) return false;
+    if(unitId&&String(row.unitId||'')!==String(unitId)) return false;
+    if(period&&String(row.period||'')!==String(period)) return false;
+    return true;
+  }).sort((a,b)=>{
+    const numDiff=(Number(a.num)||0)-(Number(b.num)||0);
+    if(numDiff!==0) return numDiff;
+    return String(a.name||'').localeCompare(String(b.name||''),'ja');
+  });
+  const periods=uniqueValues(allAggData
+    .filter(row=>(!subject||String(row.subject||'')===String(subject)) && (!unitId||String(row.unitId||'')===String(unitId)))
+    .map(row=>row.period)).sort((a,b)=>a-b);
+  const processedRows=buildAggProcessingRows(filtered, periods, category);
+  return [
+    ['教科','単元','番号','名前','評定','ランク','時間別根拠'],
+  ].concat(processedRows.map(row=>[
+    row.subject||'',
+    row.unitName||'',
+    row.num||'',
+    row.name||'',
+    String((row.assessment||{})[category]||''),
+    row.rank||'',
+    periods.map(currentPeriod=>buildGradingEvidenceTextFromRow(row.periodMap[currentPeriod], category, currentPeriod)).filter(Boolean).join('\n\n'),
+  ]));
+}
+
+function buildGradingEvidenceTextFromRow(row, category, currentPeriod){
+  if(!row) return '';
+  const entries=collectAggCategoryEntries(row, category).map(entry=>`${entry.label}: ${entry.value}`);
+  const body=entries.length ? entries.join(' / ') : String(row.review||'').trim();
+  if(!body) return '';
+  return `${currentPeriod}時間目: ${body}`;
+}
+
+function toCsvLine(cols){
+  return (cols||[]).map(value=>{
+    const text=String(value == null ? '' : value);
+    return `"${text.replace(/"/g,'""')}"`;
+  }).join(',');
+}
+
+function downloadCsv(csv, filename){
+  const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download=filename||'jibun-matome.csv';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function sanitizeClientFileName(value){
+  return String(value||'').trim().replace(/[\\/:*?"<>|]+/g,'-').replace(/\s+/g,'-')||'data';
+}
+
+function getUnitNameById(unitId){
+  const found=allUnits.find(unit=>String(unit.id||'')===String(unitId||''));
+  return found ? found.name||'' : '';
+}
+
+// =====================================
+//  util
+// =====================================
+function renderMedal(medal,color){
+  if(!medal) return '';
+  if(['🥇','🥈','🥉'].includes(medal)) return `<span style="font-size:18px;">${medal}</span>`;
+  return `<span class="medal-num" style="background:${color||'#999'}">${medal.replace('th','')}</span>`;
+}
+function esc(s){
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function escAttr(s){
+  return esc(s).replace(/'/g,'&#39;');
+}
+function escTextArea(s){
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+}
+
+// 初期ロード
+loadStatusInit({ startPolling:true });
+</script>

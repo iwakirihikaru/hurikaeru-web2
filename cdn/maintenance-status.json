@@ -1,0 +1,14 @@
+{
+  "ok": true,
+  "maintenanceMode": false,
+  "noticeBanner": {
+    "enabled": false,
+    "level": "info",
+    "title": "",
+    "message": "",
+    "linkUrl": "",
+    "linkLabel": ""
+  },
+  "checkedAt": "2026-07-05T14:01:29.664Z",
+  "configVersion": "shell-config-phase2"
+}
