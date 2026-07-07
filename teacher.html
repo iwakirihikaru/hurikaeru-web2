@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ja">
 <head>
 <script src="./runtime-shim.js"></script>
@@ -951,7 +951,7 @@ textarea.inp{resize:vertical;min-height:70px;}
       <h2>⚙️ 設定・Aiプロンプト</h2>
       <div class="subtab-row">
         <button class="subtab-btn active" type="button" data-prompt-tab="ai" onclick="switchPromptSubtab('ai', this)">AI設定</button>
-        <button class="subtab-btn" type="button" data-prompt-tab="update" onclick="switchPromptSubtab('update', this)">更新</button>
+        <button class="subtab-btn" type="button" data-prompt-tab="update" onclick="switchPromptSubtab('update', this)">版情報</button>
       </div>
 
       <div class="prompt-pane active" id="prompt-pane-ai">
@@ -1003,31 +1003,29 @@ textarea.inp{resize:vertical;min-height:70px;}
 
       <div class="prompt-pane" id="prompt-pane-update">
         <div class="prompt-box">
-          <span class="plbl">📦 アプリ更新</span>
+          <span class="plbl">📦 アプリの版情報</span>
           <div class="update-help-card" style="margin-top:10px;">
             <div class="update-help-row">
               <span class="update-help-label">状態</span>
               <span class="update-help-badge" id="helpUpdateStatus">確認前</span>
             </div>
-            <div class="update-help-meta" id="helpUpdateSummary">このアプリの版を確認できます。</div>
+            <div class="update-help-meta" id="helpUpdateSummary">このアプリの版と配布状況を確認できます。</div>
             <div class="update-help-meta" id="helpUpdateLatest">最新版: 取得前</div>
             <div class="update-help-meta" id="helpUpdateCurrent">このアプリ: 取得前</div>
             <div class="update-help-meta" id="helpUpdateMaintenance">緊急停止: 確認前</div>
             <div class="update-help-meta" id="helpUpdateBanner">お知らせ: 取得前</div>
             <div class="update-help-meta" id="helpUpdateCache">設定キャッシュ: 取得前</div>
             <div class="update-help-meta" id="helpUpdateVersionControl">版管理: 取得前</div>
-            <div class="update-help-meta" id="helpUpdateLastResult">前回更新: 未実行</div>
-            <div class="update-help-meta" id="helpUpdateReason">更新条件: 確認前</div>
+            <div class="update-help-meta" id="helpUpdateLastResult">前回確認: 未実行</div>
+            <div class="update-help-meta" id="helpUpdateReason">補足: 確認前</div>
             <div class="guide-link-actions" style="margin-top:10px;">
-              <button class="btn-update" type="button" onclick="refreshTeacherUpdateInfo()">更新を確認</button>
-              <button class="btn-cancel" type="button" id="helpUpdateActionBtn" onclick="runTeacherUpdateActionFromHelp()">更新操作</button>
-              <button class="btn-cancel" type="button" id="helpRollbackBtn" onclick="rollbackTeacherDeploymentFromHelp()">1つ前に戻す</button>
+              <button class="btn-update" type="button" onclick="refreshTeacherUpdateInfo()">最新版を確認</button>
             </div>
-            <div class="guide-note" id="helpUpdateMessage" style="margin-top:10px;">起動時に自動で最新版確認をします。</div>
+            <div class="guide-note" id="helpUpdateMessage" style="margin-top:10px;">この画面では版情報だけを確認できます。更新作業は管理側で行います。</div>
           </div>
         </div>
         <div class="guide-note" style="margin-top:10px;">
-          最新版確認、更新依頼、1つ前への版戻しはここから行います。使い方タブには配布と導入手順だけを残しています。
+          先生画面では版情報だけを表示します。更新や版戻しの作業は管理者側で行ってください。
         </div>
       </div>
     </div>
@@ -1036,7 +1034,7 @@ textarea.inp{resize:vertical;min-height:70px;}
   <div class="section" id="sec-help">
     <div class="card">
       <h2>🚀 使い方</h2>
-      <p class="subject-help" id="helpIntroText">最初にやること、APIキー設定、児童への配布方法をここにまとめています。</p>
+      <p class="subject-help" id="helpIntroText">最初にやること、APIキー設定、WEB版の配布方法をここにまとめています。</p>
 
       <div class="guide-grid">
         <div class="guide-card">
@@ -1045,15 +1043,15 @@ textarea.inp{resize:vertical;min-height:70px;}
             <li id="helpStep1Item1">単元設定で単元を作る</li>
             <li id="helpStep1Item2">必要なら名簿を入れる</li>
             <li id="helpStep1Item3">授業スタートで授業を開始する</li>
-            <li id="helpStep1Item4">この下の児童ページURLを配布する</li>
+            <li id="helpStep1Item4">この下のWEB児童ページURLを配布する</li>
           </ol>
         </div>
         <div class="guide-card">
           <h3 id="helpStep2Title">2. 児童への配布</h3>
           <ol class="guide-list">
-            <li id="helpStep2Item1">基本URLを開くと先生ページが表示される</li>
-            <li id="helpStep2Item2">下の児童ページURLをコピーする</li>
-            <li id="helpStep2Item3">ロイロノート等で同じURLを全員に配布する</li>
+            <li id="helpStep2Item1">初回だけ下のWEB接続ページを児童端末で開く</li>
+            <li id="helpStep2Item2">そのまま保存して接続確認する</li>
+            <li id="helpStep2Item3">2回目以降はWEB児童ページURLだけ配布する</li>
             <li id="helpStep2Item4">児童はそのURLから毎時間入る</li>
             <li id="helpStep2Item5">単元と時間目は先生側の授業スタートに連動する</li>
           </ol>
@@ -1062,31 +1060,31 @@ textarea.inp{resize:vertical;min-height:70px;}
 
       <div class="guide-link-grid" style="margin-top:14px;">
         <div class="guide-link-card">
-          <div class="guide-link-title" id="helpStudentCardTitle">児童ページ</div>
+          <div class="guide-link-title" id="helpStudentCardTitle">WEB児童ページ</div>
           <div class="guide-link-actions">
             <button class="btn-update" type="button" onclick="openHelpLink('student')" id="helpStudentOpenBtn">開く</button>
             <button class="btn-cancel" type="button" onclick="copyHelpLink('student')" id="helpStudentCopyBtn">URLをコピー</button>
           </div>
           <input class="inp" id="helpStudentUrl" readonly>
           <div class="qr-card">
-            <div class="qr-title" id="helpStudentQrTitle">児童ページQR</div>
-            <img id="studentQrImage" class="qr-image" alt="児童ページQR">
+            <div class="qr-title" id="helpStudentQrTitle">WEB児童ページQR</div>
+            <img id="studentQrImage" class="qr-image" alt="WEB児童ページQR">
           </div>
         </div>
         <div class="guide-link-card" id="helpRegistrationCard">
-          <div class="guide-link-title" id="helpRegistrationCardTitle">登録ページ</div>
+          <div class="guide-link-title" id="helpRegistrationCardTitle">WEB接続ページ</div>
           <div class="guide-link-actions">
             <button class="btn-update" type="button" onclick="openHelpLink('registration')" id="helpRegistrationOpenBtn">開く</button>
             <button class="btn-cancel" type="button" onclick="copyHelpLink('registration')" id="helpRegistrationCopyBtn">URLをコピー</button>
           </div>
           <input class="inp" id="helpRegistrationUrl" readonly>
           <div class="qr-card">
-            <div class="qr-title" id="helpRegistrationQrTitle">登録ページQR</div>
-            <img id="registrationQrImage" class="qr-image" alt="登録ページQR">
+            <div class="qr-title" id="helpRegistrationQrTitle">WEB接続ページQR</div>
+            <img id="registrationQrImage" class="qr-image" alt="WEB接続ページQR">
           </div>
         </div>
       </div>
-      <div class="guide-note" style="margin-top:10px;" id="helpDistributionNote">基本URLは先生用です。児童にはここにある児童ページURLだけを配布してください。</div>
+      <div class="guide-note" style="margin-top:10px;" id="helpDistributionNote">初回だけWEB接続ページ、以後はWEB児童ページを配布してください。先生用の基本URLは児童には配りません。</div>
 
       <div class="guide-grid" style="margin-top:14px;">
         <div class="guide-card">
@@ -1111,14 +1109,14 @@ textarea.inp{resize:vertical;min-height:70px;}
           </div>
         </div>
         <div class="guide-card" id="helpUpdateGuideCard">
-          <h3 id="helpStep5Title">5. アプリ更新</h3>
+          <h3 id="helpStep5Title">5. アプリの版情報</h3>
           <ul class="guide-list">
-            <li>更新確認は「設定・Aiプロンプト」タブの「更新」から行います</li>
-            <li>通常は最新版確認だけで十分です</li>
-            <li>必要なときだけ「更新を依頼」または「1つ前に戻す」を使います</li>
+            <li>版情報の確認は「設定・Aiプロンプト」タブの「版情報」から行います</li>
+            <li>先生画面では現在の版と配布状況だけを見られます</li>
+            <li>更新や版戻しは管理者側で行います</li>
           </ul>
           <div class="guide-link-actions">
-            <button class="btn-update" type="button" onclick="openUpdateSettingsTab()" id="helpOpenUpdateBtn">設定の更新を開く</button>
+            <button class="btn-update" type="button" onclick="openUpdateSettingsTab()" id="helpOpenUpdateBtn">設定の版情報を開く</button>
           </div>
         </div>
       </div>
@@ -1709,29 +1707,6 @@ function loadStatusInit(options) {
     var opts = options || {};
     var requestEpoch = teacherDataEpoch;
     applyEmbeddedTeacherBootstrap_();
-    function fallbackToStatusSnapshot_() {
-        google.script.run
-            .withSuccessHandler(function (d) {
-            if (requestEpoch !== teacherDataEpoch)
-                return;
-            applyTeacherInitData(d, { includeRoster: false, renderUnitList: false, schedulePreload: true, source: 'teacherStatusSnapshotFallback' });
-            if (d && d.status) {
-                renderStatus(d.status);
-            }
-            if (opts.startPolling) {
-                startStatusPoll(Boolean(d && d.status));
-            }
-        })
-            .withFailureHandler(function (fallbackErr) {
-            if (requestEpoch !== teacherDataEpoch)
-                return;
-            handleTeacherInitFailure_(fallbackErr, 'teacherStatusSnapshot');
-            if (opts.startPolling) {
-                startStatusPoll(false);
-            }
-        })
-            .teacherStatusSnapshot();
-    }
     var runner = google.script.run
         .withSuccessHandler(function (d) {
         if (requestEpoch !== teacherDataEpoch)
@@ -1753,10 +1728,6 @@ function loadStatusInit(options) {
         .withFailureHandler(function (err) {
         if (requestEpoch !== teacherDataEpoch)
             return;
-        if (opts.lightweight === false || !(Array.isArray(allUnits) && allUnits.length)) {
-            fallbackToStatusSnapshot_();
-            return;
-        }
         handleTeacherInitFailure_(err, 'teacherStatusInit');
         if (opts.startPolling) {
             startStatusPoll(false);
@@ -1847,7 +1818,6 @@ function applyTeacherInitData(d, options) {
             persistTeacherPreloadCache_();
         }
     }
-    clearTeacherLoadWarning_();
     applySavedUiState();
     renderBuildBar();
     renderActiveBanner(d.active);
@@ -1882,20 +1852,9 @@ function showTeacherLoadWarning_(message) {
     }
     showToast('一部の読み込みに失敗しました。画面上部のメッセージを確認してください。', { tone: 'warn' });
 }
-function clearTeacherLoadWarning_() {
-    var box = document.getElementById('teacherFatalError');
-    if (!box)
-        return;
-    if (/^一部の読み込みに失敗しました: /.test(String(box.textContent || ''))) {
-        box.textContent = '';
-        box.style.display = 'none';
-    }
-}
 function handleTeacherInitFailure_(err, source) {
     var message = (err && err.message) ? err.message : String(err || 'unknown error');
-    if (!teacherBuild) {
-        teacherBuild = 'error';
-    }
+    teacherBuild = 'error';
     renderBuildBar();
     showTeacherLoadWarning_("".concat(source, ": ").concat(message));
 }
@@ -2468,8 +2427,6 @@ function renderTeacherHelpUpdateInfo(app) {
     var lastResultEl = document.getElementById('helpUpdateLastResult');
     var reasonEl = document.getElementById('helpUpdateReason');
     var messageEl = document.getElementById('helpUpdateMessage');
-    var actionBtn = document.getElementById('helpUpdateActionBtn');
-    var rollbackBtn = document.getElementById('helpRollbackBtn');
     var latestBuild = String(data.latestBuild || '').trim();
     var latestVersion = String(data.latestVersion || '').trim();
     var currentBuild = String(data.currentBuild || '').trim();
@@ -2480,7 +2437,6 @@ function renderTeacherHelpUpdateInfo(app) {
     var lastAt = String(data.selfUpdateLastAt || '').trim();
     var lastError = String(data.selfUpdateLastError || '').trim();
     var reason = String(data.selfUpdateReason || '').trim();
-    var actionMode = String(data.updateActionMode || 'disabled').trim();
     var currentDeploymentVersion = Number(data.currentDeploymentVersion || 0);
     var previousDeploymentVersion = Number(data.previousDeploymentVersion || 0);
     var rollbackReason = String(data.rollbackReason || '').trim();
@@ -2521,7 +2477,7 @@ function renderTeacherHelpUpdateInfo(app) {
             summaryEl.textContent = 'このアプリは最新の配布版です。';
         }
         else {
-            summaryEl.textContent = '最新版情報を確認できます。';
+            summaryEl.textContent = 'このアプリの版と配布状況を確認できます。';
         }
     }
     if (latestEl) {
@@ -2570,29 +2526,29 @@ function renderTeacherHelpUpdateInfo(app) {
         }
     }
     if (lastResultEl) {
-        var updateLastPrefix = getShellLabel('teacherUpdateLastPrefix', '前回更新:');
+        var updateLastPrefix = getShellLabel('teacherUpdateLastPrefix', '前回確認:');
         if (lastStatus === 'updated') {
-            lastResultEl.textContent = "".concat(updateLastPrefix, " \u6210\u529F").concat(lastBuild ? " / ".concat(lastBuild) : '').concat(lastAt ? " / ".concat(lastAt) : '');
+            lastResultEl.textContent = "".concat(updateLastPrefix, " \u66F4\u65B0\u6210\u529F").concat(lastBuild ? " / ".concat(lastBuild) : '').concat(lastAt ? " / ".concat(lastAt) : '');
         }
         else if (lastStatus === 'rolled_back') {
             lastResultEl.textContent = "".concat(updateLastPrefix, " \u7248\u623B\u3057").concat(lastAt ? " / ".concat(lastAt) : '');
         }
         else if (lastStatus === 'error') {
-            lastResultEl.textContent = "".concat(updateLastPrefix, " \u5931\u6557").concat(lastAt ? " / ".concat(lastAt) : '').concat(lastError ? " / ".concat(lastError) : '');
+            lastResultEl.textContent = "".concat(updateLastPrefix, " \u78BA\u8A8D\u5931\u6557").concat(lastAt ? " / ".concat(lastAt) : '').concat(lastError ? " / ".concat(lastError) : '');
         }
         else {
             lastResultEl.textContent = "".concat(updateLastPrefix, " \u672A\u5B9F\u884C");
         }
     }
     if (reasonEl) {
-        reasonEl.textContent = "".concat(getShellLabel('teacherUpdateConditionPrefix', '更新条件:'), " ").concat(reason || (data.canSelfUpdate ? '更新実行できます。' : '確認中です。'));
+        reasonEl.textContent = "\u88DC\u8DB3: ".concat(reason || '必要な更新作業は管理者側で行います。');
     }
     if (messageEl && !String(messageEl.dataset.busy || '').trim()) {
         if (maintenanceMode) {
             messageEl.textContent = String(noticeBanner.message || '').trim() || '現在メンテナンス中です。少し待ってから開き直してください。';
         }
         else if (status === 'update_available') {
-            messageEl.textContent = String(data.updateAvailableMessage || '').trim() || '新しい版があります。必要なら更新依頼を出してください。';
+            messageEl.textContent = String(data.updateAvailableMessage || '').trim() || '新しい版が配布されています。更新作業は管理者側で行ってください。';
         }
         else if (status === 'up_to_date') {
             messageEl.textContent = rollbackReason && !currentDeploymentVersion
@@ -2600,27 +2556,15 @@ function renderTeacherHelpUpdateInfo(app) {
                 : '今のところ更新は不要です。';
         }
         else {
-            messageEl.textContent = '「更新を確認」で中央の最新版情報を取り直せます。';
+            messageEl.textContent = '「最新版を確認」で中央の版情報を取り直せます。';
         }
-    }
-    if (actionBtn) {
-        actionBtn.textContent = String(data.updateActionLabel || '更新操作').trim() || '更新操作';
-        actionBtn.disabled = maintenanceMode || !(data.canSelfUpdate || data.canRequestUpdate);
-        actionBtn.dataset.actionMode = actionMode || 'disabled';
-        actionBtn.title = maintenanceMode
-            ? 'メンテナンス中は更新依頼を止めています。'
-            : ((data.canSelfUpdate || data.canRequestUpdate) ? '' : (reason || '更新条件が足りません。'));
-    }
-    if (rollbackBtn) {
-        rollbackBtn.disabled = !data.canRollbackDeployment;
-        rollbackBtn.title = data.canRollbackDeployment ? '' : (rollbackReason || '1つ前の版へ戻せません。');
     }
 }
 function refreshTeacherUpdateInfo() {
     var messageEl = document.getElementById('helpUpdateMessage');
     if (messageEl) {
         messageEl.dataset.busy = '1';
-        messageEl.textContent = '最新版情報を確認しています...';
+        messageEl.textContent = '版情報を確認しています...';
     }
     fetchTeacherHelpData_({
         force: true,
@@ -2636,14 +2580,14 @@ function refreshTeacherUpdateInfo() {
                     messageEl.textContent = 'このアプリは最新版です。';
                 }
                 else {
-                    messageEl.textContent = '最新版情報を更新しました。';
+                    messageEl.textContent = '版情報を更新しました。';
                 }
             }
         },
         onFailure: function (err) {
             if (messageEl) {
                 messageEl.dataset.busy = '';
-                messageEl.textContent = "\u66F4\u65B0\u78BA\u8A8D\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat(err && err.message ? err.message : err);
+                messageEl.textContent = "\u7248\u60C5\u5831\u306E\u78BA\u8A8D\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat(err && err.message ? err.message : err);
             }
         },
     });
@@ -3020,6 +2964,9 @@ var teacherFeedbackResultTimer = null;
 var unitSaveState = { busy: false, requestToken: '' };
 var lessonFieldEditState = { mode: 'unit', unitId: '', period: 0 };
 var teacherDraftLocalState = {};
+var unitListPage = 1;
+var lastUnitListSignature = '';
+var UNIT_LIST_PAGE_SIZE = 10;
 var TEACHER_FEEDBACK_PREFS_KEY = 'teacher_feedback_prefs_v1';
 var teacherFeedbackPrefsLoaded = false;
 function loadTeacherFeedbackPrefs_() {
@@ -3074,7 +3021,6 @@ function loadStatus() {
     google.script.run.withSuccessHandler(renderStatus).getLessonStatus(activeUnitId, activePeriod);
 }
 function renderStatus(d) {
-    clearTeacherLoadWarning_();
     latestStatusRows = Array.isArray(d && d.students) ? d.students : [];
     latestStatusMeta = d && d.meta || {};
     var st = latestStatusRows;
@@ -3667,15 +3613,25 @@ function renderUnderstandingChip(value) {
 function renderUnitList() {
     var el = document.getElementById('unitList');
     var summaryEl = document.getElementById('unitListSummary');
+    var pagerEl = document.getElementById('unitListPager');
     if (!allUnits.length) {
         if (summaryEl)
             summaryEl.textContent = '単元はまだありません。右の「新しい単元を追加」から作成できます。';
+        if (pagerEl) {
+            pagerEl.style.display = 'none';
+            pagerEl.innerHTML = '';
+        }
         el.innerHTML = '<p style="color:#999">単元がありません</p>';
         return;
     }
     var subject = (document.getElementById('unitListSubjectFilter') || {}).value || '';
     var keyword = ((document.getElementById('unitListSearch') || {}).value || '').trim().toLowerCase();
     var sortKey = (document.getElementById('unitListSort') || {}).value || 'subject_group';
+    var signature = [subject, keyword, sortKey, allUnits.length].join('|');
+    if (signature !== lastUnitListSignature) {
+        unitListPage = 1;
+        lastUnitListSignature = signature;
+    }
     saveUiState({
         unitListSubjectFilter: subject,
         unitListSearch: (document.getElementById('unitListSearch') || {}).value || '',
@@ -3689,16 +3645,35 @@ function renderUnitList() {
     if (!visibleUnits.length) {
         if (summaryEl)
             summaryEl.textContent = "\u5168 ".concat(allUnits.length, " \u4EF6\u4E2D\u3001\u6761\u4EF6\u306B\u5408\u3046\u5358\u5143\u306F\u3042\u308A\u307E\u305B\u3093\u3002\u6761\u4EF6\u3092\u5909\u3048\u308B\u3068\u8868\u793A\u3055\u308C\u307E\u3059\u3002");
+        if (pagerEl) {
+            pagerEl.style.display = 'none';
+            pagerEl.innerHTML = '';
+        }
         el.innerHTML = '<p style="color:#999">条件に合う単元がありません</p>';
         return;
     }
+    var pageCount = Math.max(1, Math.ceil(visibleUnits.length / UNIT_LIST_PAGE_SIZE));
+    unitListPage = Math.min(pageCount, Math.max(1, unitListPage));
+    var pageStart = (unitListPage - 1) * UNIT_LIST_PAGE_SIZE;
+    var pagedUnits = visibleUnits.slice(pageStart, pageStart + UNIT_LIST_PAGE_SIZE);
     if (summaryEl) {
         var subjectText = subject ? "".concat(subject, "\u306E\u307F") : '全教科';
         var keywordText = keyword ? " / \u300C".concat(keyword, "\u300D\u3067\u691C\u7D22\u4E2D") : '';
-        summaryEl.textContent = "\u73FE\u5728 ".concat(visibleUnits.length, " \u4EF6\u3092\u8868\u793A\u4E2D\uFF08\u5168 ").concat(allUnits.length, " \u4EF6\u3001").concat(subjectText).concat(keywordText, "\uFF09");
+        var pageText = pageCount > 1 ? " / ".concat(unitListPage, " / ").concat(pageCount, " \u30DA\u30FC\u30B8") : '';
+        summaryEl.textContent = "\u73FE\u5728 ".concat(visibleUnits.length, " \u4EF6\u4E2D ").concat(pageStart + 1, "\u301C").concat(pageStart + pagedUnits.length, " \u4EF6\u3092\u8868\u793A\uFF08\u5168 ").concat(allUnits.length, " \u4EF6\u3001").concat(subjectText).concat(keywordText).concat(pageText, "\uFF09");
+    }
+    if (pagerEl) {
+        if (pageCount <= 1) {
+            pagerEl.style.display = 'none';
+            pagerEl.innerHTML = '';
+        }
+        else {
+            pagerEl.style.display = 'flex';
+            pagerEl.innerHTML = "\n        <button class=\"btn-sm\" type=\"button\" onclick=\"changeUnitListPage(-1)\" ".concat(unitListPage <= 1 ? 'disabled' : '', ">\u2190 \u524D\u3078</button>\n        <span style=\"font-size:12px;color:var(--muted);\">").concat(unitListPage, " / ").concat(pageCount, " \u30DA\u30FC\u30B8</span>\n        <button class=\"btn-sm\" type=\"button\" onclick=\"changeUnitListPage(1)\" ").concat(unitListPage >= pageCount ? 'disabled' : '', ">\u6B21\u3078 \u2192</button>");
+        }
     }
     if (sortKey === 'subject_group') {
-        var grouped_1 = visibleUnits.reduce(function (acc, unit) {
+        var grouped_1 = pagedUnits.reduce(function (acc, unit) {
             var key = String(unit.subject || '未設定');
             if (!acc[key])
                 acc[key] = [];
@@ -3714,7 +3689,11 @@ function renderUnitList() {
         }).join('');
         return;
     }
-    el.innerHTML = visibleUnits.map(renderUnitRow).join('');
+    el.innerHTML = pagedUnits.map(renderUnitRow).join('');
+}
+function changeUnitListPage(delta) {
+    unitListPage = Math.max(1, unitListPage + (Number(delta) || 0));
+    renderUnitList();
 }
 function compareUnitRows(a, b, sortKey) {
     if (String(a.id) === String(activeUnitId) && String(b.id) !== String(activeUnitId))
@@ -4838,9 +4817,12 @@ function savePrompts() {
         aiQueue: (preloadCache.prompts || {}).aiQueue || null,
     };
     google.script.run
-        .withSuccessHandler(function () {
+        .withSuccessHandler(function (res) {
+        var savedCfg = (res && res.globalCfg) || {};
+        nextPromptCache.globalCfg = __assign(__assign({}, nextPromptCache.globalCfg), savedCfg);
         preloadCache.prompts = nextPromptCache;
         persistTeacherPreloadCache_();
+        applyPromptData(preloadCache.prompts);
         alert('プロンプトを保存しました！');
     })
         .saveGlobalSettings(document.getElementById('pMedal').value, document.getElementById('pComment').value, document.getElementById('pScore').value, document.getElementById('pPortfolio').value, document.getElementById('pUnitSummary').value, document.getElementById('pAssessment').value, document.getElementById('pApiKey').value, document.getElementById('pStudentAiAutoSubmit').checked);
@@ -4862,13 +4844,30 @@ var __assign = (this && this.__assign) || function () {
     };
     return __assign.apply(this, arguments);
 };
+var portfolioInitRequestSeq = 0;
+var portfolioDataRequestSeq = 0;
 function loadPortfolioTab() {
     var body = document.getElementById('portfolioBody');
-    body.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:14px;"><span class="spinner"></span></td></tr>';
     syncTeacherAiUi_();
     ensurePromptPreload();
+    var requestSeq = ++portfolioInitRequestSeq;
+    var hasImmediateRoster = Array.isArray(rosterEntries) && rosterEntries.length > 0;
+    var hasImmediateUnits = Array.isArray(allUnits) && allUnits.length > 0;
+    if (!hasImmediateRoster && preloadCache.roster && Array.isArray(preloadCache.roster.roster)) {
+        rosterEntries = preloadCache.roster.roster.filter(function (row) { return row.active !== false; });
+        hasImmediateRoster = rosterEntries.length > 0;
+    }
+    if (hasImmediateRoster || hasImmediateUnits) {
+        renderPortfolioSelectors();
+        loadPortfolioData();
+    }
+    else {
+        body.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:14px;"><span class="spinner"></span></td></tr>';
+    }
     google.script.run
         .withSuccessHandler(function (d) {
+        if (requestSeq !== portfolioInitRequestSeq)
+            return;
         allUnits = d.units || [];
         rosterEntries = (d.roster || []).filter(function (row) { return row.active !== false; });
         teacherBuild = d.build || teacherBuild || '';
@@ -4876,7 +4875,16 @@ function loadPortfolioTab() {
         loadPortfolioData();
     })
         .withFailureHandler(function (err) {
-        body.innerHTML = "<tr><td colspan=\"6\" style=\"text-align:center;padding:14px;color:#C62828;\">".concat(esc((err && err.message) || err || 'ポートフォリオの読み込みに失敗しました'), "</td></tr>");
+        if (requestSeq !== portfolioInitRequestSeq)
+            return;
+        var message = (err && err.message) || err || 'ポートフォリオの読み込みに失敗しました';
+        var debugBox = document.getElementById('portfolioDebug');
+        if (hasImmediateRoster || hasImmediateUnits) {
+            if (debugBox)
+                debugBox.textContent = "\u30DD\u30FC\u30C8\u30D5\u30A9\u30EA\u30AA\u521D\u671F\u30C7\u30FC\u30BF\u306E\u66F4\u65B0\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat(message);
+            return;
+        }
+        body.innerHTML = "<tr><td colspan=\"6\" style=\"text-align:center;padding:14px;color:#C62828;\">".concat(esc(message), "</td></tr>");
     })
         .teacherInit();
 }
@@ -4885,33 +4893,40 @@ function renderPortfolioSelectors() {
     var studentCur = studentSel.value;
     studentSel.innerHTML = '<option value="">児童を選択…</option>' +
         rosterEntries.map(function (row) { return "<option value=\"".concat(row.number, "\">").concat(row.number, " ").concat(esc(row.name || ''), "</option>"); }).join('');
-    if (studentCur)
+    if (studentCur && Array.from(studentSel.options).some(function (option) { return String(option.value) === String(studentCur); }))
         studentSel.value = studentCur;
     var unitSel = document.getElementById('pfUnit');
     var unitCur = unitSel.value;
     unitSel.innerHTML = '<option value="">全単元</option>' +
         sortUnitsByLatestActivity(allUnits).map(function (u) { return "<option value=\"".concat(u.id, "\">").concat(esc(u.subject), "\uFF1A").concat(esc(u.name), "</option>"); }).join('');
-    if (unitCur)
+    if (unitCur && Array.from(unitSel.options).some(function (option) { return String(option.value) === String(unitCur); }))
         unitSel.value = unitCur;
 }
 function loadPortfolioData() {
     var studentNumber = document.getElementById('pfStudent').value;
     var unitId = document.getElementById('pfUnit').value;
     var body = document.getElementById('portfolioBody');
+    var cards = document.getElementById('portfolioCards');
     var debugBox = document.getElementById('portfolioDebug');
+    var requestSeq = ++portfolioDataRequestSeq;
     if (debugBox && !String(debugBox.dataset.baseText || '').trim()) {
         debugBox.dataset.baseText = '児童を選ぶと取得件数を表示します。';
     }
     document.getElementById('portfolioReport').style.display = 'none';
     if (!studentNumber) {
+        portfolioRows = [];
         body.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:14px;color:#999;">児童を選択してください</td></tr>';
+        cards.innerHTML = '<div class="portfolio-empty">児童を選択してください</div>';
         debugBox.textContent = '児童を選ぶと取得件数を表示します。';
         return;
     }
     body.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:14px;"><span class="spinner"></span></td></tr>';
+    cards.innerHTML = '<div class="portfolio-empty"><span class="spinner"></span></div>';
     debugBox.textContent = '取得状況を確認中…';
     google.script.run
         .withSuccessHandler(function (raw) {
+        if (requestSeq !== portfolioDataRequestSeq)
+            return;
         var res = null;
         try {
             res = raw ? JSON.parse(raw) : null;
@@ -4939,8 +4954,11 @@ function loadPortfolioData() {
         renderPortfolioRows();
     })
         .withFailureHandler(function (err) {
+        if (requestSeq !== portfolioDataRequestSeq)
+            return;
         debugBox.textContent = 'デバッグ情報の取得に失敗しました。';
         body.innerHTML = "<tr><td colspan=\"6\" style=\"text-align:center;padding:14px;color:#C62828;\">".concat(esc((err && err.message) || err || 'ポートフォリオデータの読み込みに失敗しました'), "</td></tr>");
+        cards.innerHTML = '<div class="portfolio-empty">ポートフォリオデータの読み込みに失敗しました</div>';
     })
         .getStudentPortfolioDataJson(studentNumber, unitId || null);
 }
@@ -6066,4 +6084,3 @@ loadStatusInit({ startPolling: true });
 
 </body>
 </html>
-

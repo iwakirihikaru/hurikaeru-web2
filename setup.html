@@ -1,9 +1,9 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Furikaeri Setup</title>
+<title>ふりかえり WEB接続</title>
 <script src="./runtime-shim.js"></script>
 <style>
 :root{
@@ -16,6 +16,7 @@ body{margin:0;font-family:var(--font);background:var(--bg);color:#212121}
 .wrap{max-width:760px;margin:0 auto;padding:20px}
 .card{background:var(--card);border-radius:16px;padding:18px;box-shadow:0 6px 20px rgba(26,35,126,.08);margin-bottom:14px}
 .lead{background:#EEF4FF;border:1px solid var(--line);border-radius:12px;padding:12px 14px;line-height:1.7}
+.steps{margin:0;padding-left:20px;line-height:1.9;color:#455A64}
 .label{display:block;font-size:13px;font-weight:700;margin:0 0 8px}
 .input{width:100%;padding:12px 14px;border:1.5px solid #CFD8DC;border-radius:10px;font-size:14px;font-family:var(--font)}
 .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
@@ -32,27 +33,36 @@ body{margin:0;font-family:var(--font);background:var(--bg);color:#212121}
 </style>
 </head>
 <body>
-<div class="nav">Furikaeri Setup</div>
+<div class="nav">ふりかえり WEB接続</div>
 <div class="wrap">
   <div class="card">
-    <div class="lead">Save the GAS URL here. Both <span class="mono">student.html</span> and <span class="mono">teacher.html</span> will use it.</div>
+    <div class="lead">この端末を、先生のふりかえりデータにつなぎます。初回だけここで保存すれば、以後は <span class="mono">student.html</span> からそのまま入れます。</div>
   </div>
   <div class="card">
-    <label class="label" for="apiUrl">GAS Web App URL</label>
+    <div class="label">初回の流れ</div>
+    <ol class="steps">
+      <li>先生から受け取った URL を開く</li>
+      <li>下の URL が入っていることを確認する</li>
+      <li>「保存して接続確認」を押す</li>
+      <li>終わったら児童ページを開く</li>
+    </ol>
+  </div>
+  <div class="card">
+    <label class="label" for="apiUrl">接続先の GAS Web App URL</label>
     <input id="apiUrl" class="input" type="url" placeholder="https://script.google.com/macros/s/.../exec">
     <div class="row">
-      <button id="saveBtn" class="btn btn-main" type="button">Save and Test</button>
-      <button id="testBtn" class="btn btn-sub" type="button">Test Only</button>
-      <button id="clearBtn" class="btn btn-ghost" type="button">Clear</button>
+      <button id="saveBtn" class="btn btn-main" type="button">保存して接続確認</button>
+      <button id="testBtn" class="btn btn-sub" type="button">接続確認だけする</button>
+      <button id="clearBtn" class="btn btn-ghost" type="button">保存を消す</button>
     </div>
-    <div id="status" class="status">Not set</div>
+    <div id="status" class="status">まだ保存されていません。</div>
   </div>
   <div class="card">
-    <div class="label">Current Value</div>
+    <div class="label">いま保存されている接続先</div>
     <div id="currentValue" class="mono"></div>
     <div class="links">
-      <a id="studentLink" class="linkbtn" href="./student">Open Student</a>
-      <a id="teacherLink" class="linkbtn" href="./teacher">Open Teacher</a>
+      <a class="linkbtn" href="./student.html">児童ページを開く</a>
+      <a class="linkbtn" href="./teacher.html">先生ページを開く</a>
     </div>
   </div>
 </div>
@@ -61,22 +71,11 @@ body{margin:0;font-family:var(--font);background:var(--bg);color:#212121}
   var input = document.getElementById('apiUrl');
   var status = document.getElementById('status');
   var currentValue = document.getElementById('currentValue');
-  var studentLink = document.getElementById('studentLink');
-  var teacherLink = document.getElementById('teacherLink');
-  var params = new URLSearchParams(window.location.search);
-
-  function withApiQuery(path, value) {
-    var api = String(value || '').trim();
-    if (!api) return path;
-    return path + '?api=' + encodeURIComponent(api);
-  }
 
   function renderCurrent() {
     var value = window.__portableGas.getApiUrl();
-    currentValue.textContent = value || 'Not set';
+    currentValue.textContent = value || '未設定';
     if (!input.value) input.value = value;
-    studentLink.href = withApiQuery('./student', value);
-    teacherLink.href = withApiQuery('./teacher', value);
   }
 
   function setStatus(message, tone) {
@@ -87,17 +86,17 @@ body{margin:0;font-family:var(--font);background:var(--bg);color:#212121}
   async function testConnection() {
     var url = String(input.value || '').trim();
     if (!url) {
-      setStatus('Enter a URL first.', 'error');
+      setStatus('URLを入れてください。', 'error');
       return;
     }
     window.__portableGas.setApiUrl(url);
     renderCurrent();
-    setStatus('Checking connection...', '');
+    setStatus('接続確認中...', '');
     try {
       await window.__portableGas.postAction('rpc', { method: 'teacherInit', args: [] });
-      setStatus('Connected. The GAS endpoint is responding.', 'ok');
+      setStatus('接続できました。この端末は使えます。', 'ok');
     } catch (error) {
-      setStatus('Connection failed: ' + (error && error.message ? error.message : String(error)), 'error');
+      setStatus('接続に失敗しました: ' + (error && error.message ? error.message : String(error)), 'error');
     }
   }
 
@@ -107,18 +106,15 @@ body{margin:0;font-family:var(--font);background:var(--bg);color:#212121}
     input.value = '';
     window.__portableGas.setApiUrl('');
     renderCurrent();
-    setStatus('Saved value cleared.', '');
+    setStatus('保存した接続先を消しました。', '');
   });
 
-  var apiFromQuery = params.get('api');
+  var apiFromQuery = new URLSearchParams(window.location.search).get('api');
   if (apiFromQuery) {
     input.value = apiFromQuery;
     window.__portableGas.setApiUrl(apiFromQuery);
   }
   renderCurrent();
-  if (params.get('missingApi') === '1') {
-    setStatus('先生画面または児童画面を開く前に、先に GAS URL を保存してください。', 'error');
-  }
 })();
 </script>
 </body>

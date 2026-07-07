@@ -38,7 +38,7 @@ open:
 Deploy `portable/` as a static site.
 
 - Build command:
-  - none
+  - `npm run build:portable`
 - Build output directory:
   - `portable`
 - Entry:
@@ -47,7 +47,3 @@ Deploy `portable/` as a static site.
   - `/setup`
   - `/student`
   - `/teacher`
-
-Recommended first open:
-
-- `/setup?api=https://script.google.com/macros/s/AKfycbwN4jX_joOcvKQV2Brps5AL3ibLWebem0qd3A0uzRDP8JIyohGhFE3410LLE0eTlEfb/exec`

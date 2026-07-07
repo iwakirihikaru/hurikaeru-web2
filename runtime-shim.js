@@ -2,6 +2,8 @@
   var STORAGE_KEY = "GAS_API_URL";
   var memoryApiUrl = "";
   var REDIRECT_FLAG_KEY = "__portable_setup_redirecting__";
+  var TEACHER_BOOTSTRAP_CACHE_KEY = "jibun-matome-teacher-bootstrap-fast";
+  var TEACHER_BOOTSTRAP_TTL_MS = 60 * 1000;
 
   function readApiUrlFromQuery() {
     try {
@@ -64,6 +66,21 @@
     if (typeof error === "string") return error;
     if (error.message) return error.message;
     return String(error);
+  }
+
+  function readJsonCache(cacheKey) {
+    try {
+      var raw = window.localStorage.getItem(cacheKey);
+      var parsed = raw ? JSON.parse(raw) : null;
+      if (!parsed) return null;
+      if ((Date.now() - Number(parsed.savedAt || 0)) > TEACHER_BOOTSTRAP_TTL_MS) {
+        window.localStorage.removeItem(cacheKey);
+        return null;
+      }
+      return parsed;
+    } catch (_error) {
+      return null;
+    }
   }
 
   function isSetupPage() {
@@ -203,10 +220,11 @@
         redirectToSetupIfNeeded();
         return { shell: {}, status: null, unitItems: [], recordItems: [] };
       }
-      return postActionSync("rpc", {
-        method: "teacherInit",
-        args: []
-      }) || null;
+      var cached = readJsonCache(TEACHER_BOOTSTRAP_CACHE_KEY);
+      if (cached && cached.data && typeof cached.data === "object") {
+        return cached.data;
+      }
+      return null;
     },
     bootstrapStudent: function () {
       if (!getApiUrl()) {
