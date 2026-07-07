@@ -4,7 +4,7 @@
       <h2>⚙️ 設定・Aiプロンプト</h2>
       <div class="subtab-row">
         <button class="subtab-btn active" type="button" data-prompt-tab="ai" onclick="switchPromptSubtab('ai', this)">AI設定</button>
-        <button class="subtab-btn" type="button" data-prompt-tab="update" onclick="switchPromptSubtab('update', this)">更新</button>
+        <button class="subtab-btn" type="button" data-prompt-tab="update" onclick="switchPromptSubtab('update', this)">版情報</button>
       </div>
 
       <div class="prompt-pane active" id="prompt-pane-ai">
@@ -56,31 +56,29 @@
 
       <div class="prompt-pane" id="prompt-pane-update">
         <div class="prompt-box">
-          <span class="plbl">📦 アプリ更新</span>
+          <span class="plbl">📦 アプリの版情報</span>
           <div class="update-help-card" style="margin-top:10px;">
             <div class="update-help-row">
               <span class="update-help-label">状態</span>
               <span class="update-help-badge" id="helpUpdateStatus">確認前</span>
             </div>
-            <div class="update-help-meta" id="helpUpdateSummary">このアプリの版を確認できます。</div>
+            <div class="update-help-meta" id="helpUpdateSummary">このアプリの版と配布状況を確認できます。</div>
             <div class="update-help-meta" id="helpUpdateLatest">最新版: 取得前</div>
             <div class="update-help-meta" id="helpUpdateCurrent">このアプリ: 取得前</div>
             <div class="update-help-meta" id="helpUpdateMaintenance">緊急停止: 確認前</div>
             <div class="update-help-meta" id="helpUpdateBanner">お知らせ: 取得前</div>
             <div class="update-help-meta" id="helpUpdateCache">設定キャッシュ: 取得前</div>
             <div class="update-help-meta" id="helpUpdateVersionControl">版管理: 取得前</div>
-            <div class="update-help-meta" id="helpUpdateLastResult">前回更新: 未実行</div>
-            <div class="update-help-meta" id="helpUpdateReason">更新条件: 確認前</div>
+            <div class="update-help-meta" id="helpUpdateLastResult">前回確認: 未実行</div>
+            <div class="update-help-meta" id="helpUpdateReason">補足: 確認前</div>
             <div class="guide-link-actions" style="margin-top:10px;">
-              <button class="btn-update" type="button" onclick="refreshTeacherUpdateInfo()">更新を確認</button>
-              <button class="btn-cancel" type="button" id="helpUpdateActionBtn" onclick="runTeacherUpdateActionFromHelp()">更新操作</button>
-              <button class="btn-cancel" type="button" id="helpRollbackBtn" onclick="rollbackTeacherDeploymentFromHelp()">1つ前に戻す</button>
+              <button class="btn-update" type="button" onclick="refreshTeacherUpdateInfo()">最新版を確認</button>
             </div>
-            <div class="guide-note" id="helpUpdateMessage" style="margin-top:10px;">起動時に自動で最新版確認をします。</div>
+            <div class="guide-note" id="helpUpdateMessage" style="margin-top:10px;">この画面では版情報だけを確認できます。更新作業は管理側で行います。</div>
           </div>
         </div>
         <div class="guide-note" style="margin-top:10px;">
-          最新版確認、更新依頼、1つ前への版戻しはここから行います。使い方タブには配布と導入手順だけを残しています。
+          先生画面では版情報だけを表示します。更新や版戻しの作業は管理者側で行ってください。
         </div>
       </div>
     </div>

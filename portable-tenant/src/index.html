@@ -429,6 +429,7 @@ let studentHistoryRows = [];
 let studentHistoryIndex = 0;
 let studentMaintenanceMode = false;
 let currentStudentShellState = {};
+let currentStudentUnitInfo = null;
 const AUTO_SAVE_MS = 30000;
 const POLL_IDLE_MS = 4000;
 const POLL_WAITING_AI_MS = 2500;
@@ -459,6 +460,13 @@ function writeStudentCache_(kind, suffix, payload){
       payload: payload||null
     }));
   }catch(e){}
+}
+
+function getInitialStudentFocusField_(fields){
+  const list=Array.isArray(fields)?fields:[];
+  if(!list.length) return 'review';
+  const firstEnabled=list.find(field=>field&&field.enabled!==false);
+  return String(firstEnabled&&firstEnabled.key||list[0]&&list[0].key||'review');
 }
 
 function readRememberedStudentNumber_(){
@@ -495,6 +503,30 @@ const bootstrapStudentOptions = <?!= JSON.stringify(typeof bootstrapStudentOptio
 applyStudentShellState_(bootstrapStudentOptions.shell||{});
 renderNumberButtons(bootstrapStudentOptions.students||[]);
 setupRememberedStudentResume_(bootstrapStudentOptions.students||[]);
+
+function getBootstrapClassSnapshot_(){
+  const snapshot=bootstrapStudentOptions.classSnapshot;
+  return snapshot && typeof snapshot==='object' ? snapshot : null;
+}
+
+function getBootstrapStudentSnapshotState_(num){
+  const snapshot=getBootstrapClassSnapshot_();
+  if(!snapshot || !snapshot.statesByNumber) return null;
+  const state=snapshot.statesByNumber[String(num)];
+  if(!state) return null;
+  return Object.assign({}, state, {
+    needPeriodSelect:false,
+    unit:snapshot.unit||null,
+    period:Number(snapshot.period||0),
+    teacherSetPeriod:Boolean(snapshot.teacherSetPeriod),
+    teacherTimelineFieldKey:snapshot.teacherTimelineFieldKey||'',
+    studentAiEnabled:Boolean(snapshot.studentAiEnabled),
+    studentAiAutoSubmitEnabled:Boolean(snapshot.studentAiAutoSubmitEnabled),
+    shell:snapshot.shell||bootstrapStudentOptions.shell||{},
+    bootstrapTimeline:snapshot.timeline||null,
+    bootstrapSource:'classSnapshot',
+  });
+}
 
 function getStudentShellLabels_(shell){
   const state=shell||{};
@@ -620,6 +652,12 @@ function selectNumber(num, options){
   initBusy=true;
   myNum=num;
   if(opts.remember!==false) rememberStudentNumber_(num);
+  const bootstrapState=getBootstrapStudentSnapshotState_(num);
+  if(bootstrapState){
+    initBusy=false;
+    loadMain(bootstrapState);
+    return;
+  }
   document.querySelectorAll('.num-btn').forEach(btn=>btn.disabled=true);
   google.script.run
     .withSuccessHandler(d=>{initBusy=false;onInit(d);})
@@ -677,8 +715,9 @@ function loadMain(d){
   myPeriod  = d.period      || null;
   myFields  = d.fields      || [];
   submitted = d.submitted   || false;
-  focusField = 'review';
+  focusField = getInitialStudentFocusField_(myFields);
   teacherTimelineFieldKey = d.teacherTimelineFieldKey || '';
+  currentStudentUnitInfo = d.unit || currentStudentUnitInfo || null;
   studentAiEnabled = Boolean(d.studentAiEnabled);
   studentAiAutoSubmitEnabled = Boolean(d.studentAiAutoSubmitEnabled);
   applyStudentShellState_(d && d.shell || {});
@@ -703,7 +742,7 @@ function loadMain(d){
   document.getElementById('studentHistoryTabs').style.display='none';
   document.getElementById('submitBtn').textContent=getStudentShellLabel_('studentSubmitLabel', '🚀 ていしゅつ');
   document.getElementById('hdrUnit').textContent=
-    d.unit?`【${d.unit.subject}】${d.unit.name}・${d.period}じかんめ`:'';
+    currentStudentUnitInfo?`【${currentStudentUnitInfo.subject}】${currentStudentUnitInfo.name}・${d.period}じかんめ`:'';
   document.getElementById('hdrMeta').textContent=`${d.num}ばん ${d.name||''} さん`;
   document.getElementById('myNameLabel').textContent=`${d.num}ばん ${d.name||''} さん`;
   document.getElementById('changeStudentBtn').style.display='inline-block';
@@ -715,16 +754,24 @@ function loadMain(d){
   studentHistoryIndex=0;
   showStudentTab('current');
   setFieldInteractivity(false);
-  document.getElementById('submitNote').textContent='よみこみ中…';
+  document.getElementById('submitNote').textContent=d.cacheOnly ? 'さいしんじょうほうをよみこみ中…' : 'よみこみ中…';
   applyStudentState(d);
-  loadStudentSupplemental();
+  if(d.bootstrapTimeline) applyTimelinePayload(d.bootstrapTimeline);
+  if(!d.cacheOnly){
+    const skipLocalFallback=Boolean(d.bootstrapTimeline);
+    loadStudentSupplemental({ skipCachedTimeline:skipLocalFallback });
+    loadStudentState({ skipCachedState:skipLocalFallback });
+  }
   resetAutoSave();
 }
 
-function loadStudentState(){
+function loadStudentState(options){
+  const opts=options||{};
   const cacheKey=[myUnitId,myPeriod,myNum].join('_');
-  const cached=readStudentCache_('state',cacheKey);
-  if(cached) applyStudentState(cached);
+  if(!opts.skipCachedState){
+    const cached=readStudentCache_('state',cacheKey);
+    if(cached) applyStudentState(cached);
+  }
   google.script.run
     .withSuccessHandler(payload=>{
       writeStudentCache_('state',cacheKey,payload);
@@ -739,11 +786,14 @@ function loadStudentState(){
     .studentLoadState(myUnitId,myPeriod,myNum);
 }
 
-function loadStudentSupplemental(){
+function loadStudentSupplemental(options){
+  const opts=options||{};
   loadPreviousReview();
   const timelineCacheKey=[myUnitId,myPeriod,myNum].join('_');
-  const cachedTimeline=readStudentCache_('timeline',timelineCacheKey);
-  if(cachedTimeline) applyTimelinePayload(cachedTimeline);
+  if(!opts.skipCachedTimeline){
+    const cachedTimeline=readStudentCache_('timeline',timelineCacheKey);
+    if(cachedTimeline) applyTimelinePayload(cachedTimeline);
+  }
   refreshTimeline();
 }
 

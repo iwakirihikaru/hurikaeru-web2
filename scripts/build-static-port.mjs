@@ -1,90 +1,102 @@
-$ErrorActionPreference = 'Stop'
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-$root = Split-Path -Parent $PSScriptRoot
-$srcDir = Join-Path $root 'src'
-$outDir = Join-Path $root 'portable'
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const rootDir = path.resolve(__dirname, '..');
+const srcDir = path.join(rootDir, 'src');
+const outDir = path.join(rootDir, 'portable');
 
-function Read-SrcFile {
-  param(
-    [Parameter(Mandatory = $true)]
-    [string]$Name
-  )
-
-  return Get-Content -LiteralPath (Join-Path $srcDir $Name) -Raw -Encoding UTF8
+function readSrcFile(name) {
+  return fs.readFileSync(path.join(srcDir, name), 'utf8');
 }
 
-function Resolve-Includes {
-  param(
-    [Parameter(Mandatory = $true)]
-    [string]$Html
-  )
-
-  $pattern = "<\?!=\s*include\('([^']+)'\);\s*\?>"
-  return [regex]::Replace($Html, $pattern, {
-    param($match)
-    $includeName = $match.Groups[1].Value + '.html'
-    return Read-SrcFile -Name $includeName
-  })
+function writeOutFile(name, value) {
+  fs.writeFileSync(path.join(outDir, name), value, 'utf8');
 }
 
-function Inject-SharedRuntime {
-  param(
-    [Parameter(Mandatory = $true)]
-    [string]$Html
-  )
-
-  return $Html -replace '<head>', "<head>`r`n<script src=""./runtime-shim.js""></script>"
+function resolveIncludes(html) {
+  return html.replace(/<\?!=\s*include\('([^']+)'\);\s*\?>/g, (_match, includeName) => {
+    return readSrcFile(`${includeName}.html`);
+  });
 }
 
-function Build-TeacherHtml {
-  $html = Read-SrcFile -Name 'teacher.html'
-  $html = Resolve-Includes -Html $html
-  $html = Inject-SharedRuntime -Html $html
-  return $html -replace "window\.__TEACHER_BOOTSTRAP__ = <\?!= bootstrapTeacherJson \|\| 'null' \?>;", "window.__TEACHER_BOOTSTRAP__ = window.__TEACHER_BOOTSTRAP__ || window.__portableGas.bootstrapTeacher();"
+function injectSharedRuntime(html) {
+  return html.replace('<head>', '<head>\n<script src="./runtime-shim.js"></script>');
 }
 
-function Build-StudentHtml {
-  $html = Read-SrcFile -Name 'index.html'
-  $html = Inject-SharedRuntime -Html $html
-  return $html -replace "const bootstrapStudentOptions = <\?!= JSON\.stringify\(typeof bootstrapStudentOptions !== 'undefined' \? bootstrapStudentOptions : \{students:\[\]\}\) \?>;", "const bootstrapStudentOptions = window.__STUDENT_BOOTSTRAP__ || window.__portableGas.bootstrapStudent();"
+function buildTeacherHtml() {
+  const html = injectSharedRuntime(resolveIncludes(readSrcFile('teacher.html')));
+  return html.replace(
+    /window\.__TEACHER_BOOTSTRAP__ = <\?!= bootstrapTeacherJson \|\| 'null' \?>;/,
+    "window.__TEACHER_BOOTSTRAP__ = window.__TEACHER_BOOTSTRAP__ || window.__portableGas.bootstrapTeacher();"
+  );
 }
 
-function Build-Readme {
-  return @'
-# Portable GAS UI
+function buildStudentHtml() {
+  const html = injectSharedRuntime(readSrcFile('index.html'));
+  return html.replace(
+    /const bootstrapStudentOptions = <\?!= JSON\.stringify\(typeof bootstrapStudentOptions !== 'undefined' \? bootstrapStudentOptions : \{students:\[\]\}\) \?>;/,
+    'const bootstrapStudentOptions = window.__STUDENT_BOOTSTRAP__ || window.__portableGas.bootstrapStudent();'
+  );
+}
 
-現行の GAS 版 UI を再設計せずに外出しするための移植用ディレクトリです。
+function buildReadme() {
+  return `# Portable GAS UI
 
-## 方針
+現行の GAS 版 UI をそのまま静的公開用に切り出したディレクトリです。
 
-- `src/` の純粋な GAS 版は触らない
-- 画面の見た目と導線は `src/` をそのまま使う
-- `include()` を静的 HTML に展開する
-- `google.script.run` は `runtime-shim.js` で HTTP 化する
-- 児童・先生の初期表示は同期 bootstrap で現行挙動に寄せる
+## Files
 
-## ファイル
+- \`index.html\`
+  - 入口ページ
+- \`setup.html\`
+  - GAS URL の保存と接続確認
+- \`student.html\`
+  - 児童画面
+- \`teacher.html\`
+  - 先生画面
+- \`runtime-shim.js\`
+  - \`google.script.run\` 互換の HTTP ラッパー
+- \`_headers\`
+  - no-store 設定
 
-- `student.html`
-  - `src/index.html` から生成した児童画面
-- `teacher.html`
-  - `src/teacher.html` と `include` 先を展開した先生画面
-- `setup.html`
-  - GAS の接続先 URL を保存・疎通確認する設定画面
-- `runtime-shim.js`
-  - `google.script.run` 互換ラッパー
+## Build
 
-## 生成
-
-```powershell
+\`\`\`powershell
 npm run build:portable
-```
-'@
+\`\`\`
+
+## Local Serve
+
+\`\`\`powershell
+npm run portable:serve
+\`\`\`
+
+open:
+
+- \`http://localhost:4173/\`
+
+## Cloudflare Pages
+
+Deploy \`portable/\` as a static site.
+
+- Build command:
+  - \`npm run build:portable\`
+- Build output directory:
+  - \`portable\`
+- Entry:
+  - \`/\`
+- Pages の pretty URL をそのまま使う:
+  - \`/setup\`
+  - \`/student\`
+  - \`/teacher\`
+`;
 }
 
-function Build-SetupHtml {
-  return @'
-<!DOCTYPE html>
+function buildSetupHtml() {
+  return String.raw`<!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="utf-8">
@@ -205,12 +217,12 @@ body{margin:0;font-family:var(--font);background:var(--bg);color:#212121}
 </script>
 </body>
 </html>
-'@
+`;
 }
 
-Set-Content -LiteralPath (Join-Path $outDir 'teacher.html') -Value (Build-TeacherHtml) -Encoding UTF8
-Set-Content -LiteralPath (Join-Path $outDir 'student.html') -Value (Build-StudentHtml) -Encoding UTF8
-Set-Content -LiteralPath (Join-Path $outDir 'setup.html') -Value (Build-SetupHtml) -Encoding UTF8
-Set-Content -LiteralPath (Join-Path $outDir 'README.md') -Value (Build-Readme) -Encoding UTF8
+writeOutFile('teacher.html', buildTeacherHtml());
+writeOutFile('student.html', buildStudentHtml());
+writeOutFile('setup.html', buildSetupHtml());
+writeOutFile('README.md', buildReadme());
 
-Write-Output 'Built portable teacher.html, student.html, and setup.html'
+console.log('Built portable teacher.html, student.html, and setup.html');

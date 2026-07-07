@@ -16,6 +16,9 @@ var teacherFeedbackResultTimer = null;
 var unitSaveState = { busy: false, requestToken: '' };
 var lessonFieldEditState = { mode: 'unit', unitId: '', period: 0 };
 var teacherDraftLocalState = {};
+var unitListPage = 1;
+var lastUnitListSignature = '';
+var UNIT_LIST_PAGE_SIZE = 10;
 var TEACHER_FEEDBACK_PREFS_KEY = 'teacher_feedback_prefs_v1';
 var teacherFeedbackPrefsLoaded = false;
 function loadTeacherFeedbackPrefs_() {
@@ -662,15 +665,25 @@ function renderUnderstandingChip(value) {
 function renderUnitList() {
     var el = document.getElementById('unitList');
     var summaryEl = document.getElementById('unitListSummary');
+    var pagerEl = document.getElementById('unitListPager');
     if (!allUnits.length) {
         if (summaryEl)
             summaryEl.textContent = '単元はまだありません。右の「新しい単元を追加」から作成できます。';
+        if (pagerEl) {
+            pagerEl.style.display = 'none';
+            pagerEl.innerHTML = '';
+        }
         el.innerHTML = '<p style="color:#999">単元がありません</p>';
         return;
     }
     var subject = (document.getElementById('unitListSubjectFilter') || {}).value || '';
     var keyword = ((document.getElementById('unitListSearch') || {}).value || '').trim().toLowerCase();
     var sortKey = (document.getElementById('unitListSort') || {}).value || 'subject_group';
+    var signature = [subject, keyword, sortKey, allUnits.length].join('|');
+    if (signature !== lastUnitListSignature) {
+        unitListPage = 1;
+        lastUnitListSignature = signature;
+    }
     saveUiState({
         unitListSubjectFilter: subject,
         unitListSearch: (document.getElementById('unitListSearch') || {}).value || '',
@@ -684,16 +697,35 @@ function renderUnitList() {
     if (!visibleUnits.length) {
         if (summaryEl)
             summaryEl.textContent = "\u5168 ".concat(allUnits.length, " \u4EF6\u4E2D\u3001\u6761\u4EF6\u306B\u5408\u3046\u5358\u5143\u306F\u3042\u308A\u307E\u305B\u3093\u3002\u6761\u4EF6\u3092\u5909\u3048\u308B\u3068\u8868\u793A\u3055\u308C\u307E\u3059\u3002");
+        if (pagerEl) {
+            pagerEl.style.display = 'none';
+            pagerEl.innerHTML = '';
+        }
         el.innerHTML = '<p style="color:#999">条件に合う単元がありません</p>';
         return;
     }
+    var pageCount = Math.max(1, Math.ceil(visibleUnits.length / UNIT_LIST_PAGE_SIZE));
+    unitListPage = Math.min(pageCount, Math.max(1, unitListPage));
+    var pageStart = (unitListPage - 1) * UNIT_LIST_PAGE_SIZE;
+    var pagedUnits = visibleUnits.slice(pageStart, pageStart + UNIT_LIST_PAGE_SIZE);
     if (summaryEl) {
         var subjectText = subject ? "".concat(subject, "\u306E\u307F") : '全教科';
         var keywordText = keyword ? " / \u300C".concat(keyword, "\u300D\u3067\u691C\u7D22\u4E2D") : '';
-        summaryEl.textContent = "\u73FE\u5728 ".concat(visibleUnits.length, " \u4EF6\u3092\u8868\u793A\u4E2D\uFF08\u5168 ").concat(allUnits.length, " \u4EF6\u3001").concat(subjectText).concat(keywordText, "\uFF09");
+        var pageText = pageCount > 1 ? " / ".concat(unitListPage, " / ").concat(pageCount, " \u30DA\u30FC\u30B8") : '';
+        summaryEl.textContent = "\u73FE\u5728 ".concat(visibleUnits.length, " \u4EF6\u4E2D ").concat(pageStart + 1, "\u301C").concat(pageStart + pagedUnits.length, " \u4EF6\u3092\u8868\u793A\uFF08\u5168 ").concat(allUnits.length, " \u4EF6\u3001").concat(subjectText).concat(keywordText).concat(pageText, "\uFF09");
+    }
+    if (pagerEl) {
+        if (pageCount <= 1) {
+            pagerEl.style.display = 'none';
+            pagerEl.innerHTML = '';
+        }
+        else {
+            pagerEl.style.display = 'flex';
+            pagerEl.innerHTML = "\n        <button class=\"btn-sm\" type=\"button\" onclick=\"changeUnitListPage(-1)\" ".concat(unitListPage <= 1 ? 'disabled' : '', ">\u2190 \u524D\u3078</button>\n        <span style=\"font-size:12px;color:var(--muted);\">").concat(unitListPage, " / ").concat(pageCount, " \u30DA\u30FC\u30B8</span>\n        <button class=\"btn-sm\" type=\"button\" onclick=\"changeUnitListPage(1)\" ").concat(unitListPage >= pageCount ? 'disabled' : '', ">\u6B21\u3078 \u2192</button>");
+        }
     }
     if (sortKey === 'subject_group') {
-        var grouped_1 = visibleUnits.reduce(function (acc, unit) {
+        var grouped_1 = pagedUnits.reduce(function (acc, unit) {
             var key = String(unit.subject || '未設定');
             if (!acc[key])
                 acc[key] = [];
@@ -709,7 +741,11 @@ function renderUnitList() {
         }).join('');
         return;
     }
-    el.innerHTML = visibleUnits.map(renderUnitRow).join('');
+    el.innerHTML = pagedUnits.map(renderUnitRow).join('');
+}
+function changeUnitListPage(delta) {
+    unitListPage = Math.max(1, unitListPage + (Number(delta) || 0));
+    renderUnitList();
 }
 function compareUnitRows(a, b, sortKey) {
     if (String(a.id) === String(activeUnitId) && String(b.id) !== String(activeUnitId))

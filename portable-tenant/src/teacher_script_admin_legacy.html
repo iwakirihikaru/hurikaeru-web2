@@ -436,9 +436,12 @@ function savePrompts() {
         aiQueue: (preloadCache.prompts || {}).aiQueue || null,
     };
     google.script.run
-        .withSuccessHandler(function () {
+        .withSuccessHandler(function (res) {
+        var savedCfg = (res && res.globalCfg) || {};
+        nextPromptCache.globalCfg = __assign(__assign({}, nextPromptCache.globalCfg), savedCfg);
         preloadCache.prompts = nextPromptCache;
         persistTeacherPreloadCache_();
+        applyPromptData(preloadCache.prompts);
         alert('プロンプトを保存しました！');
     })
         .saveGlobalSettings(document.getElementById('pMedal').value, document.getElementById('pComment').value, document.getElementById('pScore').value, document.getElementById('pPortfolio').value, document.getElementById('pUnitSummary').value, document.getElementById('pAssessment').value, document.getElementById('pApiKey').value, document.getElementById('pStudentAiAutoSubmit').checked);

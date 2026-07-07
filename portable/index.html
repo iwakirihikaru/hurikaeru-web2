@@ -32,15 +32,15 @@ body{margin:0;font-family:var(--font);background:var(--bg);color:#212121}
   <div class="card">
     <h1 class="title">Open</h1>
     <div class="links">
-      <a class="linkcard" href="./setup.html">
+      <a class="linkcard" href="./setup">
         <strong>Setup</strong>
         <span>GAS URL を保存して接続確認します。</span>
       </a>
-      <a class="linkcard" href="./student.html">
+      <a class="linkcard" href="./student">
         <strong>Student</strong>
         <span>児童画面を開きます。</span>
       </a>
-      <a class="linkcard" href="./teacher.html">
+      <a class="linkcard" href="./teacher">
         <strong>Teacher</strong>
         <span>先生画面を開きます。</span>
       </a>
@@ -52,9 +52,13 @@ body{margin:0;font-family:var(--font);background:var(--bg);color:#212121}
   var params = new URLSearchParams(window.location.search || "");
   var api = String(params.get("api") || "").trim();
   if (!api) return;
-  document.querySelectorAll("a[href$='.html']").forEach(function (anchor) {
+  document.querySelectorAll("a[href]").forEach(function (anchor) {
     var href = anchor.getAttribute("href");
     if (!href) return;
+    if (href.indexOf("?") >= 0) {
+      anchor.setAttribute("href", href + "&api=" + encodeURIComponent(api));
+      return;
+    }
     anchor.setAttribute("href", href + "?api=" + encodeURIComponent(api));
   });
 })();

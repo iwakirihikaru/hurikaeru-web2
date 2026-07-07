@@ -10,13 +10,30 @@ var __assign = (this && this.__assign) || function () {
     };
     return __assign.apply(this, arguments);
 };
+var portfolioInitRequestSeq = 0;
+var portfolioDataRequestSeq = 0;
 function loadPortfolioTab() {
     var body = document.getElementById('portfolioBody');
-    body.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:14px;"><span class="spinner"></span></td></tr>';
     syncTeacherAiUi_();
     ensurePromptPreload();
+    var requestSeq = ++portfolioInitRequestSeq;
+    var hasImmediateRoster = Array.isArray(rosterEntries) && rosterEntries.length > 0;
+    var hasImmediateUnits = Array.isArray(allUnits) && allUnits.length > 0;
+    if (!hasImmediateRoster && preloadCache.roster && Array.isArray(preloadCache.roster.roster)) {
+        rosterEntries = preloadCache.roster.roster.filter(function (row) { return row.active !== false; });
+        hasImmediateRoster = rosterEntries.length > 0;
+    }
+    if (hasImmediateRoster || hasImmediateUnits) {
+        renderPortfolioSelectors();
+        loadPortfolioData();
+    }
+    else {
+        body.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:14px;"><span class="spinner"></span></td></tr>';
+    }
     google.script.run
         .withSuccessHandler(function (d) {
+        if (requestSeq !== portfolioInitRequestSeq)
+            return;
         allUnits = d.units || [];
         rosterEntries = (d.roster || []).filter(function (row) { return row.active !== false; });
         teacherBuild = d.build || teacherBuild || '';
@@ -24,7 +41,16 @@ function loadPortfolioTab() {
         loadPortfolioData();
     })
         .withFailureHandler(function (err) {
-        body.innerHTML = "<tr><td colspan=\"6\" style=\"text-align:center;padding:14px;color:#C62828;\">".concat(esc((err && err.message) || err || 'ポートフォリオの読み込みに失敗しました'), "</td></tr>");
+        if (requestSeq !== portfolioInitRequestSeq)
+            return;
+        var message = (err && err.message) || err || 'ポートフォリオの読み込みに失敗しました';
+        var debugBox = document.getElementById('portfolioDebug');
+        if (hasImmediateRoster || hasImmediateUnits) {
+            if (debugBox)
+                debugBox.textContent = "\u30DD\u30FC\u30C8\u30D5\u30A9\u30EA\u30AA\u521D\u671F\u30C7\u30FC\u30BF\u306E\u66F4\u65B0\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat(message);
+            return;
+        }
+        body.innerHTML = "<tr><td colspan=\"6\" style=\"text-align:center;padding:14px;color:#C62828;\">".concat(esc(message), "</td></tr>");
     })
         .teacherInit();
 }
@@ -33,33 +59,40 @@ function renderPortfolioSelectors() {
     var studentCur = studentSel.value;
     studentSel.innerHTML = '<option value="">児童を選択…</option>' +
         rosterEntries.map(function (row) { return "<option value=\"".concat(row.number, "\">").concat(row.number, " ").concat(esc(row.name || ''), "</option>"); }).join('');
-    if (studentCur)
+    if (studentCur && Array.from(studentSel.options).some(function (option) { return String(option.value) === String(studentCur); }))
         studentSel.value = studentCur;
     var unitSel = document.getElementById('pfUnit');
     var unitCur = unitSel.value;
     unitSel.innerHTML = '<option value="">全単元</option>' +
         sortUnitsByLatestActivity(allUnits).map(function (u) { return "<option value=\"".concat(u.id, "\">").concat(esc(u.subject), "\uFF1A").concat(esc(u.name), "</option>"); }).join('');
-    if (unitCur)
+    if (unitCur && Array.from(unitSel.options).some(function (option) { return String(option.value) === String(unitCur); }))
         unitSel.value = unitCur;
 }
 function loadPortfolioData() {
     var studentNumber = document.getElementById('pfStudent').value;
     var unitId = document.getElementById('pfUnit').value;
     var body = document.getElementById('portfolioBody');
+    var cards = document.getElementById('portfolioCards');
     var debugBox = document.getElementById('portfolioDebug');
+    var requestSeq = ++portfolioDataRequestSeq;
     if (debugBox && !String(debugBox.dataset.baseText || '').trim()) {
         debugBox.dataset.baseText = '児童を選ぶと取得件数を表示します。';
     }
     document.getElementById('portfolioReport').style.display = 'none';
     if (!studentNumber) {
+        portfolioRows = [];
         body.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:14px;color:#999;">児童を選択してください</td></tr>';
+        cards.innerHTML = '<div class="portfolio-empty">児童を選択してください</div>';
         debugBox.textContent = '児童を選ぶと取得件数を表示します。';
         return;
     }
     body.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:14px;"><span class="spinner"></span></td></tr>';
+    cards.innerHTML = '<div class="portfolio-empty"><span class="spinner"></span></div>';
     debugBox.textContent = '取得状況を確認中…';
     google.script.run
         .withSuccessHandler(function (raw) {
+        if (requestSeq !== portfolioDataRequestSeq)
+            return;
         var res = null;
         try {
             res = raw ? JSON.parse(raw) : null;
@@ -87,8 +120,11 @@ function loadPortfolioData() {
         renderPortfolioRows();
     })
         .withFailureHandler(function (err) {
+        if (requestSeq !== portfolioDataRequestSeq)
+            return;
         debugBox.textContent = 'デバッグ情報の取得に失敗しました。';
         body.innerHTML = "<tr><td colspan=\"6\" style=\"text-align:center;padding:14px;color:#C62828;\">".concat(esc((err && err.message) || err || 'ポートフォリオデータの読み込みに失敗しました'), "</td></tr>");
+        cards.innerHTML = '<div class="portfolio-empty">ポートフォリオデータの読み込みに失敗しました</div>';
     })
         .getStudentPortfolioDataJson(studentNumber, unitId || null);
 }

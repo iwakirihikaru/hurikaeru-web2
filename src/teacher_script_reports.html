@@ -1,11 +1,27 @@
 <script>
+let portfolioInitRequestSeq=0;
+let portfolioDataRequestSeq=0;
+
 function loadPortfolioTab(){
   const body=document.getElementById('portfolioBody');
-  body.innerHTML='<tr><td colspan="6" style="text-align:center;padding:14px;"><span class="spinner"></span></td></tr>';
   syncTeacherAiUi_();
   ensurePromptPreload();
+  const requestSeq=++portfolioInitRequestSeq;
+  let hasImmediateRoster=Array.isArray(rosterEntries) && rosterEntries.length>0;
+  let hasImmediateUnits=Array.isArray(allUnits) && allUnits.length>0;
+  if(!hasImmediateRoster && preloadCache.roster && Array.isArray(preloadCache.roster.roster)){
+    rosterEntries=preloadCache.roster.roster.filter(row=>row.active!==false);
+    hasImmediateRoster=rosterEntries.length>0;
+  }
+  if(hasImmediateRoster || hasImmediateUnits){
+    renderPortfolioSelectors();
+    loadPortfolioData();
+  }else{
+    body.innerHTML='<tr><td colspan="6" style="text-align:center;padding:14px;"><span class="spinner"></span></td></tr>';
+  }
   google.script.run
     .withSuccessHandler(d=>{
+      if(requestSeq!==portfolioInitRequestSeq) return;
       allUnits=d.units||[];
       rosterEntries=(d.roster||[]).filter(row=>row.active!==false);
       teacherBuild=d.build||teacherBuild||'';
@@ -13,7 +29,14 @@ function loadPortfolioTab(){
       loadPortfolioData();
     })
     .withFailureHandler(err=>{
-      body.innerHTML=`<tr><td colspan="6" style="text-align:center;padding:14px;color:#C62828;">${esc((err && err.message)||err||'ポートフォリオの読み込みに失敗しました')}</td></tr>`;
+      if(requestSeq!==portfolioInitRequestSeq) return;
+      const message=(err && err.message)||err||'ポートフォリオの読み込みに失敗しました';
+      const debugBox=document.getElementById('portfolioDebug');
+      if(hasImmediateRoster || hasImmediateUnits){
+        if(debugBox) debugBox.textContent=`ポートフォリオ初期データの更新に失敗しました: ${message}`;
+        return;
+      }
+      body.innerHTML=`<tr><td colspan="6" style="text-align:center;padding:14px;color:#C62828;">${esc(message)}</td></tr>`;
     })
     .teacherInit();
 }
@@ -23,33 +46,39 @@ function renderPortfolioSelectors(){
   const studentCur=studentSel.value;
   studentSel.innerHTML='<option value="">児童を選択…</option>'+
     rosterEntries.map(row=>`<option value="${row.number}">${row.number} ${esc(row.name||'')}</option>`).join('');
-  if(studentCur) studentSel.value=studentCur;
+  if(studentCur && Array.from(studentSel.options).some(option=>String(option.value)===String(studentCur))) studentSel.value=studentCur;
 
   const unitSel=document.getElementById('pfUnit');
   const unitCur=unitSel.value;
   unitSel.innerHTML='<option value="">全単元</option>'+
     sortUnitsByLatestActivity(allUnits).map(u=>`<option value="${u.id}">${esc(u.subject)}：${esc(u.name)}</option>`).join('');
-  if(unitCur) unitSel.value=unitCur;
+  if(unitCur && Array.from(unitSel.options).some(option=>String(option.value)===String(unitCur))) unitSel.value=unitCur;
 }
 
 function loadPortfolioData(){
   const studentNumber=document.getElementById('pfStudent').value;
   const unitId=document.getElementById('pfUnit').value;
   const body=document.getElementById('portfolioBody');
+  const cards=document.getElementById('portfolioCards');
   const debugBox=document.getElementById('portfolioDebug');
+  const requestSeq=++portfolioDataRequestSeq;
   if(debugBox && !String(debugBox.dataset.baseText||'').trim()){
     debugBox.dataset.baseText='児童を選ぶと取得件数を表示します。';
   }
   document.getElementById('portfolioReport').style.display='none';
   if(!studentNumber){
+    portfolioRows=[];
     body.innerHTML='<tr><td colspan="6" style="text-align:center;padding:14px;color:#999;">児童を選択してください</td></tr>';
+    cards.innerHTML='<div class="portfolio-empty">児童を選択してください</div>';
     debugBox.textContent='児童を選ぶと取得件数を表示します。';
     return;
   }
   body.innerHTML='<tr><td colspan="6" style="text-align:center;padding:14px;"><span class="spinner"></span></td></tr>';
+  cards.innerHTML='<div class="portfolio-empty"><span class="spinner"></span></div>';
   debugBox.textContent='取得状況を確認中…';
   google.script.run
     .withSuccessHandler(raw=>{
+      if(requestSeq!==portfolioDataRequestSeq) return;
       let res=null;
       try{
         res=raw?JSON.parse(raw):null;
@@ -75,8 +104,10 @@ function loadPortfolioData(){
       renderPortfolioRows();
     })
     .withFailureHandler(err=>{
+      if(requestSeq!==portfolioDataRequestSeq) return;
       debugBox.textContent='デバッグ情報の取得に失敗しました。';
       body.innerHTML=`<tr><td colspan="6" style="text-align:center;padding:14px;color:#C62828;">${esc((err && err.message)||err||'ポートフォリオデータの読み込みに失敗しました')}</td></tr>`;
+      cards.innerHTML='<div class="portfolio-empty">ポートフォリオデータの読み込みに失敗しました</div>';
     })
     .getStudentPortfolioDataJson(studentNumber, unitId||null);
 }

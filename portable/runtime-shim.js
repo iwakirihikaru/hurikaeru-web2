@@ -1,6 +1,9 @@
 (function () {
   var STORAGE_KEY = "GAS_API_URL";
   var memoryApiUrl = "";
+  var REDIRECT_FLAG_KEY = "__portable_setup_redirecting__";
+  var TEACHER_BOOTSTRAP_CACHE_KEY = "jibun-matome-teacher-bootstrap-fast";
+  var TEACHER_BOOTSTRAP_TTL_MS = 60 * 1000;
 
   function readApiUrlFromQuery() {
     try {
@@ -65,9 +68,51 @@
     return String(error);
   }
 
+  function readJsonCache(cacheKey) {
+    try {
+      var raw = window.localStorage.getItem(cacheKey);
+      var parsed = raw ? JSON.parse(raw) : null;
+      if (!parsed) return null;
+      if ((Date.now() - Number(parsed.savedAt || 0)) > TEACHER_BOOTSTRAP_TTL_MS) {
+        window.localStorage.removeItem(cacheKey);
+        return null;
+      }
+      return parsed;
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  function isSetupPage() {
+    try {
+      return /\/setup(?:\.html)?$/i.test(window.location.pathname || "");
+    } catch (_error) {
+      return false;
+    }
+  }
+
+  function redirectToSetupIfNeeded() {
+    if (isSetupPage()) return false;
+    try {
+      if (window.sessionStorage.getItem(REDIRECT_FLAG_KEY) === "1") {
+        return false;
+      }
+      window.sessionStorage.setItem(REDIRECT_FLAG_KEY, "1");
+    } catch (_error) {}
+    try {
+      var current = String((window.location.pathname || "") + (window.location.search || "") + (window.location.hash || ""));
+      var target = "./setup?missingApi=1&returnTo=" + encodeURIComponent(current);
+      window.location.replace(target);
+      return true;
+    } catch (_error) {
+      return false;
+    }
+  }
+
   function sendRequest(payload, sync) {
     var apiUrl = getApiUrl();
     if (!apiUrl) {
+      redirectToSetupIfNeeded();
       throw new Error("GAS_API_URL is not set in localStorage.");
     }
     if (sync) {
@@ -171,12 +216,21 @@
       });
     },
     bootstrapTeacher: function () {
-      return postActionSync("rpc", {
-        method: "teacherInit",
-        args: []
-      }) || null;
+      if (!getApiUrl()) {
+        redirectToSetupIfNeeded();
+        return { shell: {}, status: null, unitItems: [], recordItems: [] };
+      }
+      var cached = readJsonCache(TEACHER_BOOTSTRAP_CACHE_KEY);
+      if (cached && cached.data && typeof cached.data === "object") {
+        return cached.data;
+      }
+      return null;
     },
     bootstrapStudent: function () {
+      if (!getApiUrl()) {
+        redirectToSetupIfNeeded();
+        return { students: [], shell: {} };
+      }
       return postActionSync("rpc", {
         method: "getStudentEntryOptions",
         args: []

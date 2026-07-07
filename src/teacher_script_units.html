@@ -5,6 +5,9 @@ let teacherFeedbackResultTimer=null;
 let unitSaveState={ busy:false, requestToken:'' };
 let lessonFieldEditState={ mode:'unit', unitId:'', period:0 };
 let teacherDraftLocalState={};
+let unitListPage=1;
+let lastUnitListSignature='';
+const UNIT_LIST_PAGE_SIZE=10;
 const TEACHER_FEEDBACK_PREFS_KEY='teacher_feedback_prefs_v1';
 let teacherFeedbackPrefsLoaded=false;
 
@@ -670,14 +673,21 @@ function renderUnderstandingChip(value){
 function renderUnitList(){
   const el=document.getElementById('unitList');
   const summaryEl=document.getElementById('unitListSummary');
+  const pagerEl=document.getElementById('unitListPager');
   if(!allUnits.length){
     if(summaryEl) summaryEl.textContent='単元はまだありません。右の「新しい単元を追加」から作成できます。';
+    if(pagerEl){ pagerEl.style.display='none'; pagerEl.innerHTML=''; }
     el.innerHTML='<p style="color:#999">単元がありません</p>';
     return;
   }
   const subject=(document.getElementById('unitListSubjectFilter')||{}).value||'';
   const keyword=((document.getElementById('unitListSearch')||{}).value||'').trim().toLowerCase();
   const sortKey=(document.getElementById('unitListSort')||{}).value||'subject_group';
+  const signature=[subject,keyword,sortKey,allUnits.length].join('|');
+  if(signature!==lastUnitListSignature){
+    unitListPage=1;
+    lastUnitListSignature=signature;
+  }
   saveUiState({
     unitListSubjectFilter:subject,
     unitListSearch:(document.getElementById('unitListSearch')||{}).value||'',
@@ -690,16 +700,34 @@ function renderUnitList(){
   }).sort((a,b)=>compareUnitRows(a,b,sortKey));
   if(!visibleUnits.length){
     if(summaryEl) summaryEl.textContent=`全 ${allUnits.length} 件中、条件に合う単元はありません。条件を変えると表示されます。`;
+    if(pagerEl){ pagerEl.style.display='none'; pagerEl.innerHTML=''; }
     el.innerHTML='<p style="color:#999">条件に合う単元がありません</p>';
     return;
   }
+  const pageCount=Math.max(1,Math.ceil(visibleUnits.length/UNIT_LIST_PAGE_SIZE));
+  unitListPage=Math.min(pageCount,Math.max(1,unitListPage));
+  const pageStart=(unitListPage-1)*UNIT_LIST_PAGE_SIZE;
+  const pagedUnits=visibleUnits.slice(pageStart,pageStart+UNIT_LIST_PAGE_SIZE);
   if(summaryEl){
     const subjectText=subject ? `${subject}のみ` : '全教科';
     const keywordText=keyword ? ` / 「${keyword}」で検索中` : '';
-    summaryEl.textContent=`現在 ${visibleUnits.length} 件を表示中（全 ${allUnits.length} 件、${subjectText}${keywordText}）`;
+    const pageText=pageCount>1 ? ` / ${unitListPage} / ${pageCount} ページ` : '';
+    summaryEl.textContent=`現在 ${visibleUnits.length} 件中 ${pageStart+1}〜${pageStart+pagedUnits.length} 件を表示（全 ${allUnits.length} 件、${subjectText}${keywordText}${pageText}）`;
+  }
+  if(pagerEl){
+    if(pageCount<=1){
+      pagerEl.style.display='none';
+      pagerEl.innerHTML='';
+    }else{
+      pagerEl.style.display='flex';
+      pagerEl.innerHTML=`
+        <button class="btn-sm" type="button" onclick="changeUnitListPage(-1)" ${unitListPage<=1?'disabled':''}>← 前へ</button>
+        <span style="font-size:12px;color:var(--muted);">${unitListPage} / ${pageCount} ページ</span>
+        <button class="btn-sm" type="button" onclick="changeUnitListPage(1)" ${unitListPage>=pageCount?'disabled':''}>次へ →</button>`;
+    }
   }
   if(sortKey==='subject_group'){
-    const grouped=visibleUnits.reduce((acc,unit)=>{
+    const grouped=pagedUnits.reduce((acc,unit)=>{
       const key=String(unit.subject||'未設定');
       if(!acc[key]) acc[key]=[];
       acc[key].push(unit);
@@ -722,7 +750,12 @@ function renderUnitList(){
     }).join('');
     return;
   }
-  el.innerHTML=visibleUnits.map(renderUnitRow).join('');
+  el.innerHTML=pagedUnits.map(renderUnitRow).join('');
+}
+
+function changeUnitListPage(delta){
+  unitListPage=Math.max(1,unitListPage+(Number(delta)||0));
+  renderUnitList();
 }
 
 function compareUnitRows(a,b,sortKey){

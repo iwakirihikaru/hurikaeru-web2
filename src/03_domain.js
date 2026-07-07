@@ -622,28 +622,31 @@ function syncLegacyRosterSheet_(entries) {
 
 function getStudentEntryOptions() {
   const cache = CacheService.getScriptCache();
-  const cached = cache.get('student_entry_options_v1');
+  const cached = cache.get('student_entry_options_v2');
   if (cached) {
     try {
       const parsed = JSON.parse(cached);
       if (parsed && Array.isArray(parsed.students)) {
         const shell = getLiveTenantMaintenanceState();
+        if (parsed.classSnapshot && typeof parsed.classSnapshot === 'object') {
+          parsed.classSnapshot.shell = shell;
+        }
         return {
           ...parsed,
-          shell: {
-            maintenanceMode: Boolean(shell.maintenanceMode),
-            noticeBanner: shell.noticeBanner || {},
-            checkedAt: shell.checkedAt || '',
-          },
+          shell,
         };
       }
     } catch (e) {}
   }
+  const students = getRosterEntries_();
+  const featureFlags = getAiFeatureFlags_();
+  const shell = getLiveTenantMaintenanceState();
   const payload = {
-    students: getRosterEntries_(),
-    shell: getLiveTenantMaintenanceState(),
+    students,
+    classSnapshot: buildStudentEntryClassSnapshot_(students, featureFlags, shell),
+    shell,
   };
-  cache.put('student_entry_options_v1', JSON.stringify(payload), 30);
+  cache.put('student_entry_options_v2', JSON.stringify(payload), 5);
   return payload;
 }
 

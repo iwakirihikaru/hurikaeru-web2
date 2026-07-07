@@ -1,7 +1,7 @@
   <div class="section" id="sec-help">
     <div class="card">
       <h2>🚀 使い方</h2>
-      <p class="subject-help" id="helpIntroText">最初にやること、APIキー設定、児童への配布方法をここにまとめています。</p>
+      <p class="subject-help" id="helpIntroText">最初にやること、APIキー設定、WEB版の配布方法をここにまとめています。</p>
 
       <div class="guide-grid">
         <div class="guide-card">
@@ -10,15 +10,15 @@
             <li id="helpStep1Item1">単元設定で単元を作る</li>
             <li id="helpStep1Item2">必要なら名簿を入れる</li>
             <li id="helpStep1Item3">授業スタートで授業を開始する</li>
-            <li id="helpStep1Item4">この下の児童ページURLを配布する</li>
+            <li id="helpStep1Item4">この下のWEB児童ページURLを配布する</li>
           </ol>
         </div>
         <div class="guide-card">
           <h3 id="helpStep2Title">2. 児童への配布</h3>
           <ol class="guide-list">
-            <li id="helpStep2Item1">基本URLを開くと先生ページが表示される</li>
-            <li id="helpStep2Item2">下の児童ページURLをコピーする</li>
-            <li id="helpStep2Item3">ロイロノート等で同じURLを全員に配布する</li>
+            <li id="helpStep2Item1">初回だけ下のWEB接続ページを児童端末で開く</li>
+            <li id="helpStep2Item2">そのまま保存して接続確認する</li>
+            <li id="helpStep2Item3">2回目以降はWEB児童ページURLだけ配布する</li>
             <li id="helpStep2Item4">児童はそのURLから毎時間入る</li>
             <li id="helpStep2Item5">単元と時間目は先生側の授業スタートに連動する</li>
           </ol>
@@ -27,31 +27,31 @@
 
       <div class="guide-link-grid" style="margin-top:14px;">
         <div class="guide-link-card">
-          <div class="guide-link-title" id="helpStudentCardTitle">児童ページ</div>
+          <div class="guide-link-title" id="helpStudentCardTitle">WEB児童ページ</div>
           <div class="guide-link-actions">
             <button class="btn-update" type="button" onclick="openHelpLink('student')" id="helpStudentOpenBtn">開く</button>
             <button class="btn-cancel" type="button" onclick="copyHelpLink('student')" id="helpStudentCopyBtn">URLをコピー</button>
           </div>
           <input class="inp" id="helpStudentUrl" readonly>
           <div class="qr-card">
-            <div class="qr-title" id="helpStudentQrTitle">児童ページQR</div>
-            <img id="studentQrImage" class="qr-image" alt="児童ページQR">
+            <div class="qr-title" id="helpStudentQrTitle">WEB児童ページQR</div>
+            <img id="studentQrImage" class="qr-image" alt="WEB児童ページQR">
           </div>
         </div>
         <div class="guide-link-card" id="helpRegistrationCard">
-          <div class="guide-link-title" id="helpRegistrationCardTitle">登録ページ</div>
+          <div class="guide-link-title" id="helpRegistrationCardTitle">WEB接続ページ</div>
           <div class="guide-link-actions">
             <button class="btn-update" type="button" onclick="openHelpLink('registration')" id="helpRegistrationOpenBtn">開く</button>
             <button class="btn-cancel" type="button" onclick="copyHelpLink('registration')" id="helpRegistrationCopyBtn">URLをコピー</button>
           </div>
           <input class="inp" id="helpRegistrationUrl" readonly>
           <div class="qr-card">
-            <div class="qr-title" id="helpRegistrationQrTitle">登録ページQR</div>
-            <img id="registrationQrImage" class="qr-image" alt="登録ページQR">
+            <div class="qr-title" id="helpRegistrationQrTitle">WEB接続ページQR</div>
+            <img id="registrationQrImage" class="qr-image" alt="WEB接続ページQR">
           </div>
         </div>
       </div>
-      <div class="guide-note" style="margin-top:10px;" id="helpDistributionNote">基本URLは先生用です。児童にはここにある児童ページURLだけを配布してください。</div>
+      <div class="guide-note" style="margin-top:10px;" id="helpDistributionNote">初回だけWEB接続ページ、以後はWEB児童ページを配布してください。先生用の基本URLは児童には配りません。</div>
 
       <div class="guide-grid" style="margin-top:14px;">
         <div class="guide-card">
@@ -76,14 +76,14 @@
           </div>
         </div>
         <div class="guide-card" id="helpUpdateGuideCard">
-          <h3 id="helpStep5Title">5. アプリ更新</h3>
+          <h3 id="helpStep5Title">5. アプリの版情報</h3>
           <ul class="guide-list">
-            <li>更新確認は「設定・Aiプロンプト」タブの「更新」から行います</li>
-            <li>通常は最新版確認だけで十分です</li>
-            <li>必要なときだけ「更新を依頼」または「1つ前に戻す」を使います</li>
+            <li>版情報の確認は「設定・Aiプロンプト」タブの「版情報」から行います</li>
+            <li>先生画面では現在の版と配布状況だけを見られます</li>
+            <li>更新や版戻しは管理者側で行います</li>
           </ul>
           <div class="guide-link-actions">
-            <button class="btn-update" type="button" onclick="openUpdateSettingsTab()" id="helpOpenUpdateBtn">設定の更新を開く</button>
+            <button class="btn-update" type="button" onclick="openUpdateSettingsTab()" id="helpOpenUpdateBtn">設定の版情報を開く</button>
           </div>
         </div>
       </div>

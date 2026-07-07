@@ -60,6 +60,7 @@ const FIELD_PRESET_HEADERS = ['presetKey','label','emoji','type','placeholder','
 const TEMPLATE_CFG_SHEET = '_setup';
 const ADMIN_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbyIxBewjHHF2JLlGbI6yuDfdMM7l_AkvY1QRlclIM0uR_nOGa_NXNcAZXY9Jl_g973G/exec';
 const MAIN_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxNEShjIPMsE8s7xXTMYByNI-DGxgQJyMH-Tp1FvKw2/exec';
+const PORTABLE_APP_BASE_URL = 'https://hurikaeru-web2.pages.dev';
 const DISTRIBUTION_TEMPLATE_MASTER_SPREADSHEET_ID = '1rW5FPPwmlfXbfAIxmVBzMRd8oB0_R4Hb5LOfCF8Jgzk';
 
 // 授業シートの列（固定6項目＋内部列）

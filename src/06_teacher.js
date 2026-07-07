@@ -114,6 +114,9 @@ function teacherStatusSnapshot() {
 }
 
 function getTeacherUnitProgress_() {
+  const cacheKey = 'teacher_unit_progress_v1';
+  const cached = getCachedJson_(cacheKey);
+  if (cached && typeof cached === 'object') return cached;
   const map = {};
   const lessonMetaById = {};
   listLessonRecords_().forEach(lesson => {
@@ -156,7 +159,7 @@ function getTeacherUnitProgress_() {
       current.latestPeriodHasActivity = true;
     }
   });
-  return map;
+  return putCachedJson_(cacheKey, map, 20);
 }
 
 function hasTeacherVisibleResponseActivity_(row) {
@@ -293,8 +296,8 @@ function getTeacherHelpInfo_(preloadedShellState, options) {
   return {
     links: {
       teacherUrl: safeBuildTeacherWebAppUrl_('teacher'),
-      studentUrl: safeBuildTeacherWebAppUrl_('student'),
-      registrationUrl: buildAdminFormUrl_(),
+      studentUrl: buildPortableStudentAppUrl_(currentWebAppUrl),
+      registrationUrl: buildPortableSetupUrl_(currentWebAppUrl),
       guideUrl: buildAdminGuideModeUrl_(),
       apiKeyGuideUrl: 'https://aistudio.google.com/app/apikey',
     },
@@ -801,6 +804,29 @@ function safeBuildTeacherWebAppUrl_(page) {
   } catch (_err) {
     return '';
   }
+}
+
+function buildPortableStudentAppUrl_(apiUrl) {
+  return buildPortableAppUrl_('student.html', apiUrl);
+}
+
+function buildPortableSetupUrl_(apiUrl) {
+  return buildPortableAppUrl_('setup.html', apiUrl);
+}
+
+function buildPortableAppUrl_(path, apiUrl) {
+  const base = normalizePortableAppBaseUrl_(PORTABLE_APP_BASE_URL || '');
+  if (!base) return '';
+  const cleanPath = String(path || '').trim().replace(/^\/+/, '');
+  const portableUrl = cleanPath ? `${base}/${cleanPath}` : base;
+  const normalizedApiUrl = normalizeWebAppUrl_(String(apiUrl || '').trim());
+  return normalizedApiUrl
+    ? appendQueryParams_(portableUrl, { api: normalizedApiUrl })
+    : portableUrl;
+}
+
+function normalizePortableAppBaseUrl_(url) {
+  return String(url || '').trim().replace(/\/+$/, '');
 }
 
 function buildAdminFormUrl_() {
@@ -2480,5 +2506,20 @@ function saveGlobalSettings(medalTop, promptComment, promptScore, promptPortfoli
     props.setProperty('GEMINI_API_KEY', effectiveApiKey);
   }
   props.setProperty('ENABLE_TEACHER_AI', effectiveApiKey ? 'true' : 'false');
-  return { ok:true };
+  return {
+    ok: true,
+    globalCfg: {
+      medal_top: medalTop,
+      prompt_comment: promptComment,
+      prompt_score: promptScore,
+      prompt_portfolio: promptPortfolio,
+      prompt_unit_summary: promptUnitSummary,
+      prompt_assessment: promptAssessment,
+      api_key_configured: Boolean(effectiveApiKey),
+      api_key_masked: effectiveApiKey ? `********${effectiveApiKey.slice(-4)}` : '',
+      student_ai_enabled: isStudentAiEnabled_(),
+      student_ai_submit_enabled: Boolean(studentAiAutoSubmitEnabled),
+      teacher_ai_enabled: Boolean(effectiveApiKey),
+    },
+  };
 }

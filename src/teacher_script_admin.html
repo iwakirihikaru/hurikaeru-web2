@@ -454,9 +454,15 @@ function savePrompts(){
     aiQueue:(preloadCache.prompts||{}).aiQueue||null,
   };
   google.script.run
-    .withSuccessHandler(()=>{
+    .withSuccessHandler(res=>{
+      const savedCfg=(res && res.globalCfg) || {};
+      nextPromptCache.globalCfg={
+        ...nextPromptCache.globalCfg,
+        ...savedCfg,
+      };
       preloadCache.prompts=nextPromptCache;
       persistTeacherPreloadCache_();
+      applyPromptData(preloadCache.prompts);
       alert('プロンプトを保存しました！');
     })
     .saveGlobalSettings(

@@ -40,6 +40,97 @@ function studentInit(num, periodOverride) {
   });
 }
 
+function buildStudentEntryClassSnapshot_(students, featureFlags, shell) {
+  const active = getActiveSetting();
+  const unit = active && active.unit ? active.unit : null;
+  const period = Number(active && active.period || 0);
+  if (!unit || period <= 0) return null;
+
+  const enabledFields = getEnabledFields_({ fields: active.fields || unit.fields || [] });
+  const lesson = getLessonRecordByUnitPeriod_(unit.id, period);
+  const responses = lesson ? listResponsesForLesson_(lesson.lessonId) : [];
+  const responseMap = {};
+  responses.forEach(response => {
+    responseMap[String(response.studentNumber || '')] = response;
+  });
+
+  const roster = Array.isArray(students) ? students : getRosterEntries_();
+  const rows = roster.map(student => buildStudentSnapshotTimelineRow_(student, enabledFields, responseMap));
+  const statesByNumber = {};
+  rows.forEach(row => {
+    statesByNumber[String(row.num)] = buildStudentSnapshotState_(row, enabledFields, featureFlags, shell);
+  });
+
+  return {
+    unit: {
+      id: unit.id || '',
+      subject: unit.subject || '',
+      name: unit.name || '',
+      maxPeriod: Number(unit.maxPeriod || 0),
+    },
+    period,
+    teacherSetPeriod: true,
+    teacherTimelineFieldKey: String(active.timelineFieldKey || '').trim(),
+    fields: enabledFields,
+    studentAiEnabled: Boolean(featureFlags && featureFlags.studentAiEnabled),
+    studentAiAutoSubmitEnabled: Boolean(featureFlags && featureFlags.studentAiAutoSubmitEnabled),
+    shell: shell || getLiveTenantMaintenanceState(),
+    fetchedAt: nowIso_(),
+    statesByNumber,
+    timeline: {
+      rows,
+      teacherTimelineFieldKey: String(active.timelineFieldKey || '').trim(),
+      studentAiEnabled: Boolean(featureFlags && featureFlags.studentAiEnabled),
+      studentAiAutoSubmitEnabled: Boolean(featureFlags && featureFlags.studentAiAutoSubmitEnabled),
+      shell: shell || getLiveTenantMaintenanceState(),
+      serverNow: nowIso_(),
+    },
+  };
+}
+
+function buildStudentSnapshotTimelineRow_(student, fields, responseMap) {
+  const number = student && student.number != null ? student.number : '';
+  const response = responseMap[String(number)] || null;
+  return {
+    num: number,
+    name: response?.studentName || student?.name || '',
+    customs: response ? mapAnswersToCustoms_(fields, response.answersMap) : Array(fields.length).fill(''),
+    comment: response?.comment || '',
+    rank: response?.rank || '',
+    medal: response?.medal || '',
+    medalColor: getMedalColor_(response?.medal || ''),
+    submitted: response?.submitted === true,
+    score: Number(response?.score || 0),
+    aiStatus: response?.aiStatus || '',
+    aiQueuedAt: response?.aiQueuedAt || '',
+    aiProcessedAt: response?.aiProcessedAt || '',
+    aiError: response?.aiError || '',
+    aiStartedAt: response?.aiStartedAt || '',
+    aiLatencyMs: Number(response?.aiLatencyMs || 0),
+    aiModelLatencyMs: Number(response?.aiModelLatencyMs || 0),
+    responseUpdatedAt: response?.updatedAt || '',
+  };
+}
+
+function buildStudentSnapshotState_(row, fields, featureFlags, shell) {
+  return {
+    fields,
+    num: row.num,
+    name: row.name || '',
+    customs: Array.isArray(row.customs) ? row.customs : Array(fields.length).fill(''),
+    comment: row.comment || '',
+    rank: row.rank || '',
+    medal: row.medal || '',
+    medalColor: row.medalColor || '',
+    submitted: row.submitted === true,
+    aiStatus: row.aiStatus || '',
+    prevReview: '',
+    studentAiEnabled: Boolean(featureFlags && featureFlags.studentAiEnabled),
+    studentAiAutoSubmitEnabled: Boolean(featureFlags && featureFlags.studentAiAutoSubmitEnabled),
+    shell: shell || getLiveTenantMaintenanceState(),
+  };
+}
+
 function studentLoadState(unitId, period, num) {
   const normalizedPeriod = parseInt(period, 10) || 0;
   const units = getAllUnits();

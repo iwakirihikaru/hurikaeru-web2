@@ -928,8 +928,6 @@ function renderTeacherHelpUpdateInfo(app){
   const lastResultEl=document.getElementById('helpUpdateLastResult');
   const reasonEl=document.getElementById('helpUpdateReason');
   const messageEl=document.getElementById('helpUpdateMessage');
-  const actionBtn=document.getElementById('helpUpdateActionBtn');
-  const rollbackBtn=document.getElementById('helpRollbackBtn');
   const latestBuild=String(data.latestBuild||'').trim();
   const latestVersion=String(data.latestVersion||'').trim();
   const currentBuild=String(data.currentBuild||'').trim();
@@ -940,7 +938,6 @@ function renderTeacherHelpUpdateInfo(app){
   const lastAt=String(data.selfUpdateLastAt||'').trim();
   const lastError=String(data.selfUpdateLastError||'').trim();
   const reason=String(data.selfUpdateReason||'').trim();
-  const actionMode=String(data.updateActionMode||'disabled').trim();
   const currentDeploymentVersion=Number(data.currentDeploymentVersion||0);
   const previousDeploymentVersion=Number(data.previousDeploymentVersion||0);
   const rollbackReason=String(data.rollbackReason||'').trim();
@@ -973,7 +970,7 @@ function renderTeacherHelpUpdateInfo(app){
     }else if(status==='up_to_date'){
       summaryEl.textContent='このアプリは最新の配布版です。';
     }else{
-      summaryEl.textContent='最新版情報を確認できます。';
+      summaryEl.textContent='このアプリの版と配布状況を確認できます。';
     }
     }
     if(latestEl){
@@ -1021,44 +1018,32 @@ function renderTeacherHelpUpdateInfo(app){
     }
   }
     if(lastResultEl){
-      const updateLastPrefix=getShellLabel('teacherUpdateLastPrefix','前回更新:');
+      const updateLastPrefix=getShellLabel('teacherUpdateLastPrefix','前回確認:');
       if(lastStatus==='updated'){
-        lastResultEl.textContent=`${updateLastPrefix} 成功${lastBuild ? ` / ${lastBuild}` : ''}${lastAt ? ` / ${lastAt}` : ''}`;
+        lastResultEl.textContent=`${updateLastPrefix} 更新成功${lastBuild ? ` / ${lastBuild}` : ''}${lastAt ? ` / ${lastAt}` : ''}`;
       }else if(lastStatus==='rolled_back'){
         lastResultEl.textContent=`${updateLastPrefix} 版戻し${lastAt ? ` / ${lastAt}` : ''}`;
       }else if(lastStatus==='error'){
-        lastResultEl.textContent=`${updateLastPrefix} 失敗${lastAt ? ` / ${lastAt}` : ''}${lastError ? ` / ${lastError}` : ''}`;
+        lastResultEl.textContent=`${updateLastPrefix} 確認失敗${lastAt ? ` / ${lastAt}` : ''}${lastError ? ` / ${lastError}` : ''}`;
       }else{
         lastResultEl.textContent=`${updateLastPrefix} 未実行`;
       }
     }
     if(reasonEl){
-      reasonEl.textContent=`${getShellLabel('teacherUpdateConditionPrefix','更新条件:')} ${reason || (data.canSelfUpdate ? '更新実行できます。' : '確認中です。')}`;
+      reasonEl.textContent=`補足: ${reason || '必要な更新作業は管理者側で行います。'}`;
     }
   if(messageEl && !String(messageEl.dataset.busy||'').trim()){
       if(maintenanceMode){
         messageEl.textContent=String(noticeBanner.message||'').trim() || '現在メンテナンス中です。少し待ってから開き直してください。';
       }else if(status==='update_available'){
-        messageEl.textContent=String(data.updateAvailableMessage||'').trim() || '新しい版があります。必要なら更新依頼を出してください。';
+        messageEl.textContent=String(data.updateAvailableMessage||'').trim() || '新しい版が配布されています。更新作業は管理者側で行ってください。';
       }else if(status==='up_to_date'){
         messageEl.textContent=rollbackReason && !currentDeploymentVersion
           ? `今のところ更新は不要です。版管理は未取得です: ${rollbackReason}`
           : '今のところ更新は不要です。';
     }else{
-      messageEl.textContent='「更新を確認」で中央の最新版情報を取り直せます。';
+      messageEl.textContent='「最新版を確認」で中央の版情報を取り直せます。';
     }
-  }
-    if(actionBtn){
-      actionBtn.textContent=String(data.updateActionLabel||'更新操作').trim() || '更新操作';
-      actionBtn.disabled=maintenanceMode || !(data.canSelfUpdate || data.canRequestUpdate);
-      actionBtn.dataset.actionMode=actionMode || 'disabled';
-      actionBtn.title=maintenanceMode
-        ? 'メンテナンス中は更新依頼を止めています。'
-        : ((data.canSelfUpdate || data.canRequestUpdate) ? '' : (reason || '更新条件が足りません。'));
-    }
-  if(rollbackBtn){
-    rollbackBtn.disabled=!data.canRollbackDeployment;
-    rollbackBtn.title=data.canRollbackDeployment ? '' : (rollbackReason || '1つ前の版へ戻せません。');
   }
 }
 
@@ -1066,7 +1051,7 @@ function refreshTeacherUpdateInfo(){
   const messageEl=document.getElementById('helpUpdateMessage');
   if(messageEl){
     messageEl.dataset.busy='1';
-    messageEl.textContent='最新版情報を確認しています...';
+    messageEl.textContent='版情報を確認しています...';
   }
   fetchTeacherHelpData_({
     force:true,
@@ -1079,14 +1064,14 @@ function refreshTeacherUpdateInfo(){
         }else if(String(app.status||'')==='up_to_date'){
           messageEl.textContent='このアプリは最新版です。';
         }else{
-          messageEl.textContent='最新版情報を更新しました。';
+          messageEl.textContent='版情報を更新しました。';
         }
       }
     },
     onFailure:err=>{
       if(messageEl){
         messageEl.dataset.busy='';
-        messageEl.textContent=`更新確認に失敗しました: ${err && err.message ? err.message : err}`;
+        messageEl.textContent=`版情報の確認に失敗しました: ${err && err.message ? err.message : err}`;
       }
     },
   });
