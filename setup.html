@@ -51,8 +51,8 @@ body{margin:0;font-family:var(--font);background:var(--bg);color:#212121}
     <div class="label">Current Value</div>
     <div id="currentValue" class="mono"></div>
     <div class="links">
-      <a id="studentLink" class="linkbtn" href="./student.html">Open Student</a>
-      <a id="teacherLink" class="linkbtn" href="./teacher.html">Open Teacher</a>
+      <a id="studentLink" class="linkbtn" href="./student">Open Student</a>
+      <a id="teacherLink" class="linkbtn" href="./teacher">Open Teacher</a>
     </div>
   </div>
 </div>
@@ -74,8 +74,8 @@ body{margin:0;font-family:var(--font);background:var(--bg);color:#212121}
     var value = window.__portableGas.getApiUrl();
     currentValue.textContent = value || 'Not set';
     if (!input.value) input.value = value;
-    studentLink.href = withApiQuery('./student.html', value);
-    teacherLink.href = withApiQuery('./teacher.html', value);
+    studentLink.href = withApiQuery('./student', value);
+    teacherLink.href = withApiQuery('./teacher', value);
   }
 
   function setStatus(message, tone) {

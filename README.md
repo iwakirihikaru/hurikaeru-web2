@@ -14,6 +14,8 @@
   - 先生画面
 - `runtime-shim.js`
   - `google.script.run` 互換の HTTP ラッパー
+- `_headers`
+  - no-store 設定
 
 ## Build
 
@@ -41,7 +43,7 @@ Deploy `portable/` as a static site.
   - `portable`
 - Entry:
   - `/`
-- Friendly routes:
+- Pages の pretty URL をそのまま使う:
   - `/setup`
   - `/student`
   - `/teacher`
