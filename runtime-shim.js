@@ -1,6 +1,7 @@
 (function () {
   var STORAGE_KEY = "GAS_API_URL";
   var memoryApiUrl = "";
+  var REDIRECT_FLAG_KEY = "__portable_setup_redirecting__";
 
   function readApiUrlFromQuery() {
     try {
@@ -65,9 +66,36 @@
     return String(error);
   }
 
+  function isSetupPage() {
+    try {
+      return /\/setup(?:\.html)?$/i.test(window.location.pathname || "");
+    } catch (_error) {
+      return false;
+    }
+  }
+
+  function redirectToSetupIfNeeded() {
+    if (isSetupPage()) return false;
+    try {
+      if (window.sessionStorage.getItem(REDIRECT_FLAG_KEY) === "1") {
+        return false;
+      }
+      window.sessionStorage.setItem(REDIRECT_FLAG_KEY, "1");
+    } catch (_error) {}
+    try {
+      var current = String((window.location.pathname || "") + (window.location.search || "") + (window.location.hash || ""));
+      var target = "./setup?missingApi=1&returnTo=" + encodeURIComponent(current);
+      window.location.replace(target);
+      return true;
+    } catch (_error) {
+      return false;
+    }
+  }
+
   function sendRequest(payload, sync) {
     var apiUrl = getApiUrl();
     if (!apiUrl) {
+      redirectToSetupIfNeeded();
       throw new Error("GAS_API_URL is not set in localStorage.");
     }
     if (sync) {
@@ -171,12 +199,20 @@
       });
     },
     bootstrapTeacher: function () {
+      if (!getApiUrl()) {
+        redirectToSetupIfNeeded();
+        return { shell: {}, status: null, unitItems: [], recordItems: [] };
+      }
       return postActionSync("rpc", {
         method: "teacherInit",
         args: []
       }) || null;
     },
     bootstrapStudent: function () {
+      if (!getApiUrl()) {
+        redirectToSetupIfNeeded();
+        return { students: [], shell: {} };
+      }
       return postActionSync("rpc", {
         method: "getStudentEntryOptions",
         args: []

@@ -63,6 +63,7 @@ body{margin:0;font-family:var(--font);background:var(--bg);color:#212121}
   var currentValue = document.getElementById('currentValue');
   var studentLink = document.getElementById('studentLink');
   var teacherLink = document.getElementById('teacherLink');
+  var params = new URLSearchParams(window.location.search);
 
   function withApiQuery(path, value) {
     var api = String(value || '').trim();
@@ -109,12 +110,15 @@ body{margin:0;font-family:var(--font);background:var(--bg);color:#212121}
     setStatus('Saved value cleared.', '');
   });
 
-  var apiFromQuery = new URLSearchParams(window.location.search).get('api');
+  var apiFromQuery = params.get('api');
   if (apiFromQuery) {
     input.value = apiFromQuery;
     window.__portableGas.setApiUrl(apiFromQuery);
   }
   renderCurrent();
+  if (params.get('missingApi') === '1') {
+    setStatus('先生画面または児童画面を開く前に、先に GAS URL を保存してください。', 'error');
+  }
 })();
 </script>
 </body>
