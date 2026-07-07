@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Furikaeri Portable</title>
+<style>
+:root{
+  --navy:#1A237E;--green:#388E3C;--bg:#F5F5F5;--card:#fff;--line:#D7E3F8;
+  --font:'Hiragino Sans','Yu Gothic UI',sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:var(--font);background:var(--bg);color:#212121}
+.nav{background:var(--navy);color:#fff;padding:16px 20px;font-size:20px;font-weight:700}
+.wrap{max-width:820px;margin:0 auto;padding:20px}
+.card{background:var(--card);border-radius:16px;padding:18px;box-shadow:0 6px 20px rgba(26,35,126,.08);margin-bottom:14px}
+.lead{background:#EEF4FF;border:1px solid var(--line);border-radius:12px;padding:12px 14px;line-height:1.8}
+.title{margin:0 0 8px;font-size:18px}
+.links{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.linkcard{display:block;text-decoration:none;color:inherit;border:1px solid #D7E3F8;border-radius:14px;padding:16px;background:linear-gradient(135deg,#fff,#f7fbff)}
+.linkcard strong{display:block;font-size:16px;margin-bottom:6px}
+.linkcard span{display:block;font-size:13px;line-height:1.7;color:#546E7A}
+.mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;word-break:break-all}
+</style>
+</head>
+<body>
+<div class="nav">Furikaeri Portable</div>
+<div class="wrap">
+  <div class="card">
+    <div class="lead">先に <span class="mono">setup.html</span> で GAS の接続先を設定してから使います。</div>
+  </div>
+  <div class="card">
+    <h1 class="title">Open</h1>
+    <div class="links">
+      <a class="linkcard" href="./setup.html">
+        <strong>Setup</strong>
+        <span>GAS URL を保存して接続確認します。</span>
+      </a>
+      <a class="linkcard" href="./student.html">
+        <strong>Student</strong>
+        <span>児童画面を開きます。</span>
+      </a>
+      <a class="linkcard" href="./teacher.html">
+        <strong>Teacher</strong>
+        <span>先生画面を開きます。</span>
+      </a>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  var params = new URLSearchParams(window.location.search || "");
+  var api = String(params.get("api") || "").trim();
+  if (!api) return;
+  document.querySelectorAll("a[href$='.html']").forEach(function (anchor) {
+    var href = anchor.getAttribute("href");
+    if (!href) return;
+    anchor.setAttribute("href", href + "?api=" + encodeURIComponent(api));
+  });
+})();
+</script>
+</body>
+</html>
