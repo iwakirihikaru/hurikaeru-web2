@@ -1709,6 +1709,29 @@ function loadStatusInit(options) {
     var opts = options || {};
     var requestEpoch = teacherDataEpoch;
     applyEmbeddedTeacherBootstrap_();
+    function fallbackToStatusSnapshot_() {
+        google.script.run
+            .withSuccessHandler(function (d) {
+            if (requestEpoch !== teacherDataEpoch)
+                return;
+            applyTeacherInitData(d, { includeRoster: false, renderUnitList: false, schedulePreload: true, source: 'teacherStatusSnapshotFallback' });
+            if (d && d.status) {
+                renderStatus(d.status);
+            }
+            if (opts.startPolling) {
+                startStatusPoll(Boolean(d && d.status));
+            }
+        })
+            .withFailureHandler(function (fallbackErr) {
+            if (requestEpoch !== teacherDataEpoch)
+                return;
+            handleTeacherInitFailure_(fallbackErr, 'teacherStatusSnapshot');
+            if (opts.startPolling) {
+                startStatusPoll(false);
+            }
+        })
+            .teacherStatusSnapshot();
+    }
     var runner = google.script.run
         .withSuccessHandler(function (d) {
         if (requestEpoch !== teacherDataEpoch)
@@ -1730,6 +1753,10 @@ function loadStatusInit(options) {
         .withFailureHandler(function (err) {
         if (requestEpoch !== teacherDataEpoch)
             return;
+        if (opts.lightweight === false || !(Array.isArray(allUnits) && allUnits.length)) {
+            fallbackToStatusSnapshot_();
+            return;
+        }
         handleTeacherInitFailure_(err, 'teacherStatusInit');
         if (opts.startPolling) {
             startStatusPoll(false);
