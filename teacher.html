@@ -1847,6 +1847,7 @@ function applyTeacherInitData(d, options) {
             persistTeacherPreloadCache_();
         }
     }
+    clearTeacherLoadWarning_();
     applySavedUiState();
     renderBuildBar();
     renderActiveBanner(d.active);
@@ -1881,9 +1882,20 @@ function showTeacherLoadWarning_(message) {
     }
     showToast('一部の読み込みに失敗しました。画面上部のメッセージを確認してください。', { tone: 'warn' });
 }
+function clearTeacherLoadWarning_() {
+    var box = document.getElementById('teacherFatalError');
+    if (!box)
+        return;
+    if (/^一部の読み込みに失敗しました: /.test(String(box.textContent || ''))) {
+        box.textContent = '';
+        box.style.display = 'none';
+    }
+}
 function handleTeacherInitFailure_(err, source) {
     var message = (err && err.message) ? err.message : String(err || 'unknown error');
-    teacherBuild = 'error';
+    if (!teacherBuild) {
+        teacherBuild = 'error';
+    }
     renderBuildBar();
     showTeacherLoadWarning_("".concat(source, ": ").concat(message));
 }
@@ -3062,6 +3074,7 @@ function loadStatus() {
     google.script.run.withSuccessHandler(renderStatus).getLessonStatus(activeUnitId, activePeriod);
 }
 function renderStatus(d) {
+    clearTeacherLoadWarning_();
     latestStatusRows = Array.isArray(d && d.students) ? d.students : [];
     latestStatusMeta = d && d.meta || {};
     var st = latestStatusRows;
