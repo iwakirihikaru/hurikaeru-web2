@@ -31,6 +31,10 @@ body{margin:0;font-family:var(--font);background:var(--bg);color:#212121}
 .mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;word-break:break-all}
 .links{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
 .linkbtn{display:inline-flex;align-items:center;justify-content:center;padding:10px 14px;border-radius:999px;background:#fff;color:#46627d;border:1px solid #D7E3F8;text-decoration:none;font-size:13px;font-weight:700}
+.teacher-box{display:none;background:#FFF8E1;border:1px solid #FFE082;border-radius:12px;padding:14px 16px}
+.teacher-box.show{display:block}
+.teacher-title{font-size:13px;font-weight:700;margin:0 0 8px;color:#6D4C41}
+.teacher-note{margin:0 0 12px;line-height:1.7;color:#6D4C41;font-size:13px}
 </style>
 </head>
 <body>
@@ -62,6 +66,13 @@ body{margin:0;font-family:var(--font);background:var(--bg);color:#212121}
   <div class="card">
     <div class="label">いま保存されている接続先</div>
     <div id="currentValue" class="mono"></div>
+    <div id="teacherBox" class="teacher-box" style="margin-top:12px;">
+      <div class="teacher-title">先生向け</div>
+      <p class="teacher-note">配布用スプレッドシートを作るときは、下のボタンから配布ページを開きます。</p>
+      <div class="links">
+        <a id="distributionLink" class="linkbtn" href="#" target="_blank" rel="noopener noreferrer">配布ページを開く</a>
+      </div>
+    </div>
     <div class="links">
       <a class="linkbtn" href="./student.html">児童ページを開く</a>
       <a class="linkbtn" href="./teacher.html">先生ページを開く</a>
@@ -73,6 +84,47 @@ body{margin:0;font-family:var(--font);background:var(--bg);color:#212121}
   var input = document.getElementById('apiUrl');
   var status = document.getElementById('status');
   var currentValue = document.getElementById('currentValue');
+  var teacherBox = document.getElementById('teacherBox');
+  var distributionLink = document.getElementById('distributionLink');
+
+  function deriveDistributionUrl(guideUrl) {
+    var url = String(guideUrl || '').trim();
+    if (!url) return '';
+    try {
+      var parsed = new URL(url);
+      parsed.searchParams.set('mode', 'form');
+      return parsed.toString();
+    } catch (_error) {
+      if (/mode=guide/.test(url)) return url.replace(/mode=guide/, 'mode=form');
+      return url;
+    }
+  }
+
+  function renderTeacherBox(distributionUrl) {
+    var href = String(distributionUrl || '').trim();
+    if (!href) {
+      teacherBox.classList.remove('show');
+      distributionLink.setAttribute('href', '#');
+      return;
+    }
+    distributionLink.setAttribute('href', href);
+    teacherBox.classList.add('show');
+  }
+
+  async function loadTeacherLinks() {
+    var apiUrl = String(window.__portableGas.getApiUrl() || '').trim();
+    if (!apiUrl) {
+      renderTeacherBox('');
+      return;
+    }
+    try {
+      var help = await window.__portableGas.postAction('rpc', { method: 'teacherHelpInit', args: [] });
+      var links = help && help.links ? help.links : {};
+      renderTeacherBox(deriveDistributionUrl(links.guideUrl));
+    } catch (_error) {
+      renderTeacherBox('');
+    }
+  }
 
   function renderCurrent() {
     var value = window.__portableGas.getApiUrl();
@@ -117,6 +169,7 @@ body{margin:0;font-family:var(--font);background:var(--bg);color:#212121}
     setStatus('接続確認中...', '');
     try {
       await window.__portableGas.postAction('rpc', { method: 'teacherInit', args: [] });
+      await loadTeacherLinks();
       setStatus('接続できました。この端末は使えます。', 'ok');
     } catch (error) {
       setStatus('接続に失敗しました: ' + (error && error.message ? error.message : String(error)), 'error');
@@ -139,6 +192,7 @@ body{margin:0;font-family:var(--font);background:var(--bg);color:#212121}
     window.__portableGas.setApiUrl(apiFromQuery);
   }
   renderCurrent();
+  loadTeacherLinks();
 })();
 </script>
 </body>
