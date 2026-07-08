@@ -105,53 +105,25 @@ body{margin:0;font-family:var(--font);background:var(--bg);color:#212121}
 </div>
 <script>
 (function(){
+  var DISTRIBUTION_PAGE_URL = 'https://script.google.com/macros/s/AKfycbyIxBewjHHF2JLlGbI6yuDfdMM7l_AkvY1QRlclIM0uR_nOGa_NXNcAZXY9Jl_g973G/exec?mode=form';
   var input = document.getElementById('apiUrl');
   var status = document.getElementById('status');
   var currentValue = document.getElementById('currentValue');
   var manualBox = document.getElementById('manualBox');
-  var teacherBox = document.getElementById('teacherBox');
   var distributionLink = document.getElementById('distributionLink');
   var teacherStatus = document.getElementById('teacherStatus');
-
-  function deriveDistributionUrl(guideUrl) {
-    var url = String(guideUrl || '').trim();
-    if (!url) return '';
-    try {
-      var parsed = new URL(url);
-      parsed.searchParams.set('mode', 'form');
-      return parsed.toString();
-    } catch (_error) {
-      if (/mode=guide/.test(url)) return url.replace(/mode=guide/, 'mode=form');
-      return url;
-    }
-  }
 
   function renderTeacherBox(distributionUrl) {
     var href = String(distributionUrl || '').trim();
     if (!href) {
       distributionLink.setAttribute('href', '#');
       distributionLink.classList.add('muted');
-      teacherStatus.textContent = '接続先が入ると配布ページを開けます。';
+      teacherStatus.textContent = '配布ページURLが未設定です。';
       return;
     }
     distributionLink.setAttribute('href', href);
     distributionLink.classList.remove('muted');
     teacherStatus.textContent = '配布ページから、配布用スプレッドシートのコピーを作れます。';
-  }
-
-  async function loadTeacherLinks() {
-    var apiUrl = String(window.__portableGas.getApiUrl() || '').trim();
-    if (!apiUrl) {
-      renderTeacherBox('');
-      return;
-    }
-    try {
-      var help = await window.__portableGas.postAction('rpc', { method: 'teacherHelpInit', args: [] });
-      var links = help && help.links ? help.links : {};
-      renderTeacherBox(deriveDistributionUrl(links.guideUrl));
-    } catch (_error) {
-      renderTeacherBox('');
-    }
   }
 
   function renderCurrent() {
@@ -197,7 +169,6 @@ body{margin:0;font-family:var(--font);background:var(--bg);color:#212121}
     setStatus('接続確認中...', '');
     try {
       await window.__portableGas.postAction('rpc', { method: 'teacherInit', args: [] });
-      await loadTeacherLinks();
       setStatus('接続できました。この端末は使えます。', 'ok');
     } catch (error) {
       setStatus('接続に失敗しました: ' + (error && error.message ? error.message : String(error)), 'error');
@@ -224,7 +195,7 @@ body{margin:0;font-family:var(--font);background:var(--bg);color:#212121}
     manualBox.open = true;
   }
   renderCurrent();
-  loadTeacherLinks();
+  renderTeacherBox(DISTRIBUTION_PAGE_URL);
 })();
 </script>
 </body>
