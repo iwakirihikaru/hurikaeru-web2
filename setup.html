@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ふりかえり WEB接続</title>
+<title>ふりかえり 配布と接続補助</title>
 <script src="./runtime-shim.js"></script>
 <style>
 :root{
@@ -52,25 +52,25 @@ body{margin:0;font-family:var(--font);background:var(--bg);color:#212121}
 </style>
 </head>
 <body>
-<div class="nav">ふりかえり WEB接続</div>
+<div class="nav">ふりかえり 配布と接続補助</div>
 <div class="wrap">
   <div class="card hero">
-    <div class="hero-title">先生が配るURLの入口ページです</div>
-    <p class="hero-note">通常はこのページから <span class="mono">配布ページ</span> を開いてスプレッドシートを準備します。児童は先生が配ったURLから入る前提なので、手動の接続保存は必要なときだけ下の補助欄を使います。</p>
+    <div class="hero-title">先生はここから配布ページへ進みます</div>
+    <p class="hero-note">スプレッドシートを作るときは、下の緑ボタンで前の配布ページをそのまま開きます。児童は先生が配ったURLから入る前提なので、手動の接続保存は必要なときだけ下の補助欄を使います。</p>
   </div>
   <div class="card teacher-box" id="teacherBox">
     <div class="teacher-title">先生向け</div>
-    <p class="teacher-note">配布用スプレッドシートを作るときは、GAS版の配布ページから進めます。基本は下の緑ボタンだけ見れば大丈夫です。</p>
+    <p class="teacher-note">配布用スプレッドシートを作るときは、前の配布ページから進めます。基本は下の緑ボタンだけ見れば大丈夫です。</p>
     <div class="teacher-actions">
-      <a id="distributionLink" class="linkbtn linkbtn-main muted" href="#" target="_blank" rel="noopener noreferrer">配布ページを開く</a>
+      <a id="distributionLink" class="linkbtn linkbtn-main muted" href="#" target="_blank" rel="noopener noreferrer">コピー用の配布ページを開く</a>
     </div>
-    <p id="teacherStatus" class="teacher-status">接続先が入ると配布ページを開けます。</p>
+    <p id="teacherStatus" class="teacher-status">配布ページから、そのままスプレッドシートのコピーを作れます。</p>
   </div>
   <div class="card">
     <div class="label">先生側の流れ</div>
     <ol class="steps">
       <li>このページを開く</li>
-      <li>「配布ページを開く」からスプレッドシートをコピーする</li>
+      <li>「コピー用の配布ページを開く」からスプレッドシートをコピーする</li>
       <li>コピー先のシートで導入・配布を進める</li>
       <li>児童には先生が配るURLから入ってもらう</li>
     </ol>

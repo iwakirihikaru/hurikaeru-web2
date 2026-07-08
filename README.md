@@ -7,7 +7,7 @@
 - `index.html`
   - 入口ページ
 - `setup.html`
-  - GAS URL の保存と接続確認
+  - 配布ページへの入口と接続補助
 - `student.html`
   - 児童画面
 - `teacher.html`

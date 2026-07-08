@@ -1047,12 +1047,12 @@ textarea.inp{resize:vertical;min-height:70px;}
           </ol>
         </div>
         <div class="guide-card">
-          <h3 id="helpStep2Title">2. 児童への配布</h3>
+          <h3 id="helpStep2Title">2. 配布と児童導線</h3>
           <ol class="guide-list">
-            <li id="helpStep2Item1">通常は下の児童ページURLだけを配布する</li>
-            <li id="helpStep2Item2">開ける端末では自動でWEB版へ進み、そのまま接続先も入る</li>
-            <li id="helpStep2Item3">WEB版が開けない端末だけ予備の児童ページを使う</li>
-            <li id="helpStep2Item4">WEB接続ページは、接続先を手動で入れたいときだけ使う</li>
+            <li id="helpStep2Item1">通常は下の児童ページURLだけを児童へ配布する</li>
+            <li id="helpStep2Item2">先生がスプレッドシートを作るときは配布ページを開く</li>
+            <li id="helpStep2Item3">配布ページでは緑のボタンからコピーを作る</li>
+            <li id="helpStep2Item4">接続補助ページは、保存が消えたときだけ使う</li>
             <li id="helpStep2Item5">単元と時間目は先生側の授業スタートに連動する</li>
           </ol>
         </div>
@@ -1084,19 +1084,19 @@ textarea.inp{resize:vertical;min-height:70px;}
           </div>
         </div>
         <div class="guide-link-card" id="helpRegistrationCard">
-          <div class="guide-link-title" id="helpRegistrationCardTitle">WEB接続ページ（任意）</div>
+          <div class="guide-link-title" id="helpRegistrationCardTitle">配布ページ（コピー用）</div>
           <div class="guide-link-actions">
             <button class="btn-update" type="button" onclick="openHelpLink('registration')" id="helpRegistrationOpenBtn">開く</button>
             <button class="btn-cancel" type="button" onclick="copyHelpLink('registration')" id="helpRegistrationCopyBtn">URLをコピー</button>
           </div>
           <input class="inp" id="helpRegistrationUrl" readonly>
           <div class="qr-card">
-            <div class="qr-title" id="helpRegistrationQrTitle">WEB接続ページQR</div>
-            <img id="registrationQrImage" class="qr-image" alt="WEB接続ページQR">
+            <div class="qr-title" id="helpRegistrationQrTitle">配布ページQR</div>
+            <img id="registrationQrImage" class="qr-image" alt="配布ページQR">
           </div>
         </div>
       </div>
-      <div class="guide-note" style="margin-top:10px;" id="helpDistributionNote">基本配布は児童ページURL 1本で大丈夫です。開ける端末は自動でWEB版へ進み、そのURLに入っている接続先も自動で保存されます。pages.dev が学校回線で開けないときだけ予備の児童ページに残ります。WEB接続ページは、接続先を手動で保存し直したいときだけ使います。</div>
+      <div class="guide-note" style="margin-top:10px;" id="helpDistributionNote">先生は配布ページで配布用スプレッドシートを作成します。児童には児童ページURLだけを配布してください。開ける端末は自動でWEB版へ進み、そのURLに入っている接続先も自動で保存されます。pages.dev が学校回線で開けないときだけ予備の児童ページに残ります。接続補助ページは、保存が消えたときだけ使います。</div>
 
       <div class="guide-grid" style="margin-top:14px;">
         <div class="guide-card">
@@ -2222,7 +2222,7 @@ function applyTeacherHelpData(data) {
     var links = teacherHelpData.links || {};
     var shell = teacherHelpData.shell || {};
     var teacherUrl = String(links.teacherUrl || '').trim();
-    var registrationUrl = String(links.registrationUrl || '').trim();
+    var registrationUrl = resolveRegistrationHelpUrl_(links);
     var studentUrl = String(links.studentUrl || '').trim();
     var studentFallbackUrl = String(links.studentFallbackUrl || '').trim();
     var idsToValues = [
@@ -2257,6 +2257,23 @@ function applyTeacherHelpData(data) {
             });
         }, 10);
     }
+}
+function resolveRegistrationHelpUrl_(links) {
+    var direct = String(links && links.registrationUrl || '').trim();
+    var guide = String(links && links.guideUrl || '').trim();
+    if (guide) {
+        try {
+            var parsed = new URL(guide);
+            parsed.searchParams.set('mode', 'form');
+            return parsed.toString();
+        }
+        catch (_error) {
+            if (/mode=guide/.test(guide))
+                return guide.replace(/mode=guide/, 'mode=form');
+            return guide;
+        }
+    }
+    return direct;
 }
 function setTextIfPresent_(id, value) {
     var el = document.getElementById(id);
@@ -2379,7 +2396,7 @@ function openHelpLink(kind) {
     ensureTeacherHelpLoaded(function (data) {
         var links = (data && data.links) || {};
         var urlMap = {
-            registration: links.registrationUrl || '',
+            registration: resolveRegistrationHelpUrl_(links),
             student: links.studentUrl || '',
             studentFallback: links.studentFallbackUrl || '',
             teacher: links.teacherUrl || '',
@@ -2397,7 +2414,7 @@ function copyHelpLink(kind) {
     ensureTeacherHelpLoaded(function (data) {
         var links = (data && data.links) || {};
         var urlMap = {
-            registration: links.registrationUrl || '',
+            registration: resolveRegistrationHelpUrl_(links),
             student: links.studentUrl || '',
             studentFallback: links.studentFallbackUrl || '',
             teacher: links.teacherUrl || '',
