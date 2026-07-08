@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ふりかえり 配布と接続補助</title>
+<title>ふりかえり 接続補助</title>
 <script src="./runtime-shim.js"></script>
 <style>
 :root{
-  --navy:#1A237E;--green:#388E3C;--bg:#F5F5F5;--card:#fff;--line:#D7E3F8;--sand:#FFF8E1;
+  --navy:#1A237E;--green:#388E3C;--bg:#F5F5F5;--card:#fff;--line:#D7E3F8;
   --font:'Hiragino Sans','Yu Gothic UI',sans-serif;
 }
 *{box-sizing:border-box}
@@ -17,18 +17,6 @@ body{margin:0;font-family:var(--font);background:var(--bg);color:#212121}
 .card{background:var(--card);border-radius:16px;padding:18px;box-shadow:0 6px 20px rgba(26,35,126,.08);margin-bottom:14px}
 .lead{background:#EEF4FF;border:1px solid var(--line);border-radius:12px;padding:14px 16px;line-height:1.8}
 .steps{margin:0;padding-left:20px;line-height:1.9;color:#455A64}
-.hero{background:linear-gradient(135deg,#EEF4FF,#F8FBFF);border:1px solid var(--line)}
-.hero-title{font-size:18px;font-weight:700;margin:0 0 8px}
-.hero-note{margin:0;color:#455A64;line-height:1.8}
-.teacher-box{border:1px solid #FFE082;background:var(--sand)}
-.teacher-box.show{display:block}
-.teacher-title{font-size:15px;font-weight:700;margin:0 0 8px;color:#6D4C41}
-.teacher-note{margin:0 0 12px;line-height:1.8;color:#6D4C41;font-size:13px}
-.teacher-status{margin:0;font-size:12px;line-height:1.7;color:#8D6E63}
-.teacher-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
-.linkbtn-main{background:linear-gradient(135deg,var(--green),#2E7D32);color:#fff;border:none}
-.linkbtn-sub{background:#fff7f3;color:#B85A36;border:1px solid #efc7b8}
-.muted{opacity:.55;pointer-events:none}
 .manual{padding:0}
 .manual summary{list-style:none;cursor:pointer;padding:18px;font-size:14px;font-weight:700;color:#37474F}
 .manual summary::-webkit-details-marker{display:none}
@@ -52,27 +40,17 @@ body{margin:0;font-family:var(--font);background:var(--bg);color:#212121}
 </style>
 </head>
 <body>
-<div class="nav">ふりかえり 配布と接続補助</div>
+<div class="nav">ふりかえり 接続補助</div>
 <div class="wrap">
-  <div class="card hero">
-    <div class="hero-title">先生はここから配布ページへ進みます</div>
-    <p class="hero-note">スプレッドシートを作るときは、下の緑ボタンで前の配布ページをそのまま開きます。児童は先生が配ったURLから入る前提なので、手動の接続保存は必要なときだけ下の補助欄を使います。</p>
-  </div>
-  <div class="card teacher-box" id="teacherBox">
-    <div class="teacher-title">先生向け</div>
-    <p class="teacher-note">配布用スプレッドシートを作るときは、前の配布ページから進めます。基本は下の緑ボタンだけ見れば大丈夫です。</p>
-    <div class="teacher-actions">
-      <a id="distributionLink" class="linkbtn linkbtn-main muted" href="#" target="_blank" rel="noopener noreferrer">コピー用の配布ページを開く</a>
-    </div>
-    <p id="teacherStatus" class="teacher-status">配布ページから、そのままスプレッドシートのコピーを作れます。</p>
+  <div class="card">
+    <div class="lead">このページは接続補助です。通常は先生が配るURLから入り、ここは保存が消えたときや、接続先を手で入れ替えたいときだけ使います。</div>
   </div>
   <div class="card">
-    <div class="label">先生側の流れ</div>
+    <div class="label">このページを使うとき</div>
     <ol class="steps">
-      <li>このページを開く</li>
-      <li>「コピー用の配布ページを開く」からスプレッドシートをコピーする</li>
-      <li>コピー先のシートで導入・配布を進める</li>
-      <li>児童には先生が配るURLから入ってもらう</li>
+      <li>保存が消えて、児童ページや先生ページで開けなくなったとき</li>
+      <li>接続先のGAS URLを手で入れ替えたいとき</li>
+      <li>URLに <span class="mono">?api=...</span> が付いていないWeb版URLを直接開いたとき</li>
     </ol>
   </div>
   <div class="card">
@@ -82,9 +60,9 @@ body{margin:0;font-family:var(--font);background:var(--bg);color:#212121}
     </div>
   </div>
   <details class="card manual" id="manualBox">
-    <summary>接続先を手動で入れるときだけ開く</summary>
+    <summary>接続先を手動で入れる</summary>
     <div class="manual-body">
-      <div class="lead">URLに <span class="mono">?api=...</span> が入っていれば自動で保存されます。保存が消えたときや、接続先を手で入れ替えたいときだけここを使います。</div>
+      <div class="lead">URLに <span class="mono">?api=...</span> が入っていれば自動で保存されます。手動入力は例外時だけで大丈夫です。</div>
       <label class="label" for="apiUrl" style="margin-top:14px;">接続先の GAS Web App URL</label>
       <input id="apiUrl" class="input" type="url" placeholder="https://script.google.com/macros/s/.../exec">
       <div class="row">
@@ -100,31 +78,15 @@ body{margin:0;font-family:var(--font);background:var(--bg);color:#212121}
   </details>
   <div class="card">
     <div class="label">補足</div>
-    <div class="lead">このページを直接配る必要はありません。ふだんは先生が配る URL から入り、手動接続は例外時だけ使います。</div>
+    <div class="lead">登録ページでスプレッドシートを作る流れとは別のページです。このページを直接配る必要はありません。</div>
   </div>
 </div>
 <script>
 (function(){
-  var DISTRIBUTION_PAGE_URL = 'https://script.google.com/macros/s/AKfycbyIxBewjHHF2JLlGbI6yuDfdMM7l_AkvY1QRlclIM0uR_nOGa_NXNcAZXY9Jl_g973G/exec?mode=form';
   var input = document.getElementById('apiUrl');
   var status = document.getElementById('status');
   var currentValue = document.getElementById('currentValue');
   var manualBox = document.getElementById('manualBox');
-  var distributionLink = document.getElementById('distributionLink');
-  var teacherStatus = document.getElementById('teacherStatus');
-
-  function renderTeacherBox(distributionUrl) {
-    var href = String(distributionUrl || '').trim();
-    if (!href) {
-      distributionLink.setAttribute('href', '#');
-      distributionLink.classList.add('muted');
-      teacherStatus.textContent = '配布ページURLが未設定です。';
-      return;
-    }
-    distributionLink.setAttribute('href', href);
-    distributionLink.classList.remove('muted');
-    teacherStatus.textContent = '配布ページから、配布用スプレッドシートのコピーを作れます。';
-  }
 
   function renderCurrent() {
     var value = window.__portableGas.getApiUrl();
@@ -195,7 +157,6 @@ body{margin:0;font-family:var(--font);background:var(--bg);color:#212121}
     manualBox.open = true;
   }
   renderCurrent();
-  renderTeacherBox(DISTRIBUTION_PAGE_URL);
 })();
 </script>
 </body>
