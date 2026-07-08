@@ -24,6 +24,7 @@ body{margin:0;font-family:var(--font);background:var(--bg);color:#212121}
 .btn-main{background:linear-gradient(135deg,var(--green),#2E7D32);color:#fff}
 .btn-sub{background:linear-gradient(135deg,#F7FBFF,#E3F2FD);color:#0D47A1;border:1.5px solid #90CAF9}
 .btn-ghost{background:#CFD8DC;color:#37474F}
+.btn-copy{background:#FFF8E1;color:#6D4C41;border:1.5px solid #FFE082}
 .status{margin-top:12px;padding:12px 14px;border-radius:12px;line-height:1.7;background:#F8FBFF;border:1px solid #E1ECF7}
 .status.ok{background:#E8F5E9;border-color:#A5D6A7;color:#1B5E20}
 .status.error{background:#FFF8E1;border-color:#FFE082;color:#6D4C41}
@@ -53,6 +54,7 @@ body{margin:0;font-family:var(--font);background:var(--bg);color:#212121}
     <div class="row">
       <button id="saveBtn" class="btn btn-main" type="button">保存して接続確認</button>
       <button id="testBtn" class="btn btn-sub" type="button">接続確認だけする</button>
+      <button id="copyBtn" class="btn btn-copy" type="button">GAS URLをコピー</button>
       <button id="clearBtn" class="btn btn-ghost" type="button">保存を消す</button>
     </div>
     <div id="status" class="status">まだ保存されていません。</div>
@@ -83,6 +85,27 @@ body{margin:0;font-family:var(--font);background:var(--bg);color:#212121}
     status.textContent = message;
   }
 
+  async function copyApiUrl() {
+    var url = String(input.value || window.__portableGas.getApiUrl() || '').trim();
+    if (!url) {
+      setStatus('コピーするURLがありません。', 'error');
+      return;
+    }
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(url);
+      } else {
+        input.focus();
+        input.select();
+        input.setSelectionRange(0, input.value.length);
+        if (!document.execCommand('copy')) throw new Error('copy_failed');
+      }
+      setStatus('GAS URLをコピーしました。', 'ok');
+    } catch (_error) {
+      setStatus('コピーに失敗しました。URL欄を長押ししてコピーしてください。', 'error');
+    }
+  }
+
   async function testConnection() {
     var url = String(input.value || '').trim();
     if (!url) {
@@ -102,6 +125,7 @@ body{margin:0;font-family:var(--font);background:var(--bg);color:#212121}
 
   document.getElementById('saveBtn').addEventListener('click', testConnection);
   document.getElementById('testBtn').addEventListener('click', testConnection);
+  document.getElementById('copyBtn').addEventListener('click', copyApiUrl);
   document.getElementById('clearBtn').addEventListener('click', function(){
     input.value = '';
     window.__portableGas.setApiUrl('');

@@ -530,9 +530,77 @@ function forgetRememberedStudent_(){
 //  番号ボタン生成
 // =====================================
 const bootstrapStudentOptions = window.__STUDENT_BOOTSTRAP__ || window.__portableGas.bootstrapStudent();
-applyStudentShellState_(bootstrapStudentOptions.shell||{});
-renderNumberButtons(bootstrapStudentOptions.students||[]);
-setupRememberedStudentResume_(bootstrapStudentOptions.students||[]);
+const bootstrapStudentRedirect = <?!= typeof bootstrapStudentRedirectJson !== 'undefined' ? bootstrapStudentRedirectJson : '{"enabled":false}' ?>;
+let studentAppBootStarted=false;
+
+function startStudentApp_(){
+  if(studentAppBootStarted) return;
+  studentAppBootStarted=true;
+  applyStudentShellState_(bootstrapStudentOptions.shell||{});
+  renderNumberButtons(bootstrapStudentOptions.students||[]);
+  setupRememberedStudentResume_(bootstrapStudentOptions.students||[]);
+}
+
+function readStudentPortableRedirectCache_(key){
+  if(!key) return null;
+  try{
+    const raw=localStorage.getItem(key);
+    if(!raw) return null;
+    const parsed=JSON.parse(raw);
+    if(!parsed || !parsed.status || !parsed.savedAt) return null;
+    const successTtlMs=Math.max(1000, Number(bootstrapStudentRedirect && bootstrapStudentRedirect.successTtlMs || 0) || 10*60*1000);
+    const failureTtlMs=Math.max(1000, Number(bootstrapStudentRedirect && bootstrapStudentRedirect.failureTtlMs || 0) || 2*60*1000);
+    const ttlMs=parsed.status==='ok' ? successTtlMs : failureTtlMs;
+    if(Date.now()-Number(parsed.savedAt)>ttlMs){
+      localStorage.removeItem(key);
+      return null;
+    }
+    return parsed.status;
+  }catch(_error){
+    return null;
+  }
+}
+
+function writeStudentPortableRedirectCache_(key,status){
+  if(!key || !status) return;
+  try{
+    localStorage.setItem(key, JSON.stringify({
+      status:String(status),
+      savedAt:Date.now()
+    }));
+  }catch(_error){}
+}
+
+function beginPortableStudentRedirectGate_(){
+  const config=bootstrapStudentRedirect && typeof bootstrapStudentRedirect==='object' ? bootstrapStudentRedirect : null;
+  if(!config || !config.enabled || config.skipRedirect || !config.portableUrl || !config.probeUrl) return false;
+  const cacheKey=String(config.cacheKey||'').trim();
+  const cachedStatus=readStudentPortableRedirectCache_(cacheKey);
+  if(cachedStatus==='ok'){
+    window.location.replace(String(config.portableUrl));
+    return true;
+  }
+  if(cachedStatus==='ng') return false;
+  const timeoutMs=Math.max(250, Number(config.timeoutMs||0)||900);
+  const timeoutPromise=new Promise((_,reject)=>setTimeout(()=>reject(new Error('portable_probe_timeout')), timeoutMs));
+  Promise.race([
+    fetch(String(config.probeUrl), { mode:'no-cors', cache:'no-store' }),
+    timeoutPromise
+  ])
+    .then(()=>{
+      writeStudentPortableRedirectCache_(cacheKey,'ok');
+      window.location.replace(String(config.portableUrl));
+    })
+    .catch(()=>{
+      writeStudentPortableRedirectCache_(cacheKey,'ng');
+      startStudentApp_();
+    });
+  return true;
+}
+
+if(!beginPortableStudentRedirectGate_()){
+  startStudentApp_();
+}
 
 function getBootstrapClassSnapshot_(){
   const snapshot=bootstrapStudentOptions.classSnapshot;
