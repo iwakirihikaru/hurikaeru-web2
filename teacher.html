@@ -1489,7 +1489,7 @@ textarea.inp{resize:vertical;min-height:70px;}
 
 <script>
 window.__TEACHER_BOOTSTRAP__ = window.__TEACHER_BOOTSTRAP__ || window.__portableGas.bootstrapTeacher();
-window.__TEACHER_REDIRECT_BOOTSTRAP__ = <?!= typeof bootstrapTeacherRedirectJson !== 'undefined' ? bootstrapTeacherRedirectJson : '{"enabled":false}' ?>;
+window.__TEACHER_REDIRECT_BOOTSTRAP__ = { enabled:false };
 (function(){
   function readRedirectCache_(key, config){
     if(!key) return null;

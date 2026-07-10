@@ -530,7 +530,7 @@ function forgetRememberedStudent_(){
 //  番号ボタン生成
 // =====================================
 const bootstrapStudentOptions = window.__STUDENT_BOOTSTRAP__ || window.__portableGas.bootstrapStudent();
-const bootstrapStudentRedirect = <?!= typeof bootstrapStudentRedirectJson !== 'undefined' ? bootstrapStudentRedirectJson : '{"enabled":false}' ?>;
+const bootstrapStudentRedirect = { enabled:false };
 let studentAppBootStarted=false;
 
 function startStudentApp_(){
