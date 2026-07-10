@@ -785,6 +785,7 @@ textarea.inp{resize:vertical;min-height:70px;}
             <button class="btn-cancel" type="button" id="teacherFeedbackClearBtn" onclick="clearTeacherFeedbackDraftsFromStatus()">🧹 下書きを消す</button>
           </div>
           <div class="status-feedback-meta" id="teacherFeedbackMeta">教師AIが有効なとき、提出済みの内容から下書きを作れます。</div>
+          <div class="status-feedback-meta" id="statusPerfDebug" style="display:none;"></div>
           <div class="status-feedback-result" id="teacherFeedbackResult"></div>
         </div>
       </div>
@@ -1043,22 +1044,34 @@ textarea.inp{resize:vertical;min-height:70px;}
             <li id="helpStep1Item1">下の登録ページを開く</li>
             <li id="helpStep1Item2">緑のボタンからスプレッドシートをコピーする</li>
             <li id="helpStep1Item3">コピー先のシートで初期設定と導入・配布を進める</li>
-            <li id="helpStep1Item4">終わったらこの下の児童ページURLを配布する</li>
+            <li id="helpStep1Item4">終わったらまず先生ページURLから入り、そこから児童ページURLを配布する</li>
           </ol>
         </div>
         <div class="guide-card">
-          <h3 id="helpStep2Title">2. 配布と児童導線</h3>
+          <h3 id="helpStep2Title">2. 先生と児童の入り口</h3>
           <ol class="guide-list">
-            <li id="helpStep2Item1">通常は下の児童ページURLだけを児童へ配布する</li>
-            <li id="helpStep2Item2">開ける端末では自動でWEB版へ進み、そのまま接続先も入る</li>
-            <li id="helpStep2Item3">WEB版が開けない端末だけ予備の児童ページを使う</li>
-            <li id="helpStep2Item4">接続補助ページは、保存が消えたときだけ使う</li>
+            <li id="helpStep2Item1">先生はふだん下の先生ページURLだけを開く</li>
+            <li id="helpStep2Item2">先生ページは開ける端末では自動でWEB版へ進み、開けない端末だけGAS画面に残る</li>
+            <li id="helpStep2Item3">児童には下の児童ページURLだけを配布する</li>
+            <li id="helpStep2Item4">WEB版が開けない端末だけ予備の児童ページを使う</li>
             <li id="helpStep2Item5">単元と時間目は先生側の授業スタートに連動する</li>
           </ol>
         </div>
       </div>
 
       <div class="guide-link-grid" style="margin-top:14px;">
+        <div class="guide-link-card">
+          <div class="guide-link-title" id="helpTeacherCardTitle">先生ページ</div>
+          <div class="guide-link-actions">
+            <button class="btn-update" type="button" onclick="openHelpLink('teacher')" id="helpTeacherOpenBtn">開く</button>
+            <button class="btn-cancel" type="button" onclick="copyHelpLink('teacher')" id="helpTeacherCopyBtn">URLをコピー</button>
+          </div>
+          <input class="inp" id="teacherPageUrl" readonly>
+          <div class="qr-card">
+            <div class="qr-title" id="helpTeacherQrTitle">先生ページQR</div>
+            <img id="teacherQrImage" class="qr-image" alt="先生ページQR">
+          </div>
+        </div>
         <div class="guide-link-card">
           <div class="guide-link-title" id="helpStudentCardTitle">児童ページ</div>
           <div class="guide-link-actions">
@@ -1096,7 +1109,7 @@ textarea.inp{resize:vertical;min-height:70px;}
           </div>
         </div>
       </div>
-      <div class="guide-note" style="margin-top:10px;" id="helpDistributionNote">先生は登録ページで配布用スプレッドシートを作成します。児童には児童ページURLだけを配布してください。開ける端末は自動でWEB版へ進み、そのURLに入っている接続先も自動で保存されます。pages.dev が学校回線で開けないときだけ予備の児童ページに残ります。接続補助ページは、保存が消えたときだけ使います。</div>
+      <div class="guide-note" style="margin-top:10px;" id="helpDistributionNote">先生は登録ページで配布用スプレッドシートを作成したあと、まず先生ページURLから入ります。児童には児童ページURLだけを配布してください。先生ページと児童ページは、pages.dev が開ける端末では自動でWEB版へ進み、開けない端末だけGAS画面に残ります。予備の児童ページは障害時だけ使います。</div>
 
       <div class="guide-grid" style="margin-top:14px;">
         <div class="guide-card">
@@ -1476,6 +1489,95 @@ textarea.inp{resize:vertical;min-height:70px;}
 
 <script>
 window.__TEACHER_BOOTSTRAP__ = window.__TEACHER_BOOTSTRAP__ || window.__portableGas.bootstrapTeacher();
+window.__TEACHER_REDIRECT_BOOTSTRAP__ = <?!= typeof bootstrapTeacherRedirectJson !== 'undefined' ? bootstrapTeacherRedirectJson : '{"enabled":false}' ?>;
+(function(){
+  function readRedirectCache_(key, config){
+    if(!key) return null;
+    try{
+      const raw=localStorage.getItem(key);
+      if(!raw) return null;
+      const parsed=JSON.parse(raw);
+      if(!parsed || !parsed.status || !parsed.savedAt) return null;
+      const successTtlMs=Math.max(1000, Number(config && config.successTtlMs || 0) || 10*60*1000);
+      const failureTtlMs=Math.max(1000, Number(config && config.failureTtlMs || 0) || 2*60*1000);
+      const ttlMs=parsed.status==='ok' ? successTtlMs : failureTtlMs;
+      if(Date.now()-Number(parsed.savedAt)>ttlMs){
+        localStorage.removeItem(key);
+        return null;
+      }
+      return parsed.status;
+    }catch(_error){
+      return null;
+    }
+  }
+
+  function writeRedirectCache_(key,status){
+    if(!key || !status) return;
+    try{
+      localStorage.setItem(key, JSON.stringify({
+        status:String(status),
+        savedAt:Date.now()
+      }));
+    }catch(_error){}
+  }
+
+  function startTeacherGasFallback_(){
+    window.__TEACHER_PORTABLE_REDIRECT_ACTIVE__ = false;
+    window.__TEACHER_PORTABLE_REDIRECT_FALLBACK__ = true;
+    if(typeof window.loadStatusInit==='function'){
+      window.loadStatusInit({ startPolling:true });
+      return;
+    }
+    if(window.addEventListener){
+      window.addEventListener('load', function retryTeacherFallbackInit_(){
+        if(window.__TEACHER_PORTABLE_REDIRECT_FALLBACK__===true && typeof window.loadStatusInit==='function'){
+          window.loadStatusInit({ startPolling:true });
+        }
+      }, { once:true });
+    }
+  }
+
+  function beginPortableTeacherRedirectGate_(){
+    const config=window.__TEACHER_REDIRECT_BOOTSTRAP__ && typeof window.__TEACHER_REDIRECT_BOOTSTRAP__==='object'
+      ? window.__TEACHER_REDIRECT_BOOTSTRAP__
+      : null;
+    if(!config || !config.enabled || config.skipRedirect || !config.portableUrl || !config.probeUrl){
+      window.__TEACHER_PORTABLE_REDIRECT_ACTIVE__ = false;
+      return false;
+    }
+    const cacheKey=String(config.cacheKey||'').trim();
+    const cachedStatus=readRedirectCache_(cacheKey, config);
+    if(cachedStatus==='ok'){
+      window.__TEACHER_PORTABLE_REDIRECT_ACTIVE__ = true;
+      window.location.replace(String(config.portableUrl));
+      return true;
+    }
+    if(cachedStatus==='ng'){
+      window.__TEACHER_PORTABLE_REDIRECT_ACTIVE__ = false;
+      return false;
+    }
+    const timeoutMs=Math.max(250, Number(config.timeoutMs||0)||900);
+    const timeoutPromise=new Promise((_,reject)=>setTimeout(()=>reject(new Error('portable_probe_timeout')), timeoutMs));
+    window.__TEACHER_PORTABLE_REDIRECT_ACTIVE__ = true;
+    Promise.race([
+      fetch(String(config.probeUrl), { mode:'no-cors', cache:'no-store' }),
+      timeoutPromise
+    ])
+      .then(()=>{
+        writeRedirectCache_(cacheKey,'ok');
+        window.location.replace(String(config.portableUrl));
+      })
+      .catch(()=>{
+        writeRedirectCache_(cacheKey,'ng');
+        startTeacherGasFallback_();
+      });
+    return true;
+  }
+
+  if(!beginPortableTeacherRedirectGate_()){
+    window.__TEACHER_PORTABLE_REDIRECT_ACTIVE__ = false;
+  }
+})();
 </script>
 <script>
 var __assign = (this && this.__assign) || function () {
@@ -1737,6 +1839,7 @@ function loadStatusInit(options) {
         if (opts.startPolling) {
             startStatusPoll(Boolean(d && d.status));
         }
+        scheduleTeacherUnitProgressRefresh_(d);
     })
         .withFailureHandler(function (err) {
         if (requestEpoch !== teacherDataEpoch)
@@ -1751,6 +1854,35 @@ function loadStatusInit(options) {
         return;
     }
     runner.teacherStatusInit();
+}
+function scheduleTeacherUnitProgressRefresh_(data) {
+    if (!(data && data.progressNeedsRefresh))
+        return;
+    if (scheduleTeacherUnitProgressRefresh_._started)
+        return;
+    scheduleTeacherUnitProgressRefresh_._started = true;
+    var run = function () {
+        google.script.run
+            .withSuccessHandler(function (res) {
+            var map = res && res.unitProgress;
+            if (!map || typeof map !== 'object')
+                return;
+            unitProgressByUnitId = map;
+            populateUnitSelects();
+            var unitListSection = document.getElementById('unitListWrap');
+            if (unitListSection && unitListSection.offsetParent !== null) {
+                renderUnitList();
+            }
+        })
+            .withFailureHandler(function () { })
+            .teacherUnitProgressRefresh();
+    };
+    if (typeof requestIdleCallback === 'function') {
+        requestIdleCallback(run, { timeout: 4000 });
+    }
+    else {
+        setTimeout(run, 2500);
+    }
 }
 function invalidateTeacherDataRequests_() {
     teacherDataEpoch += 1;
@@ -2241,6 +2373,7 @@ function applyTeacherHelpData(data) {
         if (el)
             el.value = value;
     });
+    applyQrImage('teacherQrImage', teacherUrl);
     applyQrImage('registrationQrImage', registrationUrl);
     applyQrImage('studentQrImage', studentUrl);
     applyQrImage('studentFallbackQrImage', studentFallbackUrl);
@@ -3007,6 +3140,40 @@ var lastUnitListSignature = '';
 var UNIT_LIST_PAGE_SIZE = 10;
 var TEACHER_FEEDBACK_PREFS_KEY = 'teacher_feedback_prefs_v1';
 var teacherFeedbackPrefsLoaded = false;
+function formatStatusTimingLine_(label, timing, keys) {
+    if (!timing || typeof timing !== 'object' || !Array.isArray(keys) || !keys.length)
+        return '';
+    var parts = keys
+        .map(function (key) {
+        var value = Number(timing[key] || 0);
+        if (!Number.isFinite(value) || value <= 0)
+            return '';
+        var name = String(key || '').replace(/Ms$/, '');
+        return "".concat(name, " ").concat(value, "ms");
+    })
+        .filter(Boolean);
+    if (!parts.length)
+        return '';
+    return "".concat(label, ": ").concat(parts.join(' / '));
+}
+function renderStatusPerfDebug_() {
+    var el = document.getElementById('statusPerfDebug');
+    if (!el)
+        return;
+    var lessonTiming = latestStatusMeta && latestStatusMeta.timing || null;
+    var requestTiming = latestStatusMeta && latestStatusMeta.serverRequestTiming || null;
+    var lines = [
+        formatStatusTimingLine_('表示データ', lessonTiming, ['totalMs', 'responsesMs', 'draftsMs', 'rosterMs', 'studentBuildMs']),
+        formatStatusTimingLine_('初回読込', requestTiming, ['totalMs', 'unitsMs', 'activeMs', 'unitProgressMs', 'lessonStatusMs']),
+    ].filter(Boolean);
+    if (!lines.length) {
+        el.style.display = 'none';
+        el.textContent = '';
+        return;
+    }
+    el.style.display = 'block';
+    el.textContent = lines.join(' | ');
+}
 function loadTeacherFeedbackPrefs_() {
     try {
         var raw = localStorage.getItem(TEACHER_FEEDBACK_PREFS_KEY);
@@ -3061,6 +3228,7 @@ function loadStatus() {
 function renderStatus(d) {
     latestStatusRows = Array.isArray(d && d.students) ? d.students : [];
     latestStatusMeta = d && d.meta || {};
+    renderStatusPerfDebug_();
     var st = latestStatusRows;
     var aiReturnedCount = st.filter(function (s) { return String(s.comment || '').trim(); }).length;
     var draftCount = st.filter(function (s) { return hasTeacherDraft(s); }).length;
@@ -6236,7 +6404,9 @@ function escTextArea(s) {
     return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
 }
 // 初期ロード
-loadStatusInit({ startPolling: true });
+if (window.__TEACHER_PORTABLE_REDIRECT_ACTIVE__ !== true) {
+    loadStatusInit({ startPolling: true });
+}
 </script>
 
 </body>

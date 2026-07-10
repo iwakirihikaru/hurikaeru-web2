@@ -1,5 +1,6 @@
 (function () {
   var STORAGE_KEY = "GAS_API_URL";
+  var DEFAULT_API_URL = "https://script.google.com/macros/s/AKfycbwaLBC6GW0y6NwKM04tFop7vddDX1uMfz3x4KJ4juT4Sn07dBDIvMnARCm8wBI-DAxA/exec";
   var memoryApiUrl = "";
   var REDIRECT_FLAG_KEY = "__portable_setup_redirecting__";
   var TEACHER_BOOTSTRAP_CACHE_KEY = "jibun-matome-teacher-bootstrap-fast";
@@ -14,6 +15,10 @@
     }
   }
 
+  function getDefaultApiUrl() {
+    return String(DEFAULT_API_URL || "").trim();
+  }
+
   function syncMemoryApiUrl() {
     var queryValue = readApiUrlFromQuery();
     if (queryValue) {
@@ -26,6 +31,14 @@
     try {
       memoryApiUrl = window.localStorage.getItem(STORAGE_KEY) || memoryApiUrl || "";
     } catch (_error) {}
+    if (!memoryApiUrl) {
+      memoryApiUrl = getDefaultApiUrl();
+      try {
+        if (memoryApiUrl) {
+          window.localStorage.setItem(STORAGE_KEY, memoryApiUrl);
+        }
+      } catch (_error) {}
+    }
     return memoryApiUrl;
   }
 
@@ -206,6 +219,7 @@
   window.__portableGas = {
     getApiUrl: getApiUrl,
     setApiUrl: setApiUrl,
+    getDefaultApiUrl: getDefaultApiUrl,
     postAction: postAction,
     postActionSync: postActionSync,
     callRpcSync: function (method) {
