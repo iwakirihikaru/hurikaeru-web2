@@ -50,7 +50,7 @@ body{margin:0;font-family:var(--font);background:var(--bg);color:#212121}
     <ol class="steps">
       <li>保存が消えて、児童ページや先生ページで開けなくなったとき</li>
       <li>接続先のGAS URLを手で入れ替えたいとき</li>
-      <li>URLに <span class="mono">?api=...</span> が付いていないWeb版URLを直接開いたとき</li>
+      <li>障害時に、標準接続先ではなく別のGASへ一時的に切り替えたいとき</li>
     </ol>
   </div>
   <div class="card">
@@ -62,7 +62,7 @@ body{margin:0;font-family:var(--font);background:var(--bg);color:#212121}
   <details class="card manual" id="manualBox">
     <summary>接続先を手動で入れる</summary>
     <div class="manual-body">
-      <div class="lead">URLに <span class="mono">?api=...</span> が入っていれば自動で保存されます。手動入力は例外時だけで大丈夫です。</div>
+      <div class="lead">通常は標準接続先が自動で使われます。URLに <span class="mono">?api=...</span> が入っていればその値が優先保存されます。手動入力は例外時だけで大丈夫です。</div>
       <label class="label" for="apiUrl" style="margin-top:14px;">接続先の GAS Web App URL</label>
       <input id="apiUrl" class="input" type="url" placeholder="https://script.google.com/macros/s/.../exec">
       <div class="row">
