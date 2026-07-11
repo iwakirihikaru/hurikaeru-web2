@@ -83,6 +83,47 @@
     }
   }
 
+  function writeJsonCache(cacheKey, payload) {
+    try {
+      window.localStorage.setItem(
+        cacheKey,
+        JSON.stringify({
+          savedAt: Date.now(),
+          apiUrl: getApiUrl(),
+          data: payload
+        })
+      );
+    } catch (_error) {}
+    return payload;
+  }
+
+  function clearJsonCache(cacheKey) {
+    try {
+      window.localStorage.removeItem(cacheKey);
+    } catch (_error) {}
+  }
+
+  function readTeacherBootstrapCache() {
+    var cached = readJsonCache(TEACHER_BOOTSTRAP_CACHE_KEY);
+    if (!cached || !cached.data || typeof cached.data !== "object") {
+      return null;
+    }
+    var cachedApiUrl = String(cached.apiUrl || "").trim();
+    var currentApiUrl = String(getApiUrl() || "").trim();
+    if (cachedApiUrl && currentApiUrl && cachedApiUrl !== currentApiUrl) {
+      clearJsonCache(TEACHER_BOOTSTRAP_CACHE_KEY);
+      return null;
+    }
+    return cached.data;
+  }
+
+  function writeTeacherBootstrapCache(payload) {
+    if (!payload || typeof payload !== "object") {
+      return null;
+    }
+    return writeJsonCache(TEACHER_BOOTSTRAP_CACHE_KEY, payload);
+  }
+
   function isSetupPage() {
     try {
       return /\/setup(?:\.html)?$/i.test(window.location.pathname || "");
@@ -163,6 +204,18 @@
     return result.data;
   }
 
+  function callPortableMethod(method, args) {
+    return postAction(String(method || ""), {
+      args: Array.isArray(args) ? args : []
+    });
+  }
+
+  function callPortableMethodSync(method, args) {
+    return postActionSync(String(method || ""), {
+      args: Array.isArray(args) ? args : []
+    });
+  }
+
   function createRunner(successHandler, failureHandler) {
     var proxy = new Proxy(
       {},
@@ -180,10 +233,7 @@
           }
           return function () {
             var args = Array.prototype.slice.call(arguments);
-            postAction("rpc", {
-              method: String(prop),
-              args: args
-            })
+            callPortableMethod(String(prop), args)
               .then(function (data) {
                 if (typeof successHandler === "function") {
                   successHandler(data);
@@ -210,31 +260,25 @@
     postActionSync: postActionSync,
     callRpcSync: function (method) {
       var args = Array.prototype.slice.call(arguments, 1);
-      return postActionSync("rpc", {
-        method: String(method),
-        args: args
-      });
+      return callPortableMethodSync(String(method), args);
+    },
+    cacheTeacherBootstrap: writeTeacherBootstrapCache,
+    clearTeacherBootstrapCache: function () {
+      clearJsonCache(TEACHER_BOOTSTRAP_CACHE_KEY);
     },
     bootstrapTeacher: function () {
       if (!getApiUrl()) {
         redirectToSetupIfNeeded();
         return { shell: {}, status: null, unitItems: [], recordItems: [] };
       }
-      var cached = readJsonCache(TEACHER_BOOTSTRAP_CACHE_KEY);
-      if (cached && cached.data && typeof cached.data === "object") {
-        return cached.data;
-      }
-      return null;
+      return readTeacherBootstrapCache();
     },
     bootstrapStudent: function () {
       if (!getApiUrl()) {
         redirectToSetupIfNeeded();
         return { students: [], shell: {} };
       }
-      return postActionSync("rpc", {
-        method: "getStudentEntryOptions",
-        args: []
-      }) || { students: [], shell: {} };
+      return callPortableMethodSync("getStudentEntryOptions", []) || { students: [], shell: {} };
     }
   };
 
