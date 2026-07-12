@@ -1,6 +1,374 @@
 <script>
 let portfolioInitRequestSeq=0;
 let portfolioDataRequestSeq=0;
+let aggregateLoadRequestSeq=0;
+let aggregateScopeFetchKey='';
+const PORTFOLIO_CACHE_LIMIT=16;
+const AGGREGATE_PRELOAD_ROW_LIMIT=800;
+const AGGREGATE_LIVE_FRESH_MS=60*1000;
+
+function readAggregatePreloadCache_(){
+  const cached=preloadCache.aggregate;
+  if(!cached || typeof cached!=='object') return null;
+  if((Date.now()-Number(cached.savedAt||0))>TEACHER_PRELOAD_TTL_MS){
+    preloadCache.aggregate=null;
+    persistTeacherPreloadCache_();
+    return null;
+  }
+  if(!Array.isArray(cached.rows) || !cached.rows.length) return null;
+  return cached.rows.slice();
+}
+
+function writeAggregatePreloadCache_(rows){
+  if(!Array.isArray(rows) || !rows.length){
+    preloadCache.aggregate=null;
+    persistTeacherPreloadCache_();
+    return;
+  }
+  preloadCache.aggregate={
+    savedAt:Date.now(),
+    rows:rows.slice(0, AGGREGATE_PRELOAD_ROW_LIMIT),
+  };
+  persistTeacherPreloadCache_();
+}
+
+function isAggregateRecordPaneActive_(){
+  const pane=document.getElementById('record-pane-aggregate');
+  return Boolean(pane && pane.classList.contains('active'));
+}
+
+function isGradingRecordPaneActive_(){
+  const pane=document.getElementById('record-pane-grading');
+  return Boolean(pane && pane.classList.contains('active'));
+}
+
+function renderAggregateDataSet_(rows, meta){
+  allAggData=Array.isArray(rows) ? rows : [];
+  const scopeMeta=meta && typeof meta==='object' ? meta : {};
+  allAggMeta={
+    scope:String(scopeMeta.scope||'unknown'),
+    fetchedAt:Number(scopeMeta.fetchedAt||Date.now())||0,
+    unitId:String(scopeMeta.unitId||''),
+    subject:String(scopeMeta.subject||''),
+  };
+  filterAgg();
+  filterGrading();
+}
+
+function fetchAggregateDataSet_(options){
+  const opts=options||{};
+  const unitId=opts.unitId||null;
+  const subject=String(opts.subject||'').trim();
+  const requestSeq=opts.requestSeq||0;
+  google.script.run
+    .withSuccessHandler(raw=>{
+      if(requestSeq && requestSeq!==aggregateLoadRequestSeq) return;
+      let res=null;
+      try{
+        res=raw?JSON.parse(raw):null;
+      }catch(e){
+        if(typeof opts.onParseError==='function') opts.onParseError(e);
+        return;
+      }
+      if(res && res.ok===false && res.error){
+        if(typeof opts.onError==='function') opts.onError(res.error);
+        return;
+      }
+      const rows=res && res.rows || [];
+      if(typeof opts.onSuccess==='function') opts.onSuccess(rows, res||{});
+    })
+    .withFailureHandler(err=>{
+      if(requestSeq && requestSeq!==aggregateLoadRequestSeq) return;
+      if(typeof opts.onFailure==='function') opts.onFailure(err);
+    })
+    .getAggregateDataJson(unitId, subject ? JSON.stringify({ subject }) : '');
+}
+
+function getInitialAggregateFetchOptions_(renderedImmediate){
+  const currentAggUnitId=(document.getElementById('aggUnit')||{}).value||'';
+  if(!renderedImmediate && isAggregateRecordPaneActive_() && !currentAggUnitId && activeUnitId){
+    return { unitId:String(activeUnitId) };
+  }
+  if(isGradingRecordPaneActive_()){
+    const mode=(document.getElementById('gradeMode')||{}).value||'unit';
+    if(mode==='subject'){
+      const subject=(document.getElementById('gradeSubject')||{}).value||'';
+      if(subject) return { subject };
+      return null;
+    }
+    const gradeUnitId=(document.getElementById('gradeUnit')||{}).value||'';
+    if(gradeUnitId) return { unitId:gradeUnitId };
+  }
+  return null;
+}
+
+  function hasFreshFullAggregateData_(){
+    if(!Array.isArray(allAggData)) return false;
+    if(!allAggMeta || String(allAggMeta.scope||'')!=='full') return false;
+    return (Date.now()-Number(allAggMeta.fetchedAt||0))<=AGGREGATE_LIVE_FRESH_MS;
+  }
+  
+  function hasFreshAggregateData_(){
+    if(!Array.isArray(allAggData)) return false;
+    const scope=String(allAggMeta && allAggMeta.scope || '');
+    if(!scope || scope==='unknown' || scope==='preload') return false;
+    return (Date.now()-Number(allAggMeta && allAggMeta.fetchedAt || 0))<=AGGREGATE_LIVE_FRESH_MS;
+  }
+
+function normalizeAggregateScopeOptions_(options){
+  const opts=options||{};
+  return {
+    unitId:String(opts.unitId||'').trim(),
+    subject:String(opts.subject||'').trim(),
+  };
+}
+
+function buildAggregateScopeKey_(options){
+  const opts=normalizeAggregateScopeOptions_(options);
+  if(opts.subject) return `subject:${opts.subject}`;
+  if(opts.unitId) return `unit:${opts.unitId}`;
+  return 'full';
+}
+
+function buildAggregateScopeMeta_(options){
+  const opts=normalizeAggregateScopeOptions_(options);
+  return {
+    scope:opts.subject ? 'subject' : (opts.unitId ? 'unit' : 'full'),
+    fetchedAt:Date.now(),
+    unitId:opts.unitId,
+    subject:opts.subject,
+  };
+}
+
+function hasFreshAggregateScopeFor_(options){
+  const opts=normalizeAggregateScopeOptions_(options);
+  if(!hasFreshAggregateData_()) return false;
+  const scope=String(allAggMeta && allAggMeta.scope || '');
+  if(scope==='full') return true;
+  if(opts.subject) return scope==='subject' && String(allAggMeta.subject||'')===opts.subject;
+  if(opts.unitId) return scope==='unit' && String(allAggMeta.unitId||'')===opts.unitId;
+  return false;
+}
+
+function requestAggregateScope_(options, callbacks){
+  const opts=normalizeAggregateScopeOptions_(options);
+  const key=buildAggregateScopeKey_(opts);
+  const cb=callbacks||{};
+  if(hasFreshAggregateScopeFor_(opts)){
+    if(typeof cb.onReuse==='function') cb.onReuse();
+    return false;
+  }
+  if(aggregateScopeFetchKey===key){
+    return false;
+  }
+  aggregateScopeFetchKey=key;
+  const requestSeq=++aggregateLoadRequestSeq;
+  fetchAggregateDataSet_({
+    unitId:opts.unitId||null,
+    subject:opts.subject||'',
+    requestSeq,
+    onParseError:error=>{
+      if(aggregateScopeFetchKey===key) aggregateScopeFetchKey='';
+      if(typeof cb.onParseError==='function') cb.onParseError(error);
+    },
+    onError:error=>{
+      if(aggregateScopeFetchKey===key) aggregateScopeFetchKey='';
+      if(typeof cb.onError==='function') cb.onError(error);
+    },
+    onFailure:error=>{
+      if(aggregateScopeFetchKey===key) aggregateScopeFetchKey='';
+      if(typeof cb.onFailure==='function') cb.onFailure(error);
+    },
+    onSuccess:rows=>{
+      if(aggregateScopeFetchKey===key) aggregateScopeFetchKey='';
+      if(!opts.subject && !opts.unitId){
+        writeAggregatePreloadCache_(rows);
+      }
+      renderAggregateDataSet_(rows, buildAggregateScopeMeta_(opts));
+      if(typeof cb.onSuccess==='function') cb.onSuccess(rows);
+    },
+  });
+  return true;
+}
+
+function formatAggregateScopeAge_(fetchedAt){
+  const ageMs=Math.max(0, Date.now()-Number(fetchedAt||0));
+  if(ageMs<1000) return `${ageMs}ms前`;
+  return `${Math.round(ageMs/1000)}s前`;
+}
+
+function getAggregateScopeDebugText_(options){
+  const opts=normalizeAggregateScopeOptions_(options);
+  const scope=String(allAggMeta && allAggMeta.scope || 'unknown');
+  const rowCount=Array.isArray(allAggData) ? allAggData.length : 0;
+  const freshness=hasFreshAggregateData_() ? 'fresh' : 'stale';
+  const age=formatAggregateScopeAge_(allAggMeta && allAggMeta.fetchedAt || 0);
+  const currentKey=buildAggregateScopeKey_({
+    unitId:allAggMeta && allAggMeta.unitId || '',
+    subject:allAggMeta && allAggMeta.subject || '',
+  });
+  const viewKey=buildAggregateScopeKey_(opts);
+  const waiting=aggregateScopeFetchKey ? ` / fetch中 ${aggregateScopeFetchKey}` : '';
+  return `scope ${scope} (${currentKey}) / rows ${rowCount} / ${freshness} / ${age} / view ${viewKey}${waiting}`;
+}
+
+function updateAggregateDebug_(options, rows){
+  const box=document.getElementById('aggDebug');
+  if(!box) return;
+  const count=Array.isArray(rows) ? rows.length : 0;
+  box.textContent=`単元記録 ${count} 件を表示中。${getAggregateScopeDebugText_(options)}`;
+}
+
+function normalizeRecordLoadErrorMessage_(error, fallback){
+  if(error && error.message) return String(error.message);
+  if(typeof error==='string' && error.trim()) return error.trim();
+  return String(fallback||'読み込みに失敗しました');
+}
+
+function handleAggregateLoadFailure_(error, renderedImmediate){
+  const message=normalizeRecordLoadErrorMessage_(error, '単元記録の読み込みに失敗しました');
+  showToast(`単元記録の読み込みに失敗しました: ${message}`,{tone:'error',duration:4200});
+  const gradeDebug=document.getElementById('gradeDebug');
+  if(gradeDebug) gradeDebug.textContent=`評定データの読み込みに失敗しました: ${message}`;
+  if(!renderedImmediate) renderAggregateDataSet_([]);
+}
+
+function handlePortfolioLoadFailure_(body, cards, debugBox, error, renderedImmediate){
+  const message=normalizeRecordLoadErrorMessage_(error, 'ポートフォリオデータの読み込みに失敗しました');
+  if(renderedImmediate){
+    if(debugBox) debugBox.textContent=`最新取得に失敗したため、先に表示した内容をそのまま使っています: ${message}`;
+    return;
+  }
+  if(debugBox) debugBox.textContent='デバッグ情報の取得に失敗しました。';
+  if(body) body.innerHTML=`<tr><td colspan="6" style="text-align:center;padding:14px;color:#C62828;">${esc(message)}</td></tr>`;
+  if(cards) cards.innerHTML='<div class="portfolio-empty">ポートフォリオデータの読み込みに失敗しました</div>';
+}
+
+function ensurePortfolioPreloadCache_(){
+  if(!preloadCache.portfolio || typeof preloadCache.portfolio!=='object'){
+    preloadCache.portfolio={ items:{} };
+  }
+  if(!preloadCache.portfolio.items || typeof preloadCache.portfolio.items!=='object'){
+    preloadCache.portfolio.items={};
+  }
+  return preloadCache.portfolio;
+}
+
+function buildPortfolioCacheKey_(studentNumber, unitId){
+  return `${String(studentNumber||'').trim()}::${String(unitId||'').trim()||'all'}`;
+}
+
+function sortPortfolioRows_(rows){
+  return (Array.isArray(rows)?rows.slice():[]).sort((a,b)=>{
+    const subjectCmp=String(a.subject||'').localeCompare(String(b.subject||''),'ja');
+    if(subjectCmp!==0) return subjectCmp;
+    const unitCmp=String(a.unitName||'').localeCompare(String(b.unitName||''),'ja');
+    if(unitCmp!==0) return unitCmp;
+    const periodCmp=Number(a.period||0)-Number(b.period||0);
+    if(periodCmp!==0) return periodCmp;
+    return String(a.date||'').localeCompare(String(b.date||''));
+  });
+}
+
+function buildPortfolioRowsFromAggregate_(rows, studentNumber, unitId){
+  const normalizedStudent=String(studentNumber||'').trim();
+  const normalizedUnit=String(unitId||'').trim();
+  if(!normalizedStudent || !Array.isArray(rows) || !rows.length) return [];
+  return sortPortfolioRows_(rows
+    .filter(row=>{
+      if(String(row && row.num || '').trim()!==normalizedStudent) return false;
+      if(normalizedUnit && String(row && row.unitId || '').trim()!==normalizedUnit) return false;
+      return true;
+    })
+    .map(row=>({
+      unitName:row && row.unitName || '',
+      subject:row && row.subject || '',
+      period:row && row.period || '',
+      num:row && row.num || '',
+      name:row && row.name || '',
+      date:row && row.date || '',
+      review:row && row.review || '',
+      score:row && row.score || 0,
+      rank:row && row.rank || '',
+      medal:row && row.medal || '',
+      comment:row && row.comment || '',
+      unitId:row && row.unitId || '',
+      answersMap:row && row.answersMap || {},
+      fields:Array.isArray(row && row.fields) ? row.fields : [],
+    })));
+}
+
+function readPortfolioCache_(studentNumber, unitId){
+  const normalizedStudent=String(studentNumber||'').trim();
+  if(!normalizedStudent) return null;
+  if(Array.isArray(allAggData) && allAggData.length){
+    const aggregateRows=buildPortfolioRowsFromAggregate_(allAggData, normalizedStudent, unitId);
+    if(aggregateRows.length){
+      return {
+        rows:aggregateRows,
+        source:hasFreshFullAggregateData_()?'aggregate-live':'aggregate-cache',
+      };
+    }
+  }
+  const cacheStore=ensurePortfolioPreloadCache_().items;
+  const cached=cacheStore[buildPortfolioCacheKey_(normalizedStudent, unitId)];
+  if(!cached || !Array.isArray(cached.rows) || !cached.rows.length) return null;
+  return {
+    rows:sortPortfolioRows_(cached.rows),
+    source:'portfolio-cache',
+  };
+}
+
+function writePortfolioCache_(studentNumber, unitId, rows){
+  const normalizedStudent=String(studentNumber||'').trim();
+  if(!normalizedStudent) return;
+  const items=ensurePortfolioPreloadCache_().items;
+  const key=buildPortfolioCacheKey_(normalizedStudent, unitId);
+  items[key]={
+    savedAt:Date.now(),
+    rows:sortPortfolioRows_(rows),
+  };
+  const keys=Object.keys(items).sort((a,b)=>Number(items[b] && items[b].savedAt || 0)-Number(items[a] && items[a].savedAt || 0));
+  keys.slice(PORTFOLIO_CACHE_LIMIT).forEach(oldKey=>delete items[oldKey]);
+  persistTeacherPreloadCache_();
+}
+
+function ensureReportTabInitData_(options){
+  const opts=options||{};
+  let hasImmediateRoster=Array.isArray(rosterEntries) && rosterEntries.length>0;
+  let hasImmediateUnits=Array.isArray(allUnits) && allUnits.length>0;
+  if(!hasImmediateRoster && preloadCache.roster && Array.isArray(preloadCache.roster.roster)){
+    rosterEntries=preloadCache.roster.roster.filter(row=>row.active!==false);
+    hasImmediateRoster=rosterEntries.length>0;
+  }
+  if(hasImmediateRoster || hasImmediateUnits){
+    if(typeof opts.onImmediate==='function'){
+      opts.onImmediate({
+        hasImmediateRoster,
+        hasImmediateUnits,
+      });
+    }
+  }
+  if(hasImmediateRoster && hasImmediateUnits) return false;
+  google.script.run
+    .withSuccessHandler(d=>{
+      if(Array.isArray(d && d.units)){
+        allUnits=d.units;
+      }
+      if(Array.isArray(d && d.roster)){
+        rosterEntries=d.roster.filter(row=>row.active!==false);
+        preloadCache.roster={ roster:d.roster };
+        persistTeacherPreloadCache_();
+      }
+      teacherBuild=d.build||teacherBuild||'';
+      if(typeof opts.onSuccess==='function') opts.onSuccess(d||{});
+    })
+    .withFailureHandler(err=>{
+      if(typeof opts.onFailure==='function') opts.onFailure(err);
+    })
+    .teacherInit();
+  return true;
+}
 
 function loadPortfolioTab(){
   const body=document.getElementById('portfolioBody');
@@ -9,26 +377,31 @@ function loadPortfolioTab(){
   const requestSeq=++portfolioInitRequestSeq;
   let hasImmediateRoster=Array.isArray(rosterEntries) && rosterEntries.length>0;
   let hasImmediateUnits=Array.isArray(allUnits) && allUnits.length>0;
-  if(!hasImmediateRoster && preloadCache.roster && Array.isArray(preloadCache.roster.roster)){
-    rosterEntries=preloadCache.roster.roster.filter(row=>row.active!==false);
-    hasImmediateRoster=rosterEntries.length>0;
-  }
-  if(hasImmediateRoster || hasImmediateUnits){
+  let renderedInit=false;
+  function renderPortfolioInit_(){
     renderPortfolioSelectors();
     loadPortfolioData();
+    renderedInit=true;
+  }
+  if(hasImmediateRoster || hasImmediateUnits){
+    renderPortfolioInit_();
   }else{
     body.innerHTML='<tr><td colspan="6" style="text-align:center;padding:14px;"><span class="spinner"></span></td></tr>';
   }
-  google.script.run
-    .withSuccessHandler(d=>{
+  ensureReportTabInitData_({
+    onImmediate:state=>{
       if(requestSeq!==portfolioInitRequestSeq) return;
-      allUnits=d.units||[];
-      rosterEntries=(d.roster||[]).filter(row=>row.active!==false);
-      teacherBuild=d.build||teacherBuild||'';
-      renderPortfolioSelectors();
-      loadPortfolioData();
-    })
-    .withFailureHandler(err=>{
+      hasImmediateRoster=Boolean(state && state.hasImmediateRoster);
+      hasImmediateUnits=Boolean(state && state.hasImmediateUnits);
+      if(!renderedInit && (hasImmediateRoster || hasImmediateUnits)){
+        renderPortfolioInit_();
+      }
+    },
+    onSuccess:d=>{
+      if(requestSeq!==portfolioInitRequestSeq) return;
+      renderPortfolioInit_();
+    },
+    onFailure:err=>{
       if(requestSeq!==portfolioInitRequestSeq) return;
       const message=(err && err.message)||err||'ポートフォリオの読み込みに失敗しました';
       const debugBox=document.getElementById('portfolioDebug');
@@ -37,8 +410,8 @@ function loadPortfolioTab(){
         return;
       }
       body.innerHTML=`<tr><td colspan="6" style="text-align:center;padding:14px;color:#C62828;">${esc(message)}</td></tr>`;
-    })
-    .teacherInit();
+    },
+  });
 }
 
 function renderPortfolioSelectors(){
@@ -62,6 +435,8 @@ function loadPortfolioData(){
   const cards=document.getElementById('portfolioCards');
   const debugBox=document.getElementById('portfolioDebug');
   const requestSeq=++portfolioDataRequestSeq;
+  const immediate=readPortfolioCache_(studentNumber, unitId);
+  let renderedImmediate=false;
   if(debugBox && !String(debugBox.dataset.baseText||'').trim()){
     debugBox.dataset.baseText='児童を選ぶと取得件数を表示します。';
   }
@@ -73,9 +448,22 @@ function loadPortfolioData(){
     debugBox.textContent='児童を選ぶと取得件数を表示します。';
     return;
   }
-  body.innerHTML='<tr><td colspan="6" style="text-align:center;padding:14px;"><span class="spinner"></span></td></tr>';
-  cards.innerHTML='<div class="portfolio-empty"><span class="spinner"></span></div>';
-  debugBox.textContent='取得状況を確認中…';
+  if(immediate && immediate.rows.length){
+    portfolioRows=immediate.rows.slice();
+    renderPortfolioRows();
+    renderedImmediate=true;
+    debugBox.textContent=(immediate.source==='aggregate-cache' || immediate.source==='aggregate-live')
+      ? '集約済みデータを先に表示しています。最新状態を確認中…'
+      : '前回表示キャッシュを先に表示しています。最新状態を確認中…';
+    if(immediate.source==='aggregate-live'){
+      writePortfolioCache_(studentNumber, unitId, portfolioRows);
+      debugBox.textContent='集約済みデータを先に表示しています。最新状態を確認中…';
+    }
+  }else{
+    body.innerHTML='<tr><td colspan="6" style="text-align:center;padding:14px;"><span class="spinner"></span></td></tr>';
+    cards.innerHTML='<div class="portfolio-empty"><span class="spinner"></span></div>';
+    debugBox.textContent='取得状況を確認中…';
+  }
   google.script.run
     .withSuccessHandler(raw=>{
       if(requestSeq!==portfolioDataRequestSeq) return;
@@ -83,20 +471,30 @@ function loadPortfolioData(){
       try{
         res=raw?JSON.parse(raw):null;
       }catch(e){
+        if(renderedImmediate){
+          debugBox.textContent=`最新取得の解析に失敗したため、先に表示した内容をそのまま使っています: ${e.message||e}`;
+          return;
+        }
         debugBox.textContent=`JSON parse error: ${e.message||e} / raw=${String(raw).slice(0,280)}`;
         portfolioRows=[];
         renderPortfolioRows();
         return;
       }
       if(res && res.ok===false && res.error){
+        if(renderedImmediate){
+          debugBox.textContent=`最新取得に失敗したため、先に表示した内容をそのまま使っています: ${res.error}`;
+          return;
+        }
         debugBox.textContent=`portfolio error: ${res.error} / build=${res.build||teacherBuild||'unknown'}`;
         portfolioRows=[];
         renderPortfolioRows();
         return;
       }
       portfolioRows=res && res.rows || [];
+      writePortfolioCache_(studentNumber, unitId, portfolioRows);
       if(res && res.debug){
         res.debug.build=res.build||'';
+        res.debug.responseReadMeta=res.responseReadMeta||null;
         renderPortfolioDebug(res.debug);
       }else{
         debugBox.textContent=formatPortfolioDebugFallback(res);
@@ -105,9 +503,7 @@ function loadPortfolioData(){
     })
     .withFailureHandler(err=>{
       if(requestSeq!==portfolioDataRequestSeq) return;
-      debugBox.textContent='デバッグ情報の取得に失敗しました。';
-      body.innerHTML=`<tr><td colspan="6" style="text-align:center;padding:14px;color:#C62828;">${esc((err && err.message)||err||'ポートフォリオデータの読み込みに失敗しました')}</td></tr>`;
-      cards.innerHTML='<div class="portfolio-empty">ポートフォリオデータの読み込みに失敗しました</div>';
+      handlePortfolioLoadFailure_(body, cards, debugBox, err, renderedImmediate);
     })
     .getStudentPortfolioDataJson(studentNumber, unitId||null);
 }
@@ -121,7 +517,10 @@ function renderPortfolioDebug(debug){
   const sample=(debug.sampleMatchedRows||[])
     .map((row,idx)=>`${idx+1}. ${row.subject}/${row.unitName}/${row.period}時間目\n   ${row.date}\n   ${row.preview}`)
     .join('\n\n');
-  const summary=`記録 ${debug.responseCount||0}件 / 児童一致 ${debug.matchedStudentCount||0}件 / 単元一致 ${debug.matchedUnitCount||0}件`;
+  const readMeta=debug.responseReadMeta && typeof debug.responseReadMeta==='object'
+    ? ` / source ${String(debug.responseReadMeta.mode||'master_only')} / master ${Number(debug.responseReadMeta.estimatedMasterOnlyCount ?? debug.responseReadMeta.masterCount ?? 0)}`
+    : '';
+  const summary=`記録 ${debug.responseCount||0}件 / 児童一致 ${debug.matchedStudentCount||0}件 / 単元一致 ${debug.matchedUnitCount||0}件${readMeta}`;
   const buildLine=`teacher=${teacherBuild||'unknown'} / portfolio=${debug.build||'unknown'}`;
   box.innerHTML=
     `<div class="debug-summary">${esc(summary)}</div><details><summary>詳細を見る</summary><code>${esc(buildLine)}${sample?`\n\n${sample}`:''}</code></details>`;
@@ -204,47 +603,81 @@ function generatePortfolioSummary(){
 function loadAgg(){
   syncTeacherAiUi_();
   ensurePromptPreload();
-  google.script.run.withSuccessHandler(d=>{
-    allUnits=d.units||[];
-    rosterEntries=(d.roster||[]).filter(row=>row.active!==false);
+  let renderedImmediate=false;
+  if(hasFreshAggregateData_()){
+    filterAgg();
+    filterGrading();
+    renderedImmediate=true;
+  }else{
+    const immediateRows=readAggregatePreloadCache_();
+    if(Array.isArray(immediateRows) && immediateRows.length){
+    renderAggregateDataSet_(immediateRows,{
+      scope:'preload',
+      fetchedAt:Date.now(),
+    });
+    renderedImmediate=true;
+    }
+  }
+  ensureReportTabInitData_({
+    onSuccess:()=>{
+      populateUnitSelects();
+      populateGradingSelects();
+    },
+    onFailure:()=>{},
+  });
+  if((Array.isArray(allUnits) && allUnits.length) || (Array.isArray(rosterEntries) && rosterEntries.length)){
     populateUnitSelects();
     populateGradingSelects();
-  }).teacherInit();
-  google.script.run
-    .withSuccessHandler(raw=>{
-      let res=null;
-      try{
-        res=raw?JSON.parse(raw):null;
-      }catch(e){
-        showToast('単元記録の読み込みに失敗しました',{tone:'error'});
-        allAggData=[];
-        filterAgg();
-        return;
-      }
-      if(res && res.ok===false && res.error){
-        showToast(`単元記録の読み込みに失敗しました: ${res.error}`,{tone:'error',duration:4200});
-        allAggData=[];
-        filterAgg();
-        return;
-      }
-      allAggData=res && res.rows || [];
-      filterAgg();
-      filterGrading();
-    })
-    .withFailureHandler(err=>{
-      showToast(`単元記録の読み込みに失敗しました: ${(err && err.message)||err||'unknown'}`,{tone:'error',duration:4200});
-      const gradeDebug=document.getElementById('gradeDebug');
-      if(gradeDebug) gradeDebug.textContent=`評定データの読み込みに失敗しました: ${(err && err.message)||err||'unknown'}`;
-      allAggData=[];
-      filterAgg();
-      filterGrading();
-    })
-    .getAggregateDataJson(null);
+  }
+  const initialFetch=getInitialAggregateFetchOptions_(renderedImmediate);
+  if(initialFetch && initialFetch.unitId && isAggregateRecordPaneActive_()){
+    const aggUnitSel=document.getElementById('aggUnit');
+    if(aggUnitSel) aggUnitSel.value=initialFetch.unitId;
+  }
+  if(initialFetch && hasFreshAggregateScopeFor_(initialFetch)){
+    return;
+  }
+  if(!initialFetch && hasFreshFullAggregateData_()){
+    return;
+  }
+  if(initialFetch){
+    requestAggregateScope_(initialFetch,{
+      onParseError:error=>{
+        handleAggregateLoadFailure_(error, renderedImmediate);
+      },
+      onError:error=>{
+        handleAggregateLoadFailure_(error, renderedImmediate);
+      },
+      onFailure:err=>{
+        handleAggregateLoadFailure_(err, renderedImmediate);
+      },
+    });
+    return;
+  }
+  requestAggregateScope_(null,{
+    onParseError:error=>{
+      handleAggregateLoadFailure_(error, renderedImmediate);
+    },
+    onError:error=>{
+      handleAggregateLoadFailure_(error, renderedImmediate);
+    },
+    onFailure:err=>{
+      handleAggregateLoadFailure_(err, renderedImmediate);
+    },
+  });
 }
-function filterAgg(){
-  populateAggUnitSelect();
-  const subject=document.getElementById('aggSubject').value;
-  const unitId=document.getElementById('aggUnit').value;
+  function filterAgg(){
+    populateAggUnitSelect();
+    const subject=document.getElementById('aggSubject').value;
+    const unitId=document.getElementById('aggUnit').value;
+    const desiredScope={ subject, unitId };
+    if(isAggregateRecordPaneActive_() && !hasFreshAggregateScopeFor_(desiredScope)){
+      requestAggregateScope_(desiredScope,{
+        onError:()=>{},
+        onParseError:()=>{},
+        onFailure:()=>{},
+      });
+  }
   const period=document.getElementById('aggPeriod').value;
   const preset=(document.getElementById('aggPreset')||{}).value||'standard';
   const showComment=Boolean((document.getElementById('aggShowComment')||{}).checked);
@@ -273,6 +706,7 @@ function filterAgg(){
   const head=document.getElementById('aggHead');
   const fieldMeta=resolveAggPresetFields(rows,preset,showComment);
   head.innerHTML=buildAggHeaderHtml(fieldMeta);
+  updateAggregateDebug_(desiredScope, rows);
   if(!rows.length){
     renderAggSummary([]);
     const emptyCols=(5+fieldMeta.fields.length+1);
@@ -349,10 +783,18 @@ function filterGrading(){
   if(!gradeBody||!gradeCards||!gradeHead) return;
   populateGradingUnitSelect();
   const mode=(document.getElementById('gradeMode')||{}).value||'unit';
-  const subject=(document.getElementById('gradeSubject')||{}).value||'';
-  const unitId=(document.getElementById('gradeUnit')||{}).value||'';
-  const period=(document.getElementById('gradePeriod')||{}).value||'';
-  const gradingCategory=(document.getElementById('gradeCategory')||{}).value||'thinking';
+    const subject=(document.getElementById('gradeSubject')||{}).value||'';
+    const unitId=(document.getElementById('gradeUnit')||{}).value||'';
+    const period=(document.getElementById('gradePeriod')||{}).value||'';
+    const gradingCategory=(document.getElementById('gradeCategory')||{}).value||'thinking';
+    const desiredScope=mode==='subject' ? (subject ? { subject } : null) : (unitId ? { unitId } : null);
+    if(isGradingRecordPaneActive_() && desiredScope && !hasFreshAggregateScopeFor_(desiredScope)){
+      requestAggregateScope_(desiredScope,{
+        onError:()=>{},
+        onParseError:()=>{},
+        onFailure:()=>{},
+      });
+  }
 
   const rows=allAggData.filter(r=>{
     if(subject&&String(r.subject||'')!==String(subject)) return false;
@@ -388,8 +830,8 @@ function filterGrading(){
   gradeHead.innerHTML=buildAggProcessingHeaderHtml(periods, gradingCategory);
   if(gradeDebug){
     gradeDebug.textContent=unitId
-      ? `${FIELD_CATEGORY_LABELS[gradingCategory]} の評定用に ${rows.length} 件の記録を表示中です。`
-      : '評定する単元を選択してください。';
+      ? `${FIELD_CATEGORY_LABELS[gradingCategory]} の評定用に ${rows.length} 件の記録を表示中です。 / ${getAggregateScopeDebugText_(desiredScope||{})}`
+      : `評定する単元を選択してください。 / ${getAggregateScopeDebugText_(desiredScope||{})}`;
   }
   if(!unitId){
     gradeBody.innerHTML='<tr><td colspan="6" style="text-align:center;color:#999;padding:14px;">成績入力をするには単元を選択してください</td></tr>';
@@ -542,20 +984,20 @@ function renderGradingSubjectMatrix(subject, gradingCategory){
     gradeHead.innerHTML='<tr><th>#</th><th>なまえ</th><th>単元別評定</th></tr>';
     gradeBody.innerHTML='<tr><td colspan="3" style="text-align:center;color:#999;padding:14px;">教科を選択してください</td></tr>';
     gradeCards.innerHTML='<div class="portfolio-empty">教科を選択してください</div>';
-    if(gradeDebug) gradeDebug.textContent='教科ごとの一覧入力では、まず教科を選択してください。';
+    if(gradeDebug) gradeDebug.textContent=`教科ごとの一覧入力では、まず教科を選択してください。 / ${getAggregateScopeDebugText_({ subject:'' })}`;
     return;
   }
   if(!units.length){
     gradeHead.innerHTML='<tr><th>#</th><th>なまえ</th><th>単元別評定</th></tr>';
     gradeBody.innerHTML='<tr><td colspan="3" style="text-align:center;color:#999;padding:14px;">この教科の単元がありません</td></tr>';
     gradeCards.innerHTML='<div class="portfolio-empty">この教科の単元がありません</div>';
-    if(gradeDebug) gradeDebug.textContent=`${subject} の単元がまだありません。`;
+    if(gradeDebug) gradeDebug.textContent=`${subject} の単元がまだありません。 / ${getAggregateScopeDebugText_({ subject })}`;
     return;
   }
   const rows=buildGradingSubjectRows(subject, gradingCategory);
   gradeHead.innerHTML=`<tr><th>#</th><th>なまえ</th>${units.map(unit=>`<th>${esc(unit.name||'')}</th>`).join('')}</tr>`;
   if(gradeDebug){
-    gradeDebug.textContent=`${subject} の ${units.length} 単元を横並び表示しています。${FIELD_CATEGORY_LABELS[gradingCategory]} を一覧で入力できます。`;
+    gradeDebug.textContent=`${subject} の ${units.length} 単元を横並び表示しています。${FIELD_CATEGORY_LABELS[gradingCategory]} を一覧で入力できます。 / ${getAggregateScopeDebugText_({ subject })}`;
   }
   if(!rows.length){
     gradeBody.innerHTML=`<tr><td colspan="${2+units.length}" style="text-align:center;color:#999;padding:14px;">名簿データがありません</td></tr>`;
@@ -1353,3 +1795,9 @@ function escTextArea(s){
 // 初期ロード
 loadStatusInit({ startPolling:true });
 </script>
+
+
+
+
+
+

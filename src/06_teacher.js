@@ -4,11 +4,14 @@
 function teacherInit() {
   const errors = [];
   let units = [];
+  let unitsReadMeta = null;
   let active = null;
   let roster = [];
   let unitProgress = {};
   try {
-    units = getAllUnits();
+    const unitSnapshot = getAllUnitsSnapshot_({ useMasterContract: true });
+    units = Array.isArray(unitSnapshot && unitSnapshot.units) ? unitSnapshot.units : [];
+    unitsReadMeta = unitSnapshot && unitSnapshot.meta ? unitSnapshot.meta : getLastUnitsReadMeta_();
   } catch (err) {
     errors.push(`units: ${err && err.message ? err.message : err}`);
   }
@@ -29,6 +32,7 @@ function teacherInit() {
   }
   return {
     units,
+    unitsReadMeta,
     active,
     roster,
     unitProgress,
@@ -38,24 +42,38 @@ function teacherInit() {
 }
 
 function teacherStatusInit() {
+  const startedAt = Date.now();
+  const timing = {};
   const errors = [];
   let units = [];
+  let unitsReadMeta = null;
   let active = null;
   let unitProgress = {};
+  let progressNeedsRefresh = false;
   try {
-    units = getAllUnits();
+    const t0 = Date.now();
+    const unitSnapshot = getAllUnitsSnapshot_({ useMasterContract: true });
+    units = Array.isArray(unitSnapshot && unitSnapshot.units) ? unitSnapshot.units : [];
+    unitsReadMeta = unitSnapshot && unitSnapshot.meta ? unitSnapshot.meta : getLastUnitsReadMeta_();
+    timing.unitsMs = Date.now() - t0;
   } catch (err) {
     errors.push(`units: ${err && err.message ? err.message : err}`);
   }
   try {
+    const t0 = Date.now();
     active = getActiveSetting();
+    timing.activeMs = Date.now() - t0;
   } catch (err) {
     errors.push(`active: ${err && err.message ? err.message : err}`);
   }
   try {
-    unitProgress = getTeacherUnitProgress_();
+    const t0 = Date.now();
+    unitProgress = readTeacherUnitProgressSnapshot_();
+    progressNeedsRefresh = !Object.keys(unitProgress || {}).length;
+    timing.unitProgressMs = Date.now() - t0;
   } catch (err) {
     errors.push(`unitProgress: ${err && err.message ? err.message : err}`);
+    progressNeedsRefresh = true;
   }
   let status = {
     meta: {
@@ -67,26 +85,40 @@ function teacherStatusInit() {
   };
   if (active?.unitId && Number(active?.period || 0) > 0) {
     try {
+      const t0 = Date.now();
       status = getLessonStatus(active.unitId, active.period);
+      timing.lessonStatusMs = Date.now() - t0;
     } catch (err) {
       errors.push(`status: ${err && err.message ? err.message : err}`);
     }
   }
+  timing.totalMs = Date.now() - startedAt;
+  if (status && status.meta) {
+    status.meta.serverRequestTiming = timing;
+    status.meta.unitsReadMeta = unitsReadMeta;
+  }
   return {
     units,
+    unitsReadMeta,
     active,
     unitProgress,
+    progressNeedsRefresh,
     build: APP_BUILD,
     status,
+    timing,
     errors,
   };
 }
 
 function teacherStatusSnapshot() {
+  const startedAt = Date.now();
+  const timing = {};
   const errors = [];
   let active = null;
   try {
+    const t0 = Date.now();
     active = getActiveSetting();
+    timing.activeMs = Date.now() - t0;
   } catch (err) {
     errors.push(`active: ${err && err.message ? err.message : err}`);
   }
@@ -100,23 +132,37 @@ function teacherStatusSnapshot() {
   };
   if (active?.unitId && Number(active?.period || 0) > 0) {
     try {
+      const t0 = Date.now();
       status = getLessonStatus(active.unitId, active.period);
+      timing.lessonStatusMs = Date.now() - t0;
     } catch (err) {
       errors.push(`status: ${err && err.message ? err.message : err}`);
     }
   }
+  timing.totalMs = Date.now() - startedAt;
+  if (status && status.meta) status.meta.serverRequestTiming = timing;
   return {
     active,
     build: APP_BUILD,
     status,
+    timing,
     errors,
   };
 }
 
+function getLessonStatusCacheKey_(unitId, period) {
+  return `teacher_lesson_status_v1:${readDomainCacheVersion_('responses')}:${readDomainCacheVersion_('teacher_comment_drafts')}:${readDomainCacheVersion_('students')}:${readDomainCacheVersion_('lessons')}:${String(unitId || '').trim()}:${String(period || '').trim()}`;
+}
+
+function readTeacherUnitProgressSnapshot_() {
+  const cached = getCachedJson_('teacher_unit_progress_v1');
+  return cached && typeof cached === 'object' ? cached : {};
+}
+
 function getTeacherUnitProgress_() {
   const cacheKey = 'teacher_unit_progress_v1';
-  const cached = getCachedJson_(cacheKey);
-  if (cached && typeof cached === 'object') return cached;
+  const cached = readTeacherUnitProgressSnapshot_();
+  if (Object.keys(cached).length) return cached;
   const map = {};
   const lessonMetaById = {};
   listLessonRecords_().forEach(lesson => {
@@ -142,10 +188,10 @@ function getTeacherUnitProgress_() {
     }
     map[unitId] = current;
   });
-  const responseRows = getResponseSheetData_().rows;
+  const responseRows = listAllResponses_();
   const lessonActivityMap = {};
   responseRows.forEach(row => {
-    const lessonId = String(row[1] || '');
+    const lessonId = String(Array.isArray(row) ? row[1] || '' : row.lessonId || '');
     if (!lessonId || !hasTeacherVisibleResponseActivity_(row)) return;
     lessonActivityMap[lessonId] = true;
   });
@@ -162,12 +208,20 @@ function getTeacherUnitProgress_() {
   return putCachedJson_(cacheKey, map, 20);
 }
 
+function teacherUnitProgressRefresh() {
+  return {
+    unitProgress: getTeacherUnitProgress_(),
+  };
+}
+
 function hasTeacherVisibleResponseActivity_(row) {
   if (!row) return false;
-  const answersJson = String(row[6] || '').trim();
-  const reviewText = String(row[7] || '').trim();
-  const submitted = row[8] === true;
-  const comment = String(row[13] || '').trim();
+  const answersJson = Array.isArray(row)
+    ? String(row[6] || '').trim()
+    : JSON.stringify(row.answersMap || {});
+  const reviewText = Array.isArray(row) ? String(row[7] || '').trim() : String(row.reviewText || '').trim();
+  const submitted = Array.isArray(row) ? row[8] === true : row.submitted === true;
+  const comment = Array.isArray(row) ? String(row[13] || '').trim() : String(row.comment || '').trim();
   if (reviewText || submitted || comment) return true;
   if (!answersJson || answersJson === '{}' || answersJson === 'null') return false;
   return true;
@@ -268,7 +322,11 @@ function getTeacherHelpInfo_(preloadedShellState, options) {
   const shellConfig = shellState && shellState.config ? shellState.config : {};
   const spreadsheet = getTenantSpreadsheet_();
   const setupConfig = loadTemplateSetupConfig_(spreadsheet);
-  const currentWebAppUrl = normalizeWebAppUrl_(getCurrentWebAppBaseUrl_());
+  const currentWebAppUrl = normalizeWebAppUrl_(
+    resolveSetupWebAppBaseUrl_(setupConfig, {
+      currentWebAppUrl: getCurrentWebAppBaseUrl_(),
+    })
+  );
   const deploymentId = String(
     getScriptProperties_().getProperty('DEPLOYMENT_ID') ||
     inferDeploymentIdFromWebAppUrl_(currentWebAppUrl) ||
@@ -295,9 +353,10 @@ function getTeacherHelpInfo_(preloadedShellState, options) {
     : 'このアプリは最新版です。';
   return {
     links: {
-      teacherUrl: safeBuildTeacherWebAppUrl_('teacher'),
-      studentUrl: buildPortableStudentAppUrl_(currentWebAppUrl),
-      registrationUrl: buildPortableSetupUrl_(currentWebAppUrl),
+      teacherUrl: buildPortableTeacherRelayUrl_(currentWebAppUrl),
+      studentUrl: buildPortableStudentRelayUrl_(currentWebAppUrl),
+      setupUrl: buildPortableSetupUrl_(currentWebAppUrl),
+      registrationUrl: buildAdminFormUrl_(),
       guideUrl: buildAdminGuideModeUrl_(),
       apiKeyGuideUrl: 'https://aistudio.google.com/app/apikey',
     },
@@ -393,6 +452,7 @@ function getSelfUpdateInfoFromManifest_(manifest) {
   const latestBuild = String(releaseManifest.latestBuild || releaseManifest.latestTenantAppBuild || '').trim();
   const currentBuild = String(APP_BUILD || '').trim();
   const sourceBundleUrl = String(releaseManifest.sourceBundleUrl || '').trim();
+  const sourceSnapshot = normalizeSelfUpdateSourceSnapshot_(releaseManifest.sourceSnapshot);
   const scriptId = String(ScriptApp.getScriptId() || '').trim();
   const deploymentId = String(
     getScriptProperties_().getProperty('DEPLOYMENT_ID') ||
@@ -408,7 +468,7 @@ function getSelfUpdateInfoFromManifest_(manifest) {
   }
   if (!releaseManifest.ok && !latestBuild) {
     reason = '中央の最新版情報を取得できませんでした。';
-  } else if (!sourceBundleUrl) {
+  } else if (!sourceBundleUrl && !sourceSnapshot) {
     reason = '更新bundleの取得先が未設定です。';
   } else if (!scriptId) {
     reason = 'このアプリの scriptId を取得できません。';
@@ -427,10 +487,11 @@ function getSelfUpdateInfoFromManifest_(manifest) {
     bundleVersion: String(releaseManifest.bundleVersion || '').trim(),
     minimumUpdaterVersion: String(releaseManifest.minimumUpdaterVersion || '').trim(),
     sourceBundleUrl,
+    sourceSnapshot,
     updateAvailableMessage: String(releaseManifest.updateAvailableMessage || '').trim(),
     reason,
     canSelfUpdate: Boolean(
-      sourceBundleUrl &&
+      (sourceBundleUrl || sourceSnapshot) &&
       scriptId &&
       deploymentId &&
       latestBuild &&
@@ -455,8 +516,8 @@ function runTeacherSelfUpdate_() {
       message: 'このアプリは最新版です。',
     };
   }
-  if (!info.sourceBundleUrl) {
-    return { ok: false, error: '更新 bundle URL を取得できませんでした。' };
+  if (!info.sourceBundleUrl && !info.sourceSnapshot) {
+    return { ok: false, error: '更新 bundle の取得情報を取得できませんでした。' };
   }
 
   const scriptId = String(ScriptApp.getScriptId() || '').trim();
@@ -468,7 +529,7 @@ function runTeacherSelfUpdate_() {
   if (!scriptId) return { ok: false, error: 'scriptId を取得できませんでした。' };
   if (!deploymentId) return { ok: false, error: 'deploymentId を取得できませんでした。' };
 
-  const bundle = fetchSelfUpdateBundle_(info.sourceBundleUrl);
+  const bundle = resolveSelfUpdateBundle_(info, manifest);
   if (!bundle.ok) {
     return { ok: false, error: bundle.error || '更新 bundle を取得できませんでした。' };
   }
@@ -480,6 +541,8 @@ function runTeacherSelfUpdate_() {
     const updateResult = updateScriptProjectContent_(scriptId, bundle.files || []);
     const versionResult = createScriptProjectVersion_(scriptId, `self-update ${bundle.appBuild}`);
     updateScriptDeploymentVersion_(scriptId, deploymentId, Number(versionResult.versionNumber || 0), `self-update ${bundle.appBuild}`);
+    const setupResult = reapplyCurrentTenantDeploymentConfig_();
+    initSheets();
     getScriptProperties_().setProperties({
       LAST_SELF_UPDATE_BUILD: String(bundle.appBuild || '').trim(),
       LAST_SELF_UPDATE_AT: new Date().toISOString(),
@@ -493,6 +556,7 @@ function runTeacherSelfUpdate_() {
       versionNumber: Number(versionResult.versionNumber || 0),
       deploymentId,
       fileCount: Number(updateResult.fileCount || 0),
+      tenantId: String(setupResult.tenantId || '').trim(),
       message: '更新しました。数秒待ってから再読み込みしてください。',
     };
   } catch (err) {
@@ -541,6 +605,38 @@ function rollbackTeacherDeployment_() {
     }, false);
     return { ok: false, error: normalizedError };
   }
+}
+
+function normalizeSelfUpdateSourceSnapshot_(snapshot) {
+  if (!snapshot || typeof snapshot !== 'object') return null;
+  return snapshot;
+}
+
+function resolveSelfUpdateBundle_(info, manifest) {
+  const releaseManifest = manifest && typeof manifest === 'object' ? manifest : {};
+  const sourceSnapshot = normalizeSelfUpdateSourceSnapshot_(
+    (info && info.sourceSnapshot) || releaseManifest.sourceSnapshot
+  );
+  if (sourceSnapshot) {
+    return parseSelfUpdateBundleSnapshot_(sourceSnapshot);
+  }
+  return fetchSelfUpdateBundle_(info && info.sourceBundleUrl);
+}
+
+function parseSelfUpdateBundleSnapshot_(snapshot) {
+  const json = snapshot && typeof snapshot === 'object' ? snapshot : null;
+  if (!json || json.ok === false) {
+    return { ok: false, error: String((json && json.error) || 'bundle_snapshot_invalid') };
+  }
+  if (!Array.isArray(json.files) || !json.files.length) {
+    return { ok: false, error: 'bundle_files_missing' };
+  }
+  return {
+    ok: true,
+    appBuild: String(json.appBuild || '').trim(),
+    bundleVersion: String(json.bundleVersion || '').trim(),
+    files: json.files,
+  };
 }
 
 function fetchSelfUpdateBundle_(url) {
@@ -798,27 +894,24 @@ function requestTeacherAppUpdate_() {
   }
 }
 
-function safeBuildTeacherWebAppUrl_(page) {
-  try {
-    return buildWebAppUrl_({ page });
-  } catch (_err) {
-    return '';
-  }
+function buildPortableTeacherRelayUrl_(apiUrl) {
+  return buildPortableAppUrl_('teacher.html', apiUrl, true);
 }
 
-function buildPortableStudentAppUrl_(apiUrl) {
-  return buildPortableAppUrl_('student.html', apiUrl);
+function buildPortableStudentRelayUrl_(apiUrl) {
+  return buildPortableAppUrl_('student.html', apiUrl, true);
 }
 
 function buildPortableSetupUrl_(apiUrl) {
-  return buildPortableAppUrl_('setup.html', apiUrl);
+  return buildPortableAppUrl_('setup.html', apiUrl, true);
 }
 
-function buildPortableAppUrl_(path, apiUrl) {
+function buildPortableAppUrl_(path, apiUrl, includeApi) {
   const base = normalizePortableAppBaseUrl_(PORTABLE_APP_BASE_URL || '');
   if (!base) return '';
   const cleanPath = String(path || '').trim().replace(/^\/+/, '');
   const portableUrl = cleanPath ? `${base}/${cleanPath}` : base;
+  if (includeApi === false) return portableUrl;
   const normalizedApiUrl = normalizeWebAppUrl_(String(apiUrl || '').trim());
   return normalizedApiUrl
     ? appendQueryParams_(portableUrl, { api: normalizedApiUrl })
@@ -873,80 +966,34 @@ function getAiQueueStatus() {
       lastModelLatencyMs: 0,
       maxRetryCount: 0,
       sampleErrors: [],
-      aggregatePending: 0,
-      aggregateMissing: 0,
       persistRetryItems: 0,
       persistRetryBatches: 0,
     };
   }
   tryProcessPendingAiInline_('teacher_queue');
   ensureAiQueueLiveness_();
-  const rows = getResponseSheetData_().rows.map(mapResponseRow_);
-  let latestDoneRow = null;
+  const snapshot = getAiQueueSnapshot_();
   const queue = {
-    total: rows.length,
-    pending: 0,
-    processing: 0,
-    staleProcessing: 0,
-    error: 0,
-    done: 0,
-    queuedEligible: 0,
-    retrying: 0,
+    total: Number(snapshot.total || 0),
+    pending: Number(snapshot.pending || 0),
+    processing: Number(snapshot.processing || 0),
+    staleProcessing: Number(snapshot.staleProcessing || 0),
+    error: Number(snapshot.error || 0),
+    done: Number(snapshot.done || 0),
+    queuedEligible: Number(snapshot.queuedEligible || 0),
+    retrying: Number(snapshot.retrying || 0),
     triggerCount: 0,
-    lastQueuedAt: '',
-    lastProcessedAt: '',
-    lastSuccessAt: '',
-    lastLatencyMs: 0,
-    lastModelLatencyMs: 0,
-    maxRetryCount: 0,
-    sampleErrors: [],
-    aggregatePending: 0,
-    aggregateMissing: 0,
+    lastQueuedAt: snapshot.lastQueuedAt || '',
+    lastProcessedAt: snapshot.lastProcessedAt || '',
+    lastSuccessAt: snapshot.lastSuccessAt || '',
+    lastLatencyMs: Number(snapshot.lastLatencyMs || 0),
+    lastModelLatencyMs: Number(snapshot.lastModelLatencyMs || 0),
+    maxRetryCount: Number(snapshot.maxRetryCount || 0),
+    sampleErrors: Array.isArray(snapshot.sampleErrors) ? snapshot.sampleErrors.slice(0, 5) : [],
     persistRetryItems: 0,
     persistRetryBatches: 0,
   };
-  rows.forEach(row => {
-    const status = String(row.aiStatus || '');
-    if (row.submitted && row.reviewText && (status === 'pending' || isStaleAiProcessing_(status, row.aiProcessedAt, row.aiStartedAt))) {
-      queue.queuedEligible++;
-    }
-    if (status === 'pending' && Number(row.aiRetryCount || 0) >= AI_QUEUE_RETRY_WARN_COUNT) {
-      queue.retrying++;
-    }
-    if (status === 'pending') queue.pending++;
-    if (status === 'processing') {
-      queue.processing++;
-      if (isStaleAiProcessing_(status, row.aiProcessedAt, row.aiStartedAt)) queue.staleProcessing++;
-    }
-    if (status === 'error') queue.error++;
-    if (status === 'done') queue.done++;
-    queue.maxRetryCount = Math.max(queue.maxRetryCount, Number(row.aiRetryCount || 0));
-    if (row.aiQueuedAt && (!queue.lastQueuedAt || row.aiQueuedAt > queue.lastQueuedAt)) {
-      queue.lastQueuedAt = row.aiQueuedAt;
-    }
-    if (row.aiProcessedAt && (!queue.lastProcessedAt || row.aiProcessedAt > queue.lastProcessedAt)) {
-      queue.lastProcessedAt = row.aiProcessedAt;
-    }
-    if (status === 'done' && row.aiProcessedAt && (!queue.lastSuccessAt || row.aiProcessedAt > queue.lastSuccessAt)) {
-      queue.lastSuccessAt = row.aiProcessedAt;
-      latestDoneRow = row;
-    }
-    if (status === 'error' && queue.sampleErrors.length < 5) {
-      queue.sampleErrors.push({
-        studentNumber: row.studentNumber || '',
-        studentName: row.studentName || '',
-        error: String(row.aiError || '').slice(0, 160),
-        retryCount: Number(row.aiRetryCount || 0),
-      });
-    }
-  });
-  if (latestDoneRow) {
-    queue.lastLatencyMs = Number(latestDoneRow.aiLatencyMs || 0);
-    queue.lastModelLatencyMs = Number(latestDoneRow.aiModelLatencyMs || 0);
-  }
-  const aggregateHealth = getAggregateQueueHealth_(rows);
-  queue.aggregatePending = Number(aggregateHealth.queued || 0);
-  queue.aggregateMissing = Number(aggregateHealth.missing || 0);
+  const aggregateHealth = getAggregateQueueHealth_();
   queue.persistRetryItems = Number(aggregateHealth.persistRetryItems || 0);
   queue.persistRetryBatches = Number(aggregateHealth.persistRetryBatches || 0);
   queue.triggerCount = ScriptApp.getProjectTriggers()
@@ -969,70 +1016,65 @@ function retryFailedAiResponses() {
   let staleReset = 0;
   const requeuedEvents = [];
   try {
-    const sheet = getResponsesDbSheet_();
-    const lastRow = sheet.getLastRow();
-    if (lastRow > 1) {
-      const rows = sheet.getRange(2, 1, lastRow - 1, RESPONSE_HEADERS.length).getValues();
-      const queuedAt = nowIso_();
-      for (let i = 0; i < rows.length; i++) {
-        const row = rows[i];
-        const submitted = row[8] === true;
-        const reviewText = String(row[7] || '').trim();
-        const aiStatus = String(row[16] || '');
-        if (!submitted || !reviewText) continue;
-        if (aiStatus === 'error') {
-          row[16] = 'pending';
-          row[17] = queuedAt;
-          row[18] = '';
-          row[19] = '';
-          row[20] = '';
-          row[22] = '';
-          row[23] = 0;
-          row[24] = 0;
-          requeuedEvents.push({
-            responseId: row[0] || '',
-            lessonId: row[1] || '',
-            unitId: row[2] || '',
-            studentId: row[3] || '',
-            studentNumber: row[4] || '',
-            studentName: row[5] || '',
-            eventType: 'manual_requeue',
-            aiStatus: 'pending',
-            detail: 'retryFailedAiResponses error->pending',
-            timestamp: queuedAt,
-            retryCount: Number(row[21] || 0),
-          });
-          retried++;
-          continue;
-        }
-        if (isStaleAiProcessing_(aiStatus, row[18] || '', row[22] || '')) {
-          row[16] = 'pending';
-          row[17] = queuedAt;
-          row[18] = '';
-          row[19] = '';
-          row[20] = '';
-          row[22] = '';
-          row[23] = 0;
-          row[24] = 0;
-          requeuedEvents.push({
-            responseId: row[0] || '',
-            lessonId: row[1] || '',
-            unitId: row[2] || '',
-            studentId: row[3] || '',
-            studentNumber: row[4] || '',
-            studentName: row[5] || '',
-            eventType: 'manual_requeue',
-            aiStatus: 'pending',
-            detail: 'retryFailedAiResponses stale->pending',
-            timestamp: queuedAt,
-            retryCount: Number(row[21] || 0),
-          });
-          staleReset++;
-        }
+    const queuedAt = nowIso_();
+    const responseData = getResponseSheetData_();
+    const masterRows = [];
+    const rowUpdates = [];
+    listAllResponses_().forEach(response => {
+      const submitted = response?.submitted === true;
+      const reviewText = String(response?.reviewText || '').trim();
+      const aiStatus = String(response?.aiStatus || '');
+      if (!submitted || !reviewText) return;
+      let detail = '';
+      if (aiStatus === 'error') {
+        detail = 'retryFailedAiResponses error->pending';
+        retried++;
+      } else if (isStaleAiProcessing_(aiStatus, response?.aiProcessedAt || '', response?.aiStartedAt || '')) {
+        detail = 'retryFailedAiResponses stale->pending';
+        staleReset++;
       }
-      if (retried || staleReset) {
-        sheet.getRange(2, 1, rows.length, RESPONSE_HEADERS.length).setValues(rows);
+      if (!detail) return;
+      const next = Object.assign({}, response, {
+        aiStatus: 'pending',
+        aiQueuedAt: queuedAt,
+        aiProcessedAt: '',
+        aiError: '',
+        aiBatchId: '',
+        aiStartedAt: '',
+        aiLatencyMs: 0,
+        aiModelLatencyMs: 0,
+        updatedAt: queuedAt,
+      });
+      const row = buildResponseSheetRowValues_(next);
+      masterRows.push(row);
+      const existingRow = findResponseSheetRowEntryByResponseId_(next.responseId, responseData);
+      if (existingRow) {
+        rowUpdates.push({ rowNumber: existingRow.rowNumber, values: row });
       }
+      requeuedEvents.push({
+        responseId: next.responseId || '',
+        lessonId: next.lessonId || '',
+        unitId: next.unitId || '',
+        studentId: next.studentId || '',
+        studentNumber: next.studentNumber || '',
+        studentName: next.studentName || '',
+        eventType: 'manual_requeue',
+        aiStatus: 'pending',
+        detail,
+        timestamp: queuedAt,
+        retryCount: Number(next.aiRetryCount || 0),
+      });
+    });
+    if (masterRows.length) {
+      mirrorResponseRowsWithAudit_(
+        masterRows,
+        'response_teacher_retry_ai',
+        'master_mirror_failed_teacher_retry_ai',
+        'teacher'
+      );
+    }
+    if (rowUpdates.length) {
+      writeResponseRowUpdates_(rowUpdates, null);
     }
   } finally {
     lock.releaseLock();
@@ -1050,42 +1092,42 @@ function retryFailedAiResponses() {
 }
 
 function repairMissingAggregateEntries() {
-  if (!isStudentAiEnabled_()) {
-    return {
-      ok: false,
-      error: 'この先生では児童AIコメントは無効です。',
-      queue: getAiQueueStatus(),
-    };
-  }
-  const responses = getResponseSheetData_().rows.map(mapResponseRow_);
-  const aggregateHealth = getAggregateQueueHealth_(responses);
-  const missingEntries = aggregateHealth.missingEntries || [];
-  const enqueued = enqueueAggregateEntries_(missingEntries);
-  const flushResult = enqueued > 0
-    ? maybeFlushAiAggregateQueue_('teacher_queue')
-    : { processed: 0, remaining: aggregateHealth.queued || 0 };
   return {
     ok: true,
-    enqueued,
-    flushed: Number(flushResult.processed || 0),
-    remaining: Number(flushResult.remaining || 0),
+    skipped: true,
+    reason: 'aggregate_write_disabled',
+    enqueued: 0,
+    flushed: 0,
+    remaining: 0,
     queue: getAiQueueStatus(),
   };
 }
 
-function getLessonStatus(unitId, period) {
+function buildLessonStatus_(unitId, period) {
+  const startedAt = Date.now();
+  const timing = {};
   const units = getAllUnits();
   const unit  = units.find(u=>u.id==unitId);
+  timing.unitsLookupMs = Date.now() - startedAt;
+  const lessonStartedAt = Date.now();
   const lesson = getOrCreateLesson_(unitId, period);
+  timing.lessonLookupMs = Date.now() - lessonStartedAt;
+  const fieldStartedAt = Date.now();
   const lessonConfig = { fields: getLessonFields_(lesson, unit) };
   const reviewField = getReviewField_(lessonConfig);
   const understandingField = getUnderstandingField_(lessonConfig);
   const fields = getEnabledFields_(lessonConfig);
   const statusFieldCount = fields.filter(field => String(field?.key || '') !== String(understandingField?.key || '')).length;
+  timing.fieldSetupMs = Date.now() - fieldStartedAt;
+  const responseStartedAt = Date.now();
   const responses = listResponsesForLesson_(lesson.lessonId).filter(response => !isAiLoadTestResponse_(response));
+  const responseReadMeta = summarizeResponseReadForLesson_(lesson.lessonId, responses);
+  timing.responsesMs = Date.now() - responseStartedAt;
   const responseMap = {};
   const draftMap = {};
+  const draftStartedAt = Date.now();
   const drafts = listTeacherCommentDrafts_(lesson.lessonId);
+  timing.draftsMs = Date.now() - draftStartedAt;
   responses.forEach(row => {
     responseMap[String(row.studentNumber)] = row;
   });
@@ -1093,65 +1135,81 @@ function getLessonStatus(unitId, period) {
     draftMap[String(draft.responseId || '')] = draft;
   });
   const teacherAiEnabled = isTeacherAiEnabled_();
+  const rosterStartedAt = Date.now();
+  const roster = getRosterEntries_();
+  timing.rosterMs = Date.now() - rosterStartedAt;
+  const buildStartedAt = Date.now();
+  const students = roster.map(student => {
+    const response = responseMap[String(student.number)];
+    const draft = response ? draftMap[String(response.responseId || '')] : null;
+    const review = response
+      ? (reviewField ? String(response.answersMap[reviewField.key] || response.reviewText || '') : response.reviewText || '')
+      : '';
+    const understanding = response && understandingField
+      ? String(response.answersMap[understandingField.key] || '')
+      : '';
+    const entries = response
+      ? buildLessonStatusEntries_(fields, response.answersMap || {}, response.reviewText || '', {
+          reviewFieldKey: reviewField?.key || REVIEW_FIELD_KEY,
+          understandingFieldKey: understandingField?.key || '',
+        })
+      : [];
+    return {
+      num: student.number,
+      name: response?.studentName || student.name || '',
+      review,
+      understanding,
+      entries,
+      totalFieldCount: statusFieldCount,
+      writtenCount: entries.length,
+      responseId: response?.responseId || '',
+      studentId: response?.studentId || '',
+      rank: response?.rank || '',
+      medal: response?.medal || '',
+      medalColor: getMedalColor_(response?.medal || ''),
+      comment: response?.comment || '',
+      draftComment: draft?.draftComment || response?.comment || '',
+      draftRank: draft?.draftRank || response?.rank || '',
+      draftScore: Number(draft?.draftScore || 0),
+      draftStatus: draft?.status || ((response?.comment || response?.rank) ? 'returned' : ''),
+      draftUpdatedAt: draft?.updatedAt || response?.updatedAt || '',
+      draftReturnedAt: draft?.returnedAt || response?.updatedAt || '',
+      submitted: response?.submitted === true,
+      responseUpdatedAt: response?.updatedAt || '',
+      score: response?.score || 0,
+      submittedAt: response?.submittedAt || '',
+      aiStatus: response?.aiStatus || '',
+      aiRetryCount: Number(response?.aiRetryCount || 0),
+      aiQueuedAt: response?.aiQueuedAt || '',
+      aiStartedAt: response?.aiStartedAt || '',
+      aiProcessedAt: response?.aiProcessedAt || '',
+      aiError: response?.aiError || '',
+      aiLatencyMs: Number(response?.aiLatencyMs || 0),
+      aiModelLatencyMs: Number(response?.aiModelLatencyMs || 0),
+      aiElapsedMs: response
+        ? calcAiElapsedMs_(response.aiStartedAt || response.aiQueuedAt, response.aiProcessedAt || '')
+        : 0,
+    };
+  });
+  timing.studentBuildMs = Date.now() - buildStartedAt;
+  timing.totalMs = Date.now() - startedAt;
   return {
     meta: {
       teacherAiEnabled,
+      responseReadMeta,
       draftCount: drafts.filter(draft => String(draft.status || '') === 'draft' && (String(draft.draftComment || '').trim() || String(draft.draftRank || '').trim())).length,
       returnedCount: drafts.filter(draft => String(draft.status || '') === 'returned').length,
+      timing,
     },
-    students: getRosterEntries_().map(student => {
-      const response = responseMap[String(student.number)];
-      const draft = response ? draftMap[String(response.responseId || '')] : null;
-      const review = response
-        ? (reviewField ? String(response.answersMap[reviewField.key] || response.reviewText || '') : response.reviewText || '')
-        : '';
-      const understanding = response && understandingField
-        ? String(response.answersMap[understandingField.key] || '')
-        : '';
-      const entries = response
-        ? buildLessonStatusEntries_(fields, response.answersMap || {}, response.reviewText || '', {
-            reviewFieldKey: reviewField?.key || REVIEW_FIELD_KEY,
-            understandingFieldKey: understandingField?.key || '',
-          })
-        : [];
-      return {
-        num: student.number,
-        name: response?.studentName || student.name || '',
-        review,
-        understanding,
-        entries,
-        totalFieldCount: statusFieldCount,
-        writtenCount: entries.length,
-        responseId: response?.responseId || '',
-        studentId: response?.studentId || '',
-        rank: response?.rank || '',
-        medal: response?.medal || '',
-        medalColor: getMedalColor_(response?.medal || ''),
-        comment: response?.comment || '',
-        draftComment: draft?.draftComment || response?.comment || '',
-        draftRank: draft?.draftRank || response?.rank || '',
-        draftScore: Number(draft?.draftScore || 0),
-        draftStatus: draft?.status || ((response?.comment || response?.rank) ? 'returned' : ''),
-        draftUpdatedAt: draft?.updatedAt || response?.updatedAt || '',
-        draftReturnedAt: draft?.returnedAt || response?.updatedAt || '',
-        submitted: response?.submitted === true,
-        responseUpdatedAt: response?.updatedAt || '',
-        score: response?.score || 0,
-        submittedAt: response?.submittedAt || '',
-        aiStatus: response?.aiStatus || '',
-        aiRetryCount: Number(response?.aiRetryCount || 0),
-        aiQueuedAt: response?.aiQueuedAt || '',
-        aiStartedAt: response?.aiStartedAt || '',
-        aiProcessedAt: response?.aiProcessedAt || '',
-        aiError: response?.aiError || '',
-        aiLatencyMs: Number(response?.aiLatencyMs || 0),
-        aiModelLatencyMs: Number(response?.aiModelLatencyMs || 0),
-        aiElapsedMs: response
-          ? calcAiElapsedMs_(response.aiStartedAt || response.aiQueuedAt, response.aiProcessedAt || '')
-          : 0,
-      };
-    })
+    students,
   };
+}
+
+function getLessonStatus(unitId, period) {
+  const cacheKey = getLessonStatusCacheKey_(unitId, period);
+  const cached = getCachedJson_(cacheKey);
+  if (cached && typeof cached === 'object') return cached;
+  return putCachedJson_(cacheKey, buildLessonStatus_(unitId, period), 15);
 }
 
 function buildLessonStatusEntries_(fields, answersMap, reviewText, options) {
@@ -1378,18 +1436,17 @@ function generateTeacherFeedbackDrafts(unitId, period, includeRank, autoReturn, 
 }
 
 function saveTeacherFeedbackDraft(responseId, draftComment, draftRank) {
-  const existing = findResponseRowByResponseId_(responseId);
+  const existing = getResponseRecordByResponseId_(responseId);
   if (!existing) return { ok:false, error:'対象の提出が見つかりません。' };
-  const row = existing.values;
   const nextComment = String(draftComment || '').trim();
   const nextRank = normalizeStudentRank_(draftRank);
   const nextScore = nextRank ? studentRankToScore_(nextRank) : 0;
   const saved = upsertTeacherCommentDrafts_([{
-    responseId: row[0] || '',
-    lessonId: row[1] || '',
-    unitId: row[2] || '',
-    studentId: row[3] || '',
-    studentNumber: row[4] || '',
+    responseId: existing.responseId || '',
+    lessonId: existing.lessonId || '',
+    unitId: existing.unitId || '',
+    studentId: existing.studentId || '',
+    studentNumber: existing.studentNumber || '',
     draftComment: nextComment,
     draftRank: nextRank,
     draftScore: nextScore,
@@ -1400,13 +1457,25 @@ function saveTeacherFeedbackDraft(responseId, draftComment, draftRank) {
 }
 
 function saveTeacherFeedbackMedal(responseId, medal) {
-  const existing = findResponseRowByResponseId_(responseId);
+  const existing = getResponseRecordByResponseId_(responseId);
   if (!existing) return { ok:false, error:'対象の提出が見つかりません。' };
-  const row = existing.values.slice();
   const nextMedal = normalizeTeacherMedal_(medal);
-  row[12] = nextMedal;
-  row[15] = nowIso_();
-  getResponsesDbSheet_().getRange(existing.rowNumber, 1, 1, row.length).setValues([row]);
+  const updatedAt = nowIso_();
+  const next = Object.assign({}, existing, {
+    medal: nextMedal,
+    updatedAt,
+  });
+  const row = buildResponseSheetRowValues_(next);
+  mirrorResponseRowsWithAudit_(
+    [row],
+    'response_teacher_medal_update',
+    'master_mirror_failed_teacher_medal_update',
+    'teacher'
+  );
+  const existingRow = findResponseSheetRowEntryByResponseId_(responseId);
+  if (existingRow) {
+    upsertResponseRow_(row, existingRow);
+  }
   return {
     ok: true,
     medal: nextMedal,
@@ -1608,47 +1677,61 @@ function applyTeacherFeedbackDrafts_(lessonId, drafts, options) {
     const lessonRows = lessonSheet.getDataRange().getValues().slice(1);
     const lessonMeta = lessonRows.find(row => String(row[0] || '') === String(lessonId || '')) || [];
     const period = lessonMeta[2] || '';
-    const sheet = getResponsesDbSheet_();
-    const lastRow = sheet.getLastRow();
-    if (lastRow <= 1) return { ok:false, error:'提出データがありません。' };
-    const rows = sheet.getRange(2, 1, lastRow - 1, RESPONSE_HEADERS.length).getValues();
     const updatedAt = nowIso_();
-    const indexedUpdates = [];
-    rows.forEach((row, idx) => {
-      if (String(row[1] || '') !== String(lessonId || '')) return;
-      const responseId = String(row[0] || '').trim();
+    const responseData = getResponseSheetData_();
+    const masterRows = [];
+    const rowUpdates = [];
+    const responses = listResponsesForLesson_(lessonId);
+    if (!responses.length) return { ok:false, error:'提出データがありません。' };
+    responses.forEach(response => {
+      const responseId = String(response?.responseId || '').trim();
       const draft = draftMap[responseId];
       if (!draft || !String(draft.draftComment || '').trim()) return;
-      row[13] = String(draft.draftComment || '').trim();
-      if (String(draft.draftRank || '').trim()) {
-        row[10] = Number(draft.draftScore || 0);
-        row[11] = String(draft.draftRank || '').trim();
-      }
-      row[16] = 'done';
-      row[18] = updatedAt;
-      row[19] = '';
-      row[15] = updatedAt;
-      indexedUpdates.push({
-        rowNumber: idx + 2,
-        values: [row],
+      const next = Object.assign({}, response, {
+        comment: String(draft.draftComment || '').trim(),
+        aiStatus: 'done',
+        aiProcessedAt: updatedAt,
+        aiError: '',
+        updatedAt,
       });
+      if (String(draft.draftRank || '').trim()) {
+        next.score = Number(draft.draftScore || 0);
+        next.rank = String(draft.draftRank || '').trim();
+      }
+      const row = buildResponseSheetRowValues_(next);
+      masterRows.push(row);
+      const existingRow = findResponseSheetRowEntryByResponseId_(responseId, responseData);
+      if (existingRow) {
+        rowUpdates.push({
+          rowNumber: existingRow.rowNumber,
+          values: row,
+        });
+      }
       returnedCount++;
       returnedDrafts.push({
         responseId,
-        lessonId: row[1] || '',
-        unitId: row[2] || '',
-        studentId: row[3] || '',
-        studentNumber: row[4] || '',
-        studentName: row[5] || '',
-        reviewText: row[7] || '',
-        comment: row[13] || '',
-        rank: row[11] || '',
+        lessonId: next.lessonId || '',
+        unitId: next.unitId || '',
+        studentId: next.studentId || '',
+        studentNumber: next.studentNumber || '',
+        studentName: next.studentName || '',
+        reviewText: next.reviewText || '',
+        comment: next.comment || '',
+        rank: next.rank || '',
         period,
       });
     });
     if (!returnedCount) return { ok:false, error:'返却できる下書きがありません。' };
     const responseWriteStartedAt = Date.now();
-    writeSheetRowBatches_(sheet, indexedUpdates, RESPONSE_HEADERS.length);
+    mirrorResponseRowsWithAudit_(
+      masterRows,
+      'response_teacher_feedback_return',
+      'master_mirror_failed_teacher_feedback_return',
+      'teacher'
+    );
+    if (rowUpdates.length) {
+      writeResponseRowUpdates_(rowUpdates, null);
+    }
     responseWriteMs = Date.now() - responseWriteStartedAt;
     if (medalMode === 'auto_award') {
       recalcLessonMedalsFromDb_(lessonId);
@@ -1677,18 +1760,7 @@ function applyTeacherFeedbackDrafts_(lessonId, drafts, options) {
     })), 'teacher-return');
     draftSaveMs = Date.now() - draftSaveStartedAt;
   }
-  const aggregateStartedAt = Date.now();
-  upsertAggregateEntries_(returnedDrafts.map(item => ({
-    studentNumber: item.studentNumber,
-    studentName: item.studentName,
-    reviewText: item.reviewText,
-    comment: item.comment,
-    rank: item.rank,
-    unitId: item.unitId,
-    period: item.period,
-    responseId: item.responseId,
-  })));
-  aggregateMs = Date.now() - aggregateStartedAt;
+  aggregateMs = 0;
   writeAiEventLogs_(buildTeacherFeedbackEvents_(returnedDrafts, 'teacher_feedback_returned', {
     batchId,
     aiStatus: 'done',
@@ -1716,10 +1788,20 @@ function normalizeTeacherMedal_(value) {
   return MEDALS.includes(text) ? text : '';
 }
 
-function getAggregateData(unitId) {
+function normalizeAggregateFilterOptions_(options) {
+  if (!options || typeof options !== 'object') return { subject: '' };
+  return {
+    subject: String(options.subject || '').trim(),
+  };
+}
+
+function getAggregateData(unitId, options) {
+  const filters = normalizeAggregateFilterOptions_(options);
   const units = getAllUnits();
   const lessons = getLessonsDbSheet_().getDataRange().getValues().slice(1);
-  const responses = getResponsesDbSheet_().getDataRange().getValues().slice(1).map(mapResponseRow_).filter(response => !isAiLoadTestResponse_(response));
+  const allResponses = listAllResponses_();
+  const responseReadMeta = summarizeResponseReadForAll_(allResponses);
+  const responses = allResponses.filter(response => !isAiLoadTestResponse_(response));
   const assessments = listTeacherAssessments_();
   const unitMap = {};
   units.forEach(item => {
@@ -1734,7 +1816,14 @@ function getAggregateData(unitId) {
     assessmentMap[`${String(item.unitId || '')}:${String(item.studentNumber || '')}`] = item;
   });
   const rows = responses
-    .filter(response => !unitId || String(response.unitId) === String(unitId))
+    .filter(response => {
+      if (unitId && String(response.unitId) !== String(unitId)) return false;
+      if (filters.subject) {
+        const unit = unitMap[String(response.unitId)];
+        if (String(unit?.subject || '') !== filters.subject) return false;
+      }
+      return true;
+    })
     .map(response => {
       const unit = unitMap[String(response.unitId)];
       const lesson = lessonMap[String(response.lessonId)];
@@ -1757,36 +1846,32 @@ function getAggregateData(unitId) {
         teacherAssessment: assessment,
       };
     });
-  if (rows.length > 0) return rows;
-
-  const ss  = getTenantSpreadsheet_();
-  const agg = ss.getSheetByName(SHEET_AGG);
-  if (!agg) return [];
-  const selectedUnit = units.find(u => String(u.id) === String(unitId));
-  const uniqueName = selectedUnit
-    ? units.filter(u => u.name === selectedUnit.name).length === 1
-    : false;
-  const data  = agg.getDataRange().getValues();
-  return data.slice(1).filter(r => {
-    if (!unitId) return true;
-    if (String(r[9] || '') === String(unitId)) return true;
-    if (!r[9] && uniqueName && selectedUnit && r[0] === selectedUnit.name) return true;
-    return false;
-  }).map(r => ({
-    unitName:r[0], subject:r[1], period:r[2],
-    num:r[3], name:r[4], date:r[5], review:r[6], rank:r[7], comment:r[8], unitId:r[9] || '',
-  }));
+  if (rows.length > 0) {
+    rows.responseReadMeta = responseReadMeta;
+    return rows;
+  }
+  rows.responseReadMeta = {
+    ...responseReadMeta,
+  };
+  return rows;
 }
 
-function getAggregateDataJson(unitId) {
+function getAggregateDataJson(unitId, optionsJson) {
   try {
-    const rows = getAggregateData(unitId);
+    let options = null;
+    if (optionsJson && String(optionsJson).trim()) {
+      options = JSON.parse(String(optionsJson));
+    }
+    const rows = getAggregateData(unitId, options);
+    const filters = normalizeAggregateFilterOptions_(options);
     return JSON.stringify({
       ok: true,
       build: APP_BUILD,
       debug: {
         unitId: String(unitId || ''),
+        subject: filters.subject,
         rowCount: rows.length,
+        responseReadMeta: rows.responseReadMeta || null,
         sampleRows: rows.slice(0, 5).map(row => ({
           subject: row.subject || '',
           unitName: row.unitName || '',
@@ -1854,10 +1939,18 @@ function getStudentPortfolioData(studentNumber, unitId) {
   if (cached && Array.isArray(cached.rows)) return cached;
   const units = getAllUnits();
   const lessons = getLessonsDbSheet_().getDataRange().getValues().slice(1);
-  const responses = getResponsesDbSheet_().getDataRange().getValues().slice(1).map(mapResponseRow_).filter(response => !isAiLoadTestResponse_(response));
+  const allResponses = listAllResponses_();
+  const responseReadMeta = summarizeResponseReadForAll_(allResponses);
+  const responses = allResponses.filter(response => !isAiLoadTestResponse_(response));
   const selectedUnit = units.find(item => String(item.id) === String(unitId));
   const roster = getRosterEntries_(true);
   const student = roster.find(item => String(item.number) === String(studentNumber));
+  const rosterNameMap = {};
+  roster.forEach(item => {
+    const normalizedNumber = String(item && item.number || '').trim();
+    if (!normalizedNumber) return;
+    rosterNameMap[normalizedNumber] = String(item && item.name || '').trim();
+  });
   const unitMap = {};
   units.forEach(item => {
     unitMap[String(item.id)] = item;
@@ -1889,24 +1982,24 @@ function getStudentPortfolioData(studentNumber, unitId) {
   debug.matchedStudentCount = matchedStudentRows.length;
   const rows = matchedStudentRows
     .filter(row => {
-      const effectiveUnitId = row.unitId || (lessonMap[String(row.lessonId)]?.[1]) || '';
+      const effectiveUnitId = String(row.unitId || lessonMap[String(row.lessonId)]?.[1] || '').trim();
       if (!unitId) return true;
-      if (String(effectiveUnitId) === String(unitId)) return true;
-      const rowUnit = unitMap[String(effectiveUnitId)];
+      if (effectiveUnitId === String(unitId)) return true;
+      const rowUnit = unitMap[effectiveUnitId];
       if (!selectedUnit || !rowUnit) return false;
       return String(rowUnit.name || '') === String(selectedUnit.name || '')
         && String(rowUnit.subject || '') === String(selectedUnit.subject || '');
     })
     .map(row => {
-      const effectiveUnitId = row.unitId || (lessonMap[String(row.lessonId)]?.[1]) || '';
-      const unit = unitMap[String(effectiveUnitId)];
       const lesson = lessonMap[String(row.lessonId)];
+      const effectiveUnitId = String(row.unitId || lesson?.[1] || '').trim();
+      const unit = unitMap[effectiveUnitId];
       return {
         unitName: unit?.name || '',
         subject: unit?.subject || '',
         period: lesson?.[2] || '',
         num: row.studentNumber,
-        name: row.studentName || '',
+        name: row.studentName || rosterNameMap[String(row.studentNumber || '').trim()] || '',
         date: lesson?.[3] || '',
         review: row.reviewText || '',
         score: Number(row.score || 0),
@@ -1935,9 +2028,10 @@ function getStudentPortfolioData(studentNumber, unitId) {
   });
   return putCachedJson_(cacheKey, {
     studentNumber,
-    studentName: student?.name || '',
+    studentName: student?.name || rosterNameMap[String(studentNumber || '').trim()] || '',
     rows,
     build: APP_BUILD,
+    responseReadMeta,
     debug,
   }, 20);
 }
@@ -2523,3 +2617,13 @@ function saveGlobalSettings(medalTop, promptComment, promptScore, promptPortfoli
     },
   };
 }
+
+
+
+
+
+
+
+
+
+

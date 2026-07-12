@@ -785,6 +785,7 @@ textarea.inp{resize:vertical;min-height:70px;}
             <button class="btn-cancel" type="button" id="teacherFeedbackClearBtn" onclick="clearTeacherFeedbackDraftsFromStatus()">🧹 下書きを消す</button>
           </div>
           <div class="status-feedback-meta" id="teacherFeedbackMeta">教師AIが有効なとき、提出済みの内容から下書きを作れます。</div>
+          <div class="status-feedback-meta" id="statusPerfDebug" style="display:none;"></div>
           <div class="status-feedback-result" id="teacherFeedbackResult"></div>
         </div>
       </div>
@@ -1040,19 +1041,19 @@ textarea.inp{resize:vertical;min-height:70px;}
         <div class="guide-card">
           <h3 id="helpStep1Title">1. 最初の流れ</h3>
           <ol class="guide-list">
-            <li id="helpStep1Item1">単元設定で単元を作る</li>
-            <li id="helpStep1Item2">必要なら名簿を入れる</li>
-            <li id="helpStep1Item3">授業スタートで授業を開始する</li>
-            <li id="helpStep1Item4">この下のWEB児童ページURLを配布する</li>
+            <li id="helpStep1Item1">下の登録ページを開く</li>
+            <li id="helpStep1Item2">緑のボタンからスプレッドシートをコピーする</li>
+            <li id="helpStep1Item3">コピー先のシートで初期設定と導入・配布を進める</li>
+            <li id="helpStep1Item4">終わったらまず先生ページURLから入り、そこから児童ページURLを配布する</li>
           </ol>
         </div>
         <div class="guide-card">
-          <h3 id="helpStep2Title">2. 児童への配布</h3>
+          <h3 id="helpStep2Title">2. 先生と児童の入り口</h3>
           <ol class="guide-list">
-            <li id="helpStep2Item1">初回だけ下のWEB接続ページを児童端末で開く</li>
-            <li id="helpStep2Item2">そのまま保存して接続確認する</li>
-            <li id="helpStep2Item3">2回目以降はWEB児童ページURLだけ配布する</li>
-            <li id="helpStep2Item4">児童はそのURLから毎時間入る</li>
+            <li id="helpStep2Item1">先生はふだん下の先生ページURLだけを開く</li>
+            <li id="helpStep2Item2">先生はWEB版の先生ページを使う</li>
+            <li id="helpStep2Item3">児童には下の児童ページURLだけを配布する</li>
+            <li id="helpStep2Item4">保存が消えた端末や接続先を入れ直すときだけ接続補助ページを使う</li>
             <li id="helpStep2Item5">単元と時間目は先生側の授業スタートに連動する</li>
           </ol>
         </div>
@@ -1060,31 +1061,54 @@ textarea.inp{resize:vertical;min-height:70px;}
 
       <div class="guide-link-grid" style="margin-top:14px;">
         <div class="guide-link-card">
-          <div class="guide-link-title" id="helpStudentCardTitle">WEB児童ページ</div>
+          <div class="guide-link-title" id="helpTeacherCardTitle">先生ページ</div>
+          <div class="guide-link-actions">
+            <button class="btn-update" type="button" onclick="openHelpLink('teacher')" id="helpTeacherOpenBtn">開く</button>
+            <button class="btn-cancel" type="button" onclick="copyHelpLink('teacher')" id="helpTeacherCopyBtn">URLをコピー</button>
+          </div>
+          <input class="inp" id="teacherPageUrl" readonly>
+          <div class="guide-note" id="helpTeacherCardNote">この先生の保存先付きURLです。先生はまずこれを開きます。</div>
+          <div class="qr-card">
+            <div class="qr-title" id="helpTeacherQrTitle">先生ページQR</div>
+            <img id="teacherQrImage" class="qr-image" alt="先生ページQR">
+          </div>
+        </div>
+        <div class="guide-link-card">
+          <div class="guide-link-title" id="helpStudentCardTitle">児童ページ</div>
           <div class="guide-link-actions">
             <button class="btn-update" type="button" onclick="openHelpLink('student')" id="helpStudentOpenBtn">開く</button>
             <button class="btn-cancel" type="button" onclick="copyHelpLink('student')" id="helpStudentCopyBtn">URLをコピー</button>
           </div>
           <input class="inp" id="helpStudentUrl" readonly>
+          <div class="guide-note" id="helpStudentCardNote">この先生の保存先付きURLです。児童には基本これだけ配布します。</div>
           <div class="qr-card">
-            <div class="qr-title" id="helpStudentQrTitle">WEB児童ページQR</div>
-            <img id="studentQrImage" class="qr-image" alt="WEB児童ページQR">
+            <div class="qr-title" id="helpStudentQrTitle">児童ページQR</div>
+            <img id="studentQrImage" class="qr-image" alt="児童ページQR">
           </div>
         </div>
+        <div class="guide-link-card" id="helpSetupCard">
+          <div class="guide-link-title" id="helpSetupCardTitle">接続補助ページ</div>
+          <div class="guide-link-actions">
+            <button class="btn-update" type="button" onclick="openHelpLink('setup')" id="helpSetupOpenBtn">開く</button>
+            <button class="btn-cancel" type="button" onclick="copyHelpLink('setup')" id="helpSetupCopyBtn">URLをコピー</button>
+          </div>
+          <input class="inp" id="helpSetupUrl" readonly>
+          <div class="guide-note" id="helpSetupCardNote">保存が消えた端末や、接続先を入れ直したいときだけ使います。</div>
+        </div>
         <div class="guide-link-card" id="helpRegistrationCard">
-          <div class="guide-link-title" id="helpRegistrationCardTitle">WEB接続ページ</div>
+          <div class="guide-link-title" id="helpRegistrationCardTitle">登録ページ（コピー用）</div>
           <div class="guide-link-actions">
             <button class="btn-update" type="button" onclick="openHelpLink('registration')" id="helpRegistrationOpenBtn">開く</button>
             <button class="btn-cancel" type="button" onclick="copyHelpLink('registration')" id="helpRegistrationCopyBtn">URLをコピー</button>
           </div>
           <input class="inp" id="helpRegistrationUrl" readonly>
           <div class="qr-card">
-            <div class="qr-title" id="helpRegistrationQrTitle">WEB接続ページQR</div>
-            <img id="registrationQrImage" class="qr-image" alt="WEB接続ページQR">
+            <div class="qr-title" id="helpRegistrationQrTitle">登録ページQR</div>
+            <img id="registrationQrImage" class="qr-image" alt="登録ページQR">
           </div>
         </div>
       </div>
-      <div class="guide-note" style="margin-top:10px;" id="helpDistributionNote">初回だけWEB接続ページ、以後はWEB児童ページを配布してください。先生用の基本URLは児童には配りません。</div>
+      <div class="guide-note" style="margin-top:10px;" id="helpDistributionNote">先生は登録ページで配布用スプレッドシートを作成したあと、まず先生ページURLから入ります。児童には児童ページURLだけを配布してください。接続先を入れ直したい端末だけ接続補助ページを使います。</div>
 
       <div class="guide-grid" style="margin-top:14px;">
         <div class="guide-card">
@@ -1191,6 +1215,7 @@ textarea.inp{resize:vertical;min-height:70px;}
         </div>
         <div class="ai-report" id="aiReport"></div>
         <div class="debug-note">AIには児童名を送らず出席番号だけを送信します。受信後の表示は名簿と照合して氏名に置き換えます。</div>
+        <div class="debug-note" id="aggDebug">単元記録の取得状況を表示します。</div>
         <div id="aggSummary">
           <div class="insight-grid">
             <div class="insight-box"><div class="insight-k">対象人数</div><div class="insight-v">-</div></div>
@@ -1489,6 +1514,7 @@ var activePeriod = 0;
 var statusTimer = null;
 var delTargetId = null;
 var allAggData = [];
+var allAggMeta = { scope: 'unknown', fetchedAt: 0, unitId: '', subject: '' };
 var rosterEntries = [];
 var portfolioRows = [];
 var teacherBuild = '';
@@ -1501,6 +1527,7 @@ var teacherDataEpoch = 0;
 var lastTeacherStartAtMs = 0;
 var teacherEndingLesson = false;
 var teacherActiveDebug = '';
+var teacherUnitsReadMeta = null;
 var TEACHER_CLIENT_BUILD = 'client-20260704-1035';
 var teacherBootstrapApplied = false;
 var UI_STATE_KEY = 'jibun-matome-teacher-ui';
@@ -1632,6 +1659,9 @@ var preloadCache = {
     roster: null,
     editor: null,
     prompts: null,
+    portfolio: null,
+    status: null,
+    aggregate: null,
     rosterLoading: false,
     editorLoading: false,
     promptsLoading: false,
@@ -1707,6 +1737,10 @@ function loadStatusInit(options) {
     var opts = options || {};
     var requestEpoch = teacherDataEpoch;
     applyEmbeddedTeacherBootstrap_();
+    var cachedStatus = readTeacherStatusPreloadCache_();
+    if (cachedStatus) {
+        renderStatus(cachedStatus);
+    }
     var runner = google.script.run
         .withSuccessHandler(function (d) {
         if (requestEpoch !== teacherDataEpoch)
@@ -1724,6 +1758,7 @@ function loadStatusInit(options) {
         if (opts.startPolling) {
             startStatusPoll(Boolean(d && d.status));
         }
+        scheduleTeacherUnitProgressRefresh_(d);
     })
         .withFailureHandler(function (err) {
         if (requestEpoch !== teacherDataEpoch)
@@ -1733,11 +1768,41 @@ function loadStatusInit(options) {
             startStatusPoll(false);
         }
     });
-    if (opts.lightweight !== false && Array.isArray(allUnits) && allUnits.length) {
+    var hasUnitsReadMeta = Boolean(teacherUnitsReadMeta && typeof teacherUnitsReadMeta === 'object');
+    if (opts.lightweight !== false && hasUnitsReadMeta && Array.isArray(allUnits) && allUnits.length) {
         runner.teacherStatusSnapshot();
         return;
     }
     runner.teacherStatusInit();
+}
+function scheduleTeacherUnitProgressRefresh_(data) {
+    if (!(data && data.progressNeedsRefresh))
+        return;
+    if (scheduleTeacherUnitProgressRefresh_._started)
+        return;
+    scheduleTeacherUnitProgressRefresh_._started = true;
+    var run = function () {
+        google.script.run
+            .withSuccessHandler(function (res) {
+            var map = res && res.unitProgress;
+            if (!map || typeof map !== 'object')
+                return;
+            unitProgressByUnitId = map;
+            populateUnitSelects();
+            var unitListSection = document.getElementById('unitListWrap');
+            if (unitListSection && unitListSection.offsetParent !== null) {
+                renderUnitList();
+            }
+        })
+            .withFailureHandler(function () { })
+            .teacherUnitProgressRefresh();
+    };
+    if (typeof requestIdleCallback === 'function') {
+        requestIdleCallback(run, { timeout: 4000 });
+    }
+    else {
+        setTimeout(run, 2500);
+    }
 }
 function invalidateTeacherDataRequests_() {
     teacherDataEpoch += 1;
@@ -1794,6 +1859,10 @@ function applyTeacherInitData(d, options) {
     var previousPeriod = activePeriod;
     if (Array.isArray(d.units))
         allUnits = d.units;
+    if (d.unitsReadMeta && typeof d.unitsReadMeta === 'object') {
+        teacherUnitsReadMeta = d.unitsReadMeta;
+        window.__teacherUnitsReadMeta = d.unitsReadMeta;
+    }
     if (d.active !== undefined) {
         var rawActive = d.active || {};
         d.active = buildResolvedActiveState_(d.active);
@@ -1818,6 +1887,10 @@ function applyTeacherInitData(d, options) {
             persistTeacherPreloadCache_();
         }
     }
+    if (!activeUnitId || !activePeriod) {
+        clearTeacherStatusPreloadCache_();
+    }
+    persistPortableTeacherBootstrap_();
     applySavedUiState();
     renderBuildBar();
     renderActiveBanner(d.active);
@@ -1858,6 +1931,28 @@ function handleTeacherInitFailure_(err, source) {
     renderBuildBar();
     showTeacherLoadWarning_("".concat(source, ": ").concat(message));
 }
+function buildPortableTeacherBootstrapPayload_() {
+    var rosterSource = Array.isArray(rosterEntries) && rosterEntries.length
+        ? rosterEntries
+        : (preloadCache.roster && Array.isArray(preloadCache.roster.roster) ? preloadCache.roster.roster : []);
+    var activePayload = (activeUnitId != null && activePeriod > 0)
+        ? buildResolvedActiveState_({ unitId: activeUnitId, period: activePeriod })
+        : null;
+    return {
+        units: Array.isArray(allUnits) ? allUnits : [],
+        active: activePayload && activePayload.unitId ? activePayload : null,
+        roster: Array.isArray(rosterSource) ? rosterSource : [],
+        unitProgress: unitProgressByUnitId && typeof unitProgressByUnitId === 'object' ? unitProgressByUnitId : {},
+        build: teacherBuild || '',
+    };
+}
+function persistPortableTeacherBootstrap_() {
+    if (!(window.__portableGas && typeof window.__portableGas.cacheTeacherBootstrap === 'function'))
+        return;
+    var payload = buildPortableTeacherBootstrapPayload_();
+    window.__TEACHER_BOOTSTRAP__ = payload;
+    window.__portableGas.cacheTeacherBootstrap(payload);
+}
 function scheduleTeacherPreload() {
     if (preloadCache.started)
         return;
@@ -1891,6 +1986,12 @@ function hydrateTeacherPreloadCache_() {
             preloadCache.editor = parsed.editor;
         if (parsed.prompts)
             preloadCache.prompts = parsed.prompts;
+        if (parsed.portfolio)
+            preloadCache.portfolio = parsed.portfolio;
+        if (parsed.status)
+            preloadCache.status = parsed.status;
+        if (parsed.aggregate)
+            preloadCache.aggregate = parsed.aggregate;
     }
     catch (_err) { }
 }
@@ -1901,9 +2002,54 @@ function persistTeacherPreloadCache_() {
             roster: preloadCache.roster || null,
             editor: preloadCache.editor || null,
             prompts: preloadCache.prompts || null,
+            portfolio: preloadCache.portfolio || null,
+            status: preloadCache.status || null,
+            aggregate: preloadCache.aggregate || null,
         }));
     }
     catch (_err) { }
+}
+function clearTeacherStatusPreloadCache_(skipPersist) {
+    preloadCache.status = null;
+    if (skipPersist)
+        return;
+    persistTeacherPreloadCache_();
+}
+function readTeacherStatusPreloadCache_() {
+    var cached = preloadCache.status;
+    if (!cached || typeof cached !== 'object')
+        return null;
+    if ((Date.now() - Number(cached.savedAt || 0)) > TEACHER_PRELOAD_TTL_MS) {
+        clearTeacherStatusPreloadCache_();
+        return null;
+    }
+    if (String(cached.unitId || '') !== String(activeUnitId || ''))
+        return null;
+    if (Number(cached.period || 0) !== Number(activePeriod || 0))
+        return null;
+    var status = cached.status;
+    if (!status || typeof status !== 'object' || !Array.isArray(status.students))
+        return null;
+    return {
+        meta: status.meta || {},
+        students: status.students,
+    };
+}
+function writeTeacherStatusPreloadCache_(status) {
+    if (!activeUnitId || !activePeriod || !status || typeof status !== 'object' || !Array.isArray(status.students)) {
+        clearTeacherStatusPreloadCache_();
+        return;
+    }
+    preloadCache.status = {
+        savedAt: Date.now(),
+        unitId: String(activeUnitId || ''),
+        period: Number(activePeriod || 0),
+        status: {
+            meta: status.meta || {},
+            students: status.students,
+        },
+    };
+    persistTeacherPreloadCache_();
 }
 function readUiState() {
     try {
@@ -2206,8 +2352,9 @@ function applyTeacherHelpData(data) {
     var links = teacherHelpData.links || {};
     var shell = teacherHelpData.shell || {};
     var teacherUrl = String(links.teacherUrl || '').trim();
-    var registrationUrl = String(links.registrationUrl || '').trim();
+    var registrationUrl = resolveRegistrationHelpUrl_(links);
     var studentUrl = String(links.studentUrl || '').trim();
+    var setupUrl = String(links.setupUrl || '').trim();
     var idsToValues = [
         ['statusTeacherUrl', teacherUrl],
         ['teacherPageUrl', teacherUrl],
@@ -2216,6 +2363,7 @@ function applyTeacherHelpData(data) {
         ['statusStudentUrl', studentUrl],
         ['studentPageUrl', studentUrl],
         ['helpStudentUrl', studentUrl],
+        ['helpSetupUrl', setupUrl],
     ];
     idsToValues.forEach(function (_a) {
         var id = _a[0], value = _a[1];
@@ -2223,6 +2371,7 @@ function applyTeacherHelpData(data) {
         if (el)
             el.value = value;
     });
+    applyQrImage('teacherQrImage', teacherUrl);
     applyQrImage('registrationQrImage', registrationUrl);
     applyQrImage('studentQrImage', studentUrl);
     applyTeacherHelpShellContent_(shell);
@@ -2238,6 +2387,23 @@ function applyTeacherHelpData(data) {
             });
         }, 10);
     }
+}
+function resolveRegistrationHelpUrl_(links) {
+    var direct = String(links && links.registrationUrl || '').trim();
+    var guide = String(links && links.guideUrl || '').trim();
+    if (guide) {
+        try {
+            var parsed = new URL(guide);
+            parsed.searchParams.set('mode', 'form');
+            return parsed.toString();
+        }
+        catch (_error) {
+            if (/mode=guide/.test(guide))
+                return guide.replace(/mode=guide/, 'mode=form');
+            return guide;
+        }
+    }
+    return direct;
 }
 function setTextIfPresent_(id, value) {
     var el = document.getElementById(id);
@@ -2260,7 +2426,11 @@ function applyTeacherHelpShellContent_(shell) {
         ['helpStep2Item3', labels.helpStep2Item3],
         ['helpStep2Item4', labels.helpStep2Item4],
         ['helpStep2Item5', labels.helpStep2Item5],
+        ['helpTeacherCardNote', labels.helpTeacherCardNote],
         ['helpStudentCardTitle', labels.helpStudentCardTitle],
+        ['helpStudentCardNote', labels.helpStudentCardNote],
+        ['helpSetupCardTitle', labels.helpSetupCardTitle],
+        ['helpSetupCardNote', labels.helpSetupCardNote],
         ['helpRegistrationCardTitle', labels.helpRegistrationCardTitle],
         ['helpStudentQrTitle', labels.helpStudentQrTitle],
         ['helpRegistrationQrTitle', labels.helpRegistrationQrTitle],
@@ -2278,8 +2448,10 @@ function applyTeacherHelpShellContent_(shell) {
     });
     setTextIfPresent_('helpStudentOpenBtn', labels.helpOpenLabel);
     setTextIfPresent_('helpRegistrationOpenBtn', labels.helpOpenLabel);
+    setTextIfPresent_('helpSetupOpenBtn', labels.helpOpenLabel);
     setTextIfPresent_('helpStudentCopyBtn', labels.helpCopyLabel);
     setTextIfPresent_('helpRegistrationCopyBtn', labels.helpCopyLabel);
+    setTextIfPresent_('helpSetupCopyBtn', labels.helpCopyLabel);
     setTextIfPresent_('helpApiStudioBtn', labels.helpApiStudioLabel);
     setTextIfPresent_('helpOpenUpdateBtn', labels.helpOpenUpdateLabel);
     var registrationCard = document.getElementById('helpRegistrationCard');
@@ -2360,8 +2532,9 @@ function openHelpLink(kind) {
     ensureTeacherHelpLoaded(function (data) {
         var links = (data && data.links) || {};
         var urlMap = {
-            registration: links.registrationUrl || '',
+            registration: resolveRegistrationHelpUrl_(links),
             student: links.studentUrl || '',
+            setup: links.setupUrl || '',
             teacher: links.teacherUrl || '',
             apiKey: links.apiKeyGuideUrl || '',
         };
@@ -2377,8 +2550,9 @@ function copyHelpLink(kind) {
     ensureTeacherHelpLoaded(function (data) {
         var links = (data && data.links) || {};
         var urlMap = {
-            registration: links.registrationUrl || '',
+            registration: resolveRegistrationHelpUrl_(links),
             student: links.studentUrl || '',
+            setup: links.setupUrl || '',
             teacher: links.teacherUrl || '',
             apiKey: links.apiKeyGuideUrl || '',
         };
@@ -2969,6 +3143,77 @@ var lastUnitListSignature = '';
 var UNIT_LIST_PAGE_SIZE = 10;
 var TEACHER_FEEDBACK_PREFS_KEY = 'teacher_feedback_prefs_v1';
 var teacherFeedbackPrefsLoaded = false;
+function formatStatusTimingLine_(label, timing, keys) {
+    if (!timing || typeof timing !== 'object' || !Array.isArray(keys) || !keys.length)
+        return '';
+    var parts = keys
+        .map(function (key) {
+        var value = Number(timing[key] || 0);
+        if (!Number.isFinite(value) || value <= 0)
+            return '';
+        var name = String(key || '').replace(/Ms$/, '');
+        return "".concat(name, " ").concat(value, "ms");
+    })
+        .filter(Boolean);
+    if (!parts.length)
+        return '';
+    return "".concat(label, ": ").concat(parts.join(' / '));
+}
+function formatResponseReadMetaLine_(meta) {
+    if (!meta || typeof meta !== 'object')
+        return '';
+    var mode = String(meta.mode || '').trim();
+    if (!mode)
+        return '';
+    var parts = ["response ".concat(mode)];
+    if (Number.isFinite(Number(meta.masterCount)))
+        parts.push("master ".concat(Number(meta.masterCount || 0)));
+    if (Number.isFinite(Number(meta.mergedCount)))
+        parts.push("merged ".concat(Number(meta.mergedCount || 0)));
+    return parts.join(' / ');
+}
+function formatUnitsReadMetaLine_(meta) {
+    if (!meta || typeof meta !== 'object')
+        return '';
+    var mode = String(meta.mode || '').trim();
+    if (!mode)
+        return '';
+    var parts = ["units ".concat(mode)];
+    var masterReadPath = String(meta.masterReadPath || '').trim();
+    if (masterReadPath)
+        parts.push(masterReadPath);
+    if (Number.isFinite(Number(meta.masterCount)))
+        parts.push("master ".concat(Number(meta.masterCount || 0)));
+    if (Number.isFinite(Number(meta.mergedCount)))
+        parts.push("merged ".concat(Number(meta.mergedCount || 0)));
+    if (meta.cached === true)
+        parts.push('cached');
+    return parts.join(' / ');
+}
+function renderStatusPerfDebug_() {
+    var el = document.getElementById('statusPerfDebug');
+    if (!el)
+        return;
+    var lessonTiming = latestStatusMeta && latestStatusMeta.timing || null;
+    var requestTiming = latestStatusMeta && latestStatusMeta.serverRequestTiming || null;
+    var responseReadMeta = latestStatusMeta && latestStatusMeta.responseReadMeta || null;
+    var unitsReadMeta = (latestStatusMeta && latestStatusMeta.unitsReadMeta)
+        || window.__teacherUnitsReadMeta
+        || null;
+    var lines = [
+        formatStatusTimingLine_('表示データ', lessonTiming, ['totalMs', 'responsesMs', 'draftsMs', 'rosterMs', 'studentBuildMs']),
+        formatStatusTimingLine_('初回読込', requestTiming, ['totalMs', 'unitsMs', 'activeMs', 'unitProgressMs', 'lessonStatusMs']),
+        formatUnitsReadMetaLine_(unitsReadMeta),
+        formatResponseReadMetaLine_(responseReadMeta),
+    ].filter(Boolean);
+    if (!lines.length) {
+        el.style.display = 'none';
+        el.textContent = '';
+        return;
+    }
+    el.style.display = 'block';
+    el.textContent = lines.join(' | ');
+}
 function loadTeacherFeedbackPrefs_() {
     try {
         var raw = localStorage.getItem(TEACHER_FEEDBACK_PREFS_KEY);
@@ -3023,6 +3268,11 @@ function loadStatus() {
 function renderStatus(d) {
     latestStatusRows = Array.isArray(d && d.students) ? d.students : [];
     latestStatusMeta = d && d.meta || {};
+    writeTeacherStatusPreloadCache_({
+        meta: latestStatusMeta,
+        students: latestStatusRows,
+    });
+    renderStatusPerfDebug_();
     var st = latestStatusRows;
     var aiReturnedCount = st.filter(function (s) { return String(s.comment || '').trim(); }).length;
     var draftCount = st.filter(function (s) { return hasTeacherDraft(s); }).length;
@@ -4631,10 +4881,6 @@ function renderAiQueue(queue) {
             parts.push("AI\u51E6\u7406\u4E2D ".concat(data.processing, "\u4EF6"));
         if (Number(data.error || 0) > 0)
             parts.push("AI\u5931\u6557 ".concat(data.error, "\u4EF6"));
-        if (Number(data.aggregatePending || 0) > 0)
-            parts.push("\u96C6\u7D04\u5F85\u3061 ".concat(data.aggregatePending, "\u4EF6"));
-        if (Number(data.aggregateMissing || 0) > 0)
-            parts.push("\u672A\u53CD\u6620 ".concat(data.aggregateMissing, "\u4EF6"));
         if (Number(data.persistRetryItems || 0) > 0)
             parts.push("\u4FDD\u5B58\u518D\u8A66\u884C ".concat(data.persistRetryItems, "\u4EF6"));
         queueMeta.textContent = parts.length ? parts.join(' / ') : 'AI保守の滞留はありません。';
@@ -4705,24 +4951,6 @@ function retryAiErrors() {
         alert("\u518D\u5B9F\u884C\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat((err && err.message) || err || 'unknown'));
     })
         .retryFailedAiResponses();
-}
-function repairAggregate() {
-    var btn = document.getElementById('repairAggregateBtn');
-    if (btn)
-        btn.disabled = true;
-    google.script.run
-        .withSuccessHandler(function (res) {
-        if (btn)
-            btn.disabled = false;
-        renderAiQueue(res && res.queue || null);
-        alert("\u96C6\u7D04\u4FEE\u5FA9\u3092\u5B9F\u884C\u3057\u307E\u3057\u305F\u3002\u8FFD\u52A0 ".concat(res && res.enqueued || 0, " \u4EF6 / \u53CD\u6620 ").concat(res && res.flushed || 0, " \u4EF6 / \u6B8B\u308A ").concat(res && res.remaining || 0, " \u4EF6"));
-    })
-        .withFailureHandler(function (err) {
-        if (btn)
-            btn.disabled = false;
-        alert("\u96C6\u7D04\u4FEE\u5FA9\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat((err && err.message) || err || 'unknown'));
-    })
-        .repairMissingAggregateEntries();
 }
 function seedAiLoadTestFromTeacher() {
     if (!activeUnitId || !activePeriod) {
@@ -4846,11 +5074,332 @@ var __assign = (this && this.__assign) || function () {
 };
 var portfolioInitRequestSeq = 0;
 var portfolioDataRequestSeq = 0;
-function loadPortfolioTab() {
-    var body = document.getElementById('portfolioBody');
-    syncTeacherAiUi_();
-    ensurePromptPreload();
-    var requestSeq = ++portfolioInitRequestSeq;
+var aggregateLoadRequestSeq = 0;
+var aggregateScopeFetchKey = '';
+var PORTFOLIO_CACHE_LIMIT = 16;
+var AGGREGATE_PRELOAD_ROW_LIMIT = 800;
+var AGGREGATE_LIVE_FRESH_MS = 60 * 1000;
+function readAggregatePreloadCache_() {
+    var cached = preloadCache.aggregate;
+    if (!cached || typeof cached !== 'object')
+        return null;
+    if ((Date.now() - Number(cached.savedAt || 0)) > TEACHER_PRELOAD_TTL_MS) {
+        preloadCache.aggregate = null;
+        persistTeacherPreloadCache_();
+        return null;
+    }
+    if (!Array.isArray(cached.rows) || !cached.rows.length)
+        return null;
+    return cached.rows.slice();
+}
+function writeAggregatePreloadCache_(rows) {
+    if (!Array.isArray(rows) || !rows.length) {
+        preloadCache.aggregate = null;
+        persistTeacherPreloadCache_();
+        return;
+    }
+    preloadCache.aggregate = {
+        savedAt: Date.now(),
+        rows: rows.slice(0, AGGREGATE_PRELOAD_ROW_LIMIT),
+    };
+    persistTeacherPreloadCache_();
+}
+function isAggregateRecordPaneActive_() {
+    var pane = document.getElementById('record-pane-aggregate');
+    return Boolean(pane && pane.classList.contains('active'));
+}
+function isGradingRecordPaneActive_() {
+    var pane = document.getElementById('record-pane-grading');
+    return Boolean(pane && pane.classList.contains('active'));
+}
+function renderAggregateDataSet_(rows, meta) {
+    allAggData = Array.isArray(rows) ? rows : [];
+    var scopeMeta = meta && typeof meta === 'object' ? meta : {};
+    allAggMeta = {
+        scope: String(scopeMeta.scope || 'unknown'),
+        fetchedAt: Number(scopeMeta.fetchedAt || Date.now()) || 0,
+        unitId: String(scopeMeta.unitId || ''),
+        subject: String(scopeMeta.subject || ''),
+    };
+    filterAgg();
+    filterGrading();
+}
+function fetchAggregateDataSet_(options) {
+    var opts = options || {};
+    var unitId = opts.unitId || null;
+    var subject = String(opts.subject || '').trim();
+    var requestSeq = opts.requestSeq || 0;
+    google.script.run
+        .withSuccessHandler(function (raw) {
+        if (requestSeq && requestSeq !== aggregateLoadRequestSeq)
+            return;
+        var res = null;
+        try {
+            res = raw ? JSON.parse(raw) : null;
+        }
+        catch (e) {
+            if (typeof opts.onParseError === 'function')
+                opts.onParseError(e);
+            return;
+        }
+        if (res && res.ok === false && res.error) {
+            if (typeof opts.onError === 'function')
+                opts.onError(res.error);
+            return;
+        }
+        var rows = res && res.rows || [];
+        if (typeof opts.onSuccess === 'function')
+            opts.onSuccess(rows, res || {});
+    })
+        .withFailureHandler(function (err) {
+        if (requestSeq && requestSeq !== aggregateLoadRequestSeq)
+            return;
+        if (typeof opts.onFailure === 'function')
+            opts.onFailure(err);
+    })
+        .getAggregateDataJson(unitId, subject ? JSON.stringify({ subject: subject }) : '');
+}
+function getInitialAggregateFetchOptions_(renderedImmediate) {
+    var currentAggUnitId = (document.getElementById('aggUnit') || {}).value || '';
+    if (!renderedImmediate && isAggregateRecordPaneActive_() && !currentAggUnitId && activeUnitId) {
+        return { unitId: String(activeUnitId) };
+    }
+    if (isGradingRecordPaneActive_()) {
+        var mode = (document.getElementById('gradeMode') || {}).value || 'unit';
+        if (mode === 'subject') {
+            var subject = (document.getElementById('gradeSubject') || {}).value || '';
+            if (subject)
+                return { subject: subject };
+            return null;
+        }
+        var gradeUnitId = (document.getElementById('gradeUnit') || {}).value || '';
+        if (gradeUnitId)
+            return { unitId: gradeUnitId };
+    }
+    return null;
+}
+function hasFreshFullAggregateData_() {
+    if (!Array.isArray(allAggData))
+        return false;
+    if (!allAggMeta || String(allAggMeta.scope || '') !== 'full')
+        return false;
+    return (Date.now() - Number(allAggMeta.fetchedAt || 0)) <= AGGREGATE_LIVE_FRESH_MS;
+}
+function hasFreshAggregateData_() {
+    if (!Array.isArray(allAggData))
+        return false;
+    var scope = String(allAggMeta && allAggMeta.scope || '');
+    if (!scope || scope === 'unknown' || scope === 'preload')
+        return false;
+    return (Date.now() - Number(allAggMeta && allAggMeta.fetchedAt || 0)) <= AGGREGATE_LIVE_FRESH_MS;
+}
+function normalizeAggregateScopeOptions_(options) {
+    var opts = options || {};
+    return {
+        unitId: String(opts.unitId || '').trim(),
+        subject: String(opts.subject || '').trim(),
+    };
+}
+function buildAggregateScopeKey_(options) {
+    var opts = normalizeAggregateScopeOptions_(options);
+    if (opts.subject)
+        return "subject:".concat(opts.subject);
+    if (opts.unitId)
+        return "unit:".concat(opts.unitId);
+    return 'full';
+}
+function buildAggregateScopeMeta_(options) {
+    var opts = normalizeAggregateScopeOptions_(options);
+    return {
+        scope: opts.subject ? 'subject' : (opts.unitId ? 'unit' : 'full'),
+        fetchedAt: Date.now(),
+        unitId: opts.unitId,
+        subject: opts.subject,
+    };
+}
+function hasFreshAggregateScopeFor_(options) {
+    var opts = normalizeAggregateScopeOptions_(options);
+    if (!hasFreshAggregateData_())
+        return false;
+    var scope = String(allAggMeta && allAggMeta.scope || '');
+    if (scope === 'full')
+        return true;
+    if (opts.subject)
+        return scope === 'subject' && String(allAggMeta.subject || '') === opts.subject;
+    if (opts.unitId)
+        return scope === 'unit' && String(allAggMeta.unitId || '') === opts.unitId;
+    return false;
+}
+function requestAggregateScope_(options, callbacks) {
+    var opts = normalizeAggregateScopeOptions_(options);
+    var key = buildAggregateScopeKey_(opts);
+    var cb = callbacks || {};
+    if (hasFreshAggregateScopeFor_(opts)) {
+        if (typeof cb.onReuse === 'function')
+            cb.onReuse();
+        return false;
+    }
+    if (aggregateScopeFetchKey === key) {
+        return false;
+    }
+    aggregateScopeFetchKey = key;
+    var requestSeq = ++aggregateLoadRequestSeq;
+    fetchAggregateDataSet_({
+        unitId: opts.unitId || null,
+        subject: opts.subject || '',
+        requestSeq: requestSeq,
+        onParseError: function (error) {
+            if (aggregateScopeFetchKey === key)
+                aggregateScopeFetchKey = '';
+            if (typeof cb.onParseError === 'function')
+                cb.onParseError(error);
+        },
+        onError: function (error) {
+            if (aggregateScopeFetchKey === key)
+                aggregateScopeFetchKey = '';
+            if (typeof cb.onError === 'function')
+                cb.onError(error);
+        },
+        onFailure: function (error) {
+            if (aggregateScopeFetchKey === key)
+                aggregateScopeFetchKey = '';
+            if (typeof cb.onFailure === 'function')
+                cb.onFailure(error);
+        },
+        onSuccess: function (rows) {
+            if (aggregateScopeFetchKey === key)
+                aggregateScopeFetchKey = '';
+            if (!opts.subject && !opts.unitId) {
+                writeAggregatePreloadCache_(rows);
+            }
+            renderAggregateDataSet_(rows, buildAggregateScopeMeta_(opts));
+            if (typeof cb.onSuccess === 'function')
+                cb.onSuccess(rows);
+        },
+    });
+    return true;
+}
+function formatAggregateScopeAge_(fetchedAt) {
+    var ageMs = Math.max(0, Date.now() - Number(fetchedAt || 0));
+    if (ageMs < 1000)
+        return "".concat(ageMs, "ms\u524D");
+    return "".concat(Math.round(ageMs / 1000), "s\u524D");
+}
+function getAggregateScopeDebugText_(options) {
+    var opts = normalizeAggregateScopeOptions_(options);
+    var scope = String(allAggMeta && allAggMeta.scope || 'unknown');
+    var rowCount = Array.isArray(allAggData) ? allAggData.length : 0;
+    var freshness = hasFreshAggregateData_() ? 'fresh' : 'stale';
+    var age = formatAggregateScopeAge_(allAggMeta && allAggMeta.fetchedAt || 0);
+    var currentKey = buildAggregateScopeKey_({
+        unitId: allAggMeta && allAggMeta.unitId || '',
+        subject: allAggMeta && allAggMeta.subject || '',
+    });
+    var viewKey = buildAggregateScopeKey_(opts);
+    var waiting = aggregateScopeFetchKey ? " / fetch\u4E2D ".concat(aggregateScopeFetchKey) : '';
+    return "scope ".concat(scope, " (").concat(currentKey, ") / rows ").concat(rowCount, " / ").concat(freshness, " / ").concat(age, " / view ").concat(viewKey).concat(waiting);
+}
+function updateAggregateDebug_(options, rows) {
+    var box = document.getElementById('aggDebug');
+    if (!box)
+        return;
+    var count = Array.isArray(rows) ? rows.length : 0;
+    box.textContent = "\u5358\u5143\u8A18\u9332 ".concat(count, " \u4EF6\u3092\u8868\u793A\u4E2D\u3002").concat(getAggregateScopeDebugText_(options));
+}
+function ensurePortfolioPreloadCache_() {
+    if (!preloadCache.portfolio || typeof preloadCache.portfolio !== 'object') {
+        preloadCache.portfolio = { items: {} };
+    }
+    if (!preloadCache.portfolio.items || typeof preloadCache.portfolio.items !== 'object') {
+        preloadCache.portfolio.items = {};
+    }
+    return preloadCache.portfolio;
+}
+function buildPortfolioCacheKey_(studentNumber, unitId) {
+    return "".concat(String(studentNumber || '').trim(), "::").concat(String(unitId || '').trim() || 'all');
+}
+function sortPortfolioRows_(rows) {
+    return (Array.isArray(rows) ? rows.slice() : []).sort(function (a, b) {
+        var subjectCmp = String(a.subject || '').localeCompare(String(b.subject || ''), 'ja');
+        if (subjectCmp !== 0)
+            return subjectCmp;
+        var unitCmp = String(a.unitName || '').localeCompare(String(b.unitName || ''), 'ja');
+        if (unitCmp !== 0)
+            return unitCmp;
+        var periodCmp = Number(a.period || 0) - Number(b.period || 0);
+        if (periodCmp !== 0)
+            return periodCmp;
+        return String(a.date || '').localeCompare(String(b.date || ''));
+    });
+}
+function buildPortfolioRowsFromAggregate_(rows, studentNumber, unitId) {
+    var normalizedStudent = String(studentNumber || '').trim();
+    var normalizedUnit = String(unitId || '').trim();
+    if (!normalizedStudent || !Array.isArray(rows) || !rows.length)
+        return [];
+    return sortPortfolioRows_(rows
+        .filter(function (row) {
+        if (String(row && row.num || '').trim() !== normalizedStudent)
+            return false;
+        if (normalizedUnit && String(row && row.unitId || '').trim() !== normalizedUnit)
+            return false;
+        return true;
+    })
+        .map(function (row) { return ({
+        unitName: row && row.unitName || '',
+        subject: row && row.subject || '',
+        period: row && row.period || '',
+        num: row && row.num || '',
+        name: row && row.name || '',
+        date: row && row.date || '',
+        review: row && row.review || '',
+        score: row && row.score || 0,
+        rank: row && row.rank || '',
+        medal: row && row.medal || '',
+        comment: row && row.comment || '',
+        unitId: row && row.unitId || '',
+        answersMap: row && row.answersMap || {},
+        fields: Array.isArray(row && row.fields) ? row.fields : [],
+    }); }));
+}
+function readPortfolioCache_(studentNumber, unitId) {
+    var normalizedStudent = String(studentNumber || '').trim();
+    if (!normalizedStudent)
+        return null;
+    if (Array.isArray(allAggData) && allAggData.length) {
+        var aggregateRows = buildPortfolioRowsFromAggregate_(allAggData, normalizedStudent, unitId);
+        if (aggregateRows.length) {
+            return {
+                rows: aggregateRows,
+                source: hasFreshFullAggregateData_() ? 'aggregate-live' : 'aggregate-cache',
+            };
+        }
+    }
+    var cacheStore = ensurePortfolioPreloadCache_().items;
+    var cached = cacheStore[buildPortfolioCacheKey_(normalizedStudent, unitId)];
+    if (!cached || !Array.isArray(cached.rows) || !cached.rows.length)
+        return null;
+    return {
+        rows: sortPortfolioRows_(cached.rows),
+        source: 'portfolio-cache',
+    };
+}
+function writePortfolioCache_(studentNumber, unitId, rows) {
+    var normalizedStudent = String(studentNumber || '').trim();
+    if (!normalizedStudent)
+        return;
+    var items = ensurePortfolioPreloadCache_().items;
+    var key = buildPortfolioCacheKey_(normalizedStudent, unitId);
+    items[key] = {
+        savedAt: Date.now(),
+        rows: sortPortfolioRows_(rows),
+    };
+    var keys = Object.keys(items).sort(function (a, b) { return Number(items[b] && items[b].savedAt || 0) - Number(items[a] && items[a].savedAt || 0); });
+    keys.slice(PORTFOLIO_CACHE_LIMIT).forEach(function (oldKey) { return delete items[oldKey]; });
+    persistTeacherPreloadCache_();
+}
+function ensureReportTabInitData_(options) {
+    var opts = options || {};
     var hasImmediateRoster = Array.isArray(rosterEntries) && rosterEntries.length > 0;
     var hasImmediateUnits = Array.isArray(allUnits) && allUnits.length > 0;
     if (!hasImmediateRoster && preloadCache.roster && Array.isArray(preloadCache.roster.roster)) {
@@ -4858,35 +5407,68 @@ function loadPortfolioTab() {
         hasImmediateRoster = rosterEntries.length > 0;
     }
     if (hasImmediateRoster || hasImmediateUnits) {
+        if (typeof opts.onImmediate === 'function') {
+            opts.onImmediate({
+                hasImmediateRoster: hasImmediateRoster,
+                hasImmediateUnits: hasImmediateUnits,
+            });
+        }
+    }
+    if (hasImmediateRoster && hasImmediateUnits)
+        return false;
+    google.script.run
+        .withSuccessHandler(function (d) {
+        allUnits = d.units || [];
+        rosterEntries = (d.roster || []).filter(function (row) { return row.active !== false; });
+        teacherBuild = d.build || teacherBuild || '';
+        if (typeof opts.onSuccess === 'function')
+            opts.onSuccess(d || {});
+    })
+        .withFailureHandler(function (err) {
+        if (typeof opts.onFailure === 'function')
+            opts.onFailure(err);
+    })
+        .teacherInit();
+    return true;
+}
+function loadPortfolioTab() {
+    var body = document.getElementById('portfolioBody');
+    syncTeacherAiUi_();
+    ensurePromptPreload();
+    var requestSeq = ++portfolioInitRequestSeq;
+    var hasImmediateRoster = Array.isArray(rosterEntries) && rosterEntries.length > 0;
+    var hasImmediateUnits = Array.isArray(allUnits) && allUnits.length > 0;
+    if (hasImmediateRoster || hasImmediateUnits) {
         renderPortfolioSelectors();
         loadPortfolioData();
     }
     else {
         body.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:14px;"><span class="spinner"></span></td></tr>';
     }
-    google.script.run
-        .withSuccessHandler(function (d) {
-        if (requestSeq !== portfolioInitRequestSeq)
-            return;
-        allUnits = d.units || [];
-        rosterEntries = (d.roster || []).filter(function (row) { return row.active !== false; });
-        teacherBuild = d.build || teacherBuild || '';
-        renderPortfolioSelectors();
-        loadPortfolioData();
-    })
-        .withFailureHandler(function (err) {
-        if (requestSeq !== portfolioInitRequestSeq)
-            return;
-        var message = (err && err.message) || err || 'ポートフォリオの読み込みに失敗しました';
-        var debugBox = document.getElementById('portfolioDebug');
-        if (hasImmediateRoster || hasImmediateUnits) {
-            if (debugBox)
-                debugBox.textContent = "\u30DD\u30FC\u30C8\u30D5\u30A9\u30EA\u30AA\u521D\u671F\u30C7\u30FC\u30BF\u306E\u66F4\u65B0\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat(message);
-            return;
-        }
-        body.innerHTML = "<tr><td colspan=\"6\" style=\"text-align:center;padding:14px;color:#C62828;\">".concat(esc(message), "</td></tr>");
-    })
-        .teacherInit();
+    ensureReportTabInitData_({
+        onImmediate: function (state) {
+            hasImmediateRoster = Boolean(state && state.hasImmediateRoster);
+            hasImmediateUnits = Boolean(state && state.hasImmediateUnits);
+        },
+        onSuccess: function (d) {
+            if (requestSeq !== portfolioInitRequestSeq)
+                return;
+            renderPortfolioSelectors();
+            loadPortfolioData();
+        },
+        onFailure: function (err) {
+            if (requestSeq !== portfolioInitRequestSeq)
+                return;
+            var message = (err && err.message) || err || 'ポートフォリオの読み込みに失敗しました';
+            var debugBox = document.getElementById('portfolioDebug');
+            if (hasImmediateRoster || hasImmediateUnits) {
+                if (debugBox)
+                    debugBox.textContent = "\u30DD\u30FC\u30C8\u30D5\u30A9\u30EA\u30AA\u521D\u671F\u30C7\u30FC\u30BF\u306E\u66F4\u65B0\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat(message);
+                return;
+            }
+            body.innerHTML = "<tr><td colspan=\"6\" style=\"text-align:center;padding:14px;color:#C62828;\">".concat(esc(message), "</td></tr>");
+        },
+    });
 }
 function renderPortfolioSelectors() {
     var studentSel = document.getElementById('pfStudent');
@@ -4909,6 +5491,8 @@ function loadPortfolioData() {
     var cards = document.getElementById('portfolioCards');
     var debugBox = document.getElementById('portfolioDebug');
     var requestSeq = ++portfolioDataRequestSeq;
+    var immediate = readPortfolioCache_(studentNumber, unitId);
+    var renderedImmediate = false;
     if (debugBox && !String(debugBox.dataset.baseText || '').trim()) {
         debugBox.dataset.baseText = '児童を選ぶと取得件数を表示します。';
     }
@@ -4920,9 +5504,24 @@ function loadPortfolioData() {
         debugBox.textContent = '児童を選ぶと取得件数を表示します。';
         return;
     }
-    body.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:14px;"><span class="spinner"></span></td></tr>';
-    cards.innerHTML = '<div class="portfolio-empty"><span class="spinner"></span></div>';
-    debugBox.textContent = '取得状況を確認中…';
+    if (immediate && immediate.rows.length) {
+        portfolioRows = immediate.rows.slice();
+        renderPortfolioRows();
+        renderedImmediate = true;
+        debugBox.textContent = (immediate.source === 'aggregate-cache' || immediate.source === 'aggregate-live')
+            ? '集約済みデータを先に表示しています。最新状態を確認中…'
+            : '前回表示キャッシュを先に表示しています。最新状態を確認中…';
+        if (immediate.source === 'aggregate-live') {
+            writePortfolioCache_(studentNumber, unitId, portfolioRows);
+            debugBox.textContent = '今の集約データをそのまま表示しています。';
+            return;
+        }
+    }
+    else {
+        body.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:14px;"><span class="spinner"></span></td></tr>';
+        cards.innerHTML = '<div class="portfolio-empty"><span class="spinner"></span></div>';
+        debugBox.textContent = '取得状況を確認中…';
+    }
     google.script.run
         .withSuccessHandler(function (raw) {
         if (requestSeq !== portfolioDataRequestSeq)
@@ -4932,20 +5531,30 @@ function loadPortfolioData() {
             res = raw ? JSON.parse(raw) : null;
         }
         catch (e) {
+            if (renderedImmediate) {
+                debugBox.textContent = "\u6700\u65B0\u53D6\u5F97\u306E\u89E3\u6790\u306B\u5931\u6557\u3057\u305F\u305F\u3081\u3001\u5148\u306B\u8868\u793A\u3057\u305F\u5185\u5BB9\u3092\u305D\u306E\u307E\u307E\u4F7F\u3063\u3066\u3044\u307E\u3059: ".concat(e.message || e);
+                return;
+            }
             debugBox.textContent = "JSON parse error: ".concat(e.message || e, " / raw=").concat(String(raw).slice(0, 280));
             portfolioRows = [];
             renderPortfolioRows();
             return;
         }
         if (res && res.ok === false && res.error) {
+            if (renderedImmediate) {
+                debugBox.textContent = "\u6700\u65B0\u53D6\u5F97\u306B\u5931\u6557\u3057\u305F\u305F\u3081\u3001\u5148\u306B\u8868\u793A\u3057\u305F\u5185\u5BB9\u3092\u305D\u306E\u307E\u307E\u4F7F\u3063\u3066\u3044\u307E\u3059: ".concat(res.error);
+                return;
+            }
             debugBox.textContent = "portfolio error: ".concat(res.error, " / build=").concat(res.build || teacherBuild || 'unknown');
             portfolioRows = [];
             renderPortfolioRows();
             return;
         }
         portfolioRows = res && res.rows || [];
+        writePortfolioCache_(studentNumber, unitId, portfolioRows);
         if (res && res.debug) {
             res.debug.build = res.build || '';
+            res.debug.responseReadMeta = res.responseReadMeta || null;
             renderPortfolioDebug(res.debug);
         }
         else {
@@ -4956,13 +5565,19 @@ function loadPortfolioData() {
         .withFailureHandler(function (err) {
         if (requestSeq !== portfolioDataRequestSeq)
             return;
+        var message = (err && err.message) || err || 'ポートフォリオデータの読み込みに失敗しました';
+        if (renderedImmediate) {
+            debugBox.textContent = "\u6700\u65B0\u53D6\u5F97\u306B\u5931\u6557\u3057\u305F\u305F\u3081\u3001\u5148\u306B\u8868\u793A\u3057\u305F\u5185\u5BB9\u3092\u305D\u306E\u307E\u307E\u4F7F\u3063\u3066\u3044\u307E\u3059: ".concat(message);
+            return;
+        }
         debugBox.textContent = 'デバッグ情報の取得に失敗しました。';
-        body.innerHTML = "<tr><td colspan=\"6\" style=\"text-align:center;padding:14px;color:#C62828;\">".concat(esc((err && err.message) || err || 'ポートフォリオデータの読み込みに失敗しました'), "</td></tr>");
+        body.innerHTML = "<tr><td colspan=\"6\" style=\"text-align:center;padding:14px;color:#C62828;\">".concat(esc(message), "</td></tr>");
         cards.innerHTML = '<div class="portfolio-empty">ポートフォリオデータの読み込みに失敗しました</div>';
     })
         .getStudentPortfolioDataJson(studentNumber, unitId || null);
 }
 function renderPortfolioDebug(debug) {
+    var _a, _b;
     var box = document.getElementById('portfolioDebug');
     if (!debug) {
         box.innerHTML = "<div class=\"debug-summary\">\u53D6\u5F97\u4EF6\u6570\u3092\u8868\u793A\u3067\u304D\u307E\u305B\u3093\u3067\u3057\u305F\u3002</div><details><summary>\u8A73\u7D30\u3092\u898B\u308B</summary><code>teacherInit build=".concat(esc(teacherBuild || 'unknown'), "</code></details>");
@@ -4971,7 +5586,10 @@ function renderPortfolioDebug(debug) {
     var sample = (debug.sampleMatchedRows || [])
         .map(function (row, idx) { return "".concat(idx + 1, ". ").concat(row.subject, "/").concat(row.unitName, "/").concat(row.period, "\u6642\u9593\u76EE\n   ").concat(row.date, "\n   ").concat(row.preview); })
         .join('\n\n');
-    var summary = "\u8A18\u9332 ".concat(debug.responseCount || 0, "\u4EF6 / \u5150\u7AE5\u4E00\u81F4 ").concat(debug.matchedStudentCount || 0, "\u4EF6 / \u5358\u5143\u4E00\u81F4 ").concat(debug.matchedUnitCount || 0, "\u4EF6");
+    var readMeta = debug.responseReadMeta && typeof debug.responseReadMeta === 'object'
+        ? " / source ".concat(String(debug.responseReadMeta.mode || 'master_only'), " / master ").concat(Number((_b = (_a = debug.responseReadMeta.estimatedMasterOnlyCount) !== null && _a !== void 0 ? _a : debug.responseReadMeta.masterCount) !== null && _b !== void 0 ? _b : 0))
+        : '';
+    var summary = "\u8A18\u9332 ".concat(debug.responseCount || 0, "\u4EF6 / \u5150\u7AE5\u4E00\u81F4 ").concat(debug.matchedStudentCount || 0, "\u4EF6 / \u5358\u5143\u4E00\u81F4 ").concat(debug.matchedUnitCount || 0, "\u4EF6").concat(readMeta);
     var buildLine = "teacher=".concat(teacherBuild || 'unknown', " / portfolio=").concat(debug.build || 'unknown');
     box.innerHTML =
         "<div class=\"debug-summary\">".concat(esc(summary), "</div><details><summary>\u8A73\u7D30\u3092\u898B\u308B</summary><code>").concat(esc(buildLine)).concat(sample ? "\n\n".concat(sample) : '', "</code></details>");
@@ -5031,49 +5649,92 @@ function generatePortfolioSummary() {
 function loadAgg() {
     syncTeacherAiUi_();
     ensurePromptPreload();
-    google.script.run.withSuccessHandler(function (d) {
-        allUnits = d.units || [];
-        rosterEntries = (d.roster || []).filter(function (row) { return row.active !== false; });
+    var renderedImmediate = false;
+    if (hasFreshAggregateData_()) {
+        filterAgg();
+        filterGrading();
+        renderedImmediate = true;
+    }
+    else {
+        var immediateRows = readAggregatePreloadCache_();
+        if (Array.isArray(immediateRows) && immediateRows.length) {
+            renderAggregateDataSet_(immediateRows, {
+                scope: 'preload',
+                fetchedAt: Date.now(),
+            });
+            renderedImmediate = true;
+        }
+    }
+    ensureReportTabInitData_({
+        onSuccess: function () {
+            populateUnitSelects();
+            populateGradingSelects();
+        },
+        onFailure: function () { },
+    });
+    if ((Array.isArray(allUnits) && allUnits.length) || (Array.isArray(rosterEntries) && rosterEntries.length)) {
         populateUnitSelects();
         populateGradingSelects();
-    }).teacherInit();
-    google.script.run
-        .withSuccessHandler(function (raw) {
-        var res = null;
-        try {
-            res = raw ? JSON.parse(raw) : null;
-        }
-        catch (e) {
+    }
+    var initialFetch = getInitialAggregateFetchOptions_(renderedImmediate);
+    if (initialFetch && initialFetch.unitId && isAggregateRecordPaneActive_()) {
+        var aggUnitSel = document.getElementById('aggUnit');
+        if (aggUnitSel)
+            aggUnitSel.value = initialFetch.unitId;
+    }
+    if (initialFetch && hasFreshAggregateScopeFor_(initialFetch)) {
+        return;
+    }
+    if (!initialFetch && hasFreshFullAggregateData_()) {
+        return;
+    }
+    if (initialFetch) {
+        requestAggregateScope_(initialFetch, {
+            onParseError: function () {
+                showToast('単元記録の読み込みに失敗しました', { tone: 'error' });
+            },
+            onError: function (error) {
+                showToast("\u5358\u5143\u8A18\u9332\u306E\u8AAD\u307F\u8FBC\u307F\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat(error), { tone: 'error', duration: 4200 });
+            },
+            onFailure: function (err) {
+                showToast("\u5358\u5143\u8A18\u9332\u306E\u8AAD\u307F\u8FBC\u307F\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat((err && err.message) || err || 'unknown'), { tone: 'error', duration: 4200 });
+            },
+        });
+        return;
+    }
+    requestAggregateScope_(null, {
+        onParseError: function () {
             showToast('単元記録の読み込みに失敗しました', { tone: 'error' });
-            allAggData = [];
-            filterAgg();
-            return;
-        }
-        if (res && res.ok === false && res.error) {
-            showToast("\u5358\u5143\u8A18\u9332\u306E\u8AAD\u307F\u8FBC\u307F\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat(res.error), { tone: 'error', duration: 4200 });
-            allAggData = [];
-            filterAgg();
-            return;
-        }
-        allAggData = res && res.rows || [];
-        filterAgg();
-        filterGrading();
-    })
-        .withFailureHandler(function (err) {
-        showToast("\u5358\u5143\u8A18\u9332\u306E\u8AAD\u307F\u8FBC\u307F\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat((err && err.message) || err || 'unknown'), { tone: 'error', duration: 4200 });
-        var gradeDebug = document.getElementById('gradeDebug');
-        if (gradeDebug)
-            gradeDebug.textContent = "\u8A55\u5B9A\u30C7\u30FC\u30BF\u306E\u8AAD\u307F\u8FBC\u307F\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat((err && err.message) || err || 'unknown');
-        allAggData = [];
-        filterAgg();
-        filterGrading();
-    })
-        .getAggregateDataJson(null);
+            if (!renderedImmediate)
+                renderAggregateDataSet_([]);
+        },
+        onError: function (error) {
+            showToast("\u5358\u5143\u8A18\u9332\u306E\u8AAD\u307F\u8FBC\u307F\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat(error), { tone: 'error', duration: 4200 });
+            if (!renderedImmediate)
+                renderAggregateDataSet_([]);
+        },
+        onFailure: function (err) {
+            showToast("\u5358\u5143\u8A18\u9332\u306E\u8AAD\u307F\u8FBC\u307F\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat((err && err.message) || err || 'unknown'), { tone: 'error', duration: 4200 });
+            var gradeDebug = document.getElementById('gradeDebug');
+            if (gradeDebug)
+                gradeDebug.textContent = "\u8A55\u5B9A\u30C7\u30FC\u30BF\u306E\u8AAD\u307F\u8FBC\u307F\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat((err && err.message) || err || 'unknown');
+            if (!renderedImmediate)
+                renderAggregateDataSet_([]);
+        },
+    });
 }
 function filterAgg() {
     populateAggUnitSelect();
     var subject = document.getElementById('aggSubject').value;
     var unitId = document.getElementById('aggUnit').value;
+    var desiredScope = { subject: subject, unitId: unitId };
+    if (isAggregateRecordPaneActive_() && !hasFreshAggregateScopeFor_(desiredScope)) {
+        requestAggregateScope_(desiredScope, {
+            onError: function () { },
+            onParseError: function () { },
+            onFailure: function () { },
+        });
+    }
     var period = document.getElementById('aggPeriod').value;
     var preset = (document.getElementById('aggPreset') || {}).value || 'standard';
     var showComment = Boolean((document.getElementById('aggShowComment') || {}).checked);
@@ -5103,6 +5764,7 @@ function filterAgg() {
     var head = document.getElementById('aggHead');
     var fieldMeta = resolveAggPresetFields(rows, preset, showComment);
     head.innerHTML = buildAggHeaderHtml(fieldMeta);
+    updateAggregateDebug_(desiredScope, rows);
     if (!rows.length) {
         renderAggSummary([]);
         var emptyCols = (5 + fieldMeta.fields.length + 1);
@@ -5163,6 +5825,14 @@ function filterGrading() {
     var unitId = (document.getElementById('gradeUnit') || {}).value || '';
     var period = (document.getElementById('gradePeriod') || {}).value || '';
     var gradingCategory = (document.getElementById('gradeCategory') || {}).value || 'thinking';
+    var desiredScope = mode === 'subject' ? (subject ? { subject: subject } : null) : (unitId ? { unitId: unitId } : null);
+    if (isGradingRecordPaneActive_() && desiredScope && !hasFreshAggregateScopeFor_(desiredScope)) {
+        requestAggregateScope_(desiredScope, {
+            onError: function () { },
+            onParseError: function () { },
+            onFailure: function () { },
+        });
+    }
     var rows = allAggData.filter(function (r) {
         if (subject && String(r.subject || '') !== String(subject))
             return false;
@@ -5198,8 +5868,8 @@ function filterGrading() {
     gradeHead.innerHTML = buildAggProcessingHeaderHtml(periods, gradingCategory);
     if (gradeDebug) {
         gradeDebug.textContent = unitId
-            ? "".concat(FIELD_CATEGORY_LABELS[gradingCategory], " \u306E\u8A55\u5B9A\u7528\u306B ").concat(rows.length, " \u4EF6\u306E\u8A18\u9332\u3092\u8868\u793A\u4E2D\u3067\u3059\u3002")
-            : '評定する単元を選択してください。';
+            ? "".concat(FIELD_CATEGORY_LABELS[gradingCategory], " \u306E\u8A55\u5B9A\u7528\u306B ").concat(rows.length, " \u4EF6\u306E\u8A18\u9332\u3092\u8868\u793A\u4E2D\u3067\u3059\u3002 / ").concat(getAggregateScopeDebugText_(desiredScope || {}))
+            : "\u8A55\u5B9A\u3059\u308B\u5358\u5143\u3092\u9078\u629E\u3057\u3066\u304F\u3060\u3055\u3044\u3002 / ".concat(getAggregateScopeDebugText_(desiredScope || {}));
     }
     if (!unitId) {
         gradeBody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;padding:14px;">成績入力をするには単元を選択してください</td></tr>';
@@ -5324,7 +5994,7 @@ function renderGradingSubjectMatrix(subject, gradingCategory) {
         gradeBody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#999;padding:14px;">教科を選択してください</td></tr>';
         gradeCards.innerHTML = '<div class="portfolio-empty">教科を選択してください</div>';
         if (gradeDebug)
-            gradeDebug.textContent = '教科ごとの一覧入力では、まず教科を選択してください。';
+            gradeDebug.textContent = "\u6559\u79D1\u3054\u3068\u306E\u4E00\u89A7\u5165\u529B\u3067\u306F\u3001\u307E\u305A\u6559\u79D1\u3092\u9078\u629E\u3057\u3066\u304F\u3060\u3055\u3044\u3002 / ".concat(getAggregateScopeDebugText_({ subject: '' }));
         return;
     }
     if (!units.length) {
@@ -5332,13 +6002,13 @@ function renderGradingSubjectMatrix(subject, gradingCategory) {
         gradeBody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#999;padding:14px;">この教科の単元がありません</td></tr>';
         gradeCards.innerHTML = '<div class="portfolio-empty">この教科の単元がありません</div>';
         if (gradeDebug)
-            gradeDebug.textContent = "".concat(subject, " \u306E\u5358\u5143\u304C\u307E\u3060\u3042\u308A\u307E\u305B\u3093\u3002");
+            gradeDebug.textContent = "".concat(subject, " \u306E\u5358\u5143\u304C\u307E\u3060\u3042\u308A\u307E\u305B\u3093\u3002 / ").concat(getAggregateScopeDebugText_({ subject: subject }));
         return;
     }
     var rows = buildGradingSubjectRows(subject, gradingCategory);
     gradeHead.innerHTML = "<tr><th>#</th><th>\u306A\u307E\u3048</th>".concat(units.map(function (unit) { return "<th>".concat(esc(unit.name || ''), "</th>"); }).join(''), "</tr>");
     if (gradeDebug) {
-        gradeDebug.textContent = "".concat(subject, " \u306E ").concat(units.length, " \u5358\u5143\u3092\u6A2A\u4E26\u3073\u8868\u793A\u3057\u3066\u3044\u307E\u3059\u3002").concat(FIELD_CATEGORY_LABELS[gradingCategory], " \u3092\u4E00\u89A7\u3067\u5165\u529B\u3067\u304D\u307E\u3059\u3002");
+        gradeDebug.textContent = "".concat(subject, " \u306E ").concat(units.length, " \u5358\u5143\u3092\u6A2A\u4E26\u3073\u8868\u793A\u3057\u3066\u3044\u307E\u3059\u3002").concat(FIELD_CATEGORY_LABELS[gradingCategory], " \u3092\u4E00\u89A7\u3067\u5165\u529B\u3067\u304D\u307E\u3059\u3002 / ").concat(getAggregateScopeDebugText_({ subject: subject }));
     }
     if (!rows.length) {
         gradeBody.innerHTML = "<tr><td colspan=\"".concat(2 + units.length, "\" style=\"text-align:center;color:#999;padding:14px;\">\u540D\u7C3F\u30C7\u30FC\u30BF\u304C\u3042\u308A\u307E\u305B\u3093</td></tr>");
