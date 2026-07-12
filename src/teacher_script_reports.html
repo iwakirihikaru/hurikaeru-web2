@@ -3,6 +3,9 @@ let portfolioInitRequestSeq=0;
 let portfolioDataRequestSeq=0;
 let aggregateLoadRequestSeq=0;
 let aggregateScopeFetchKey='';
+let portfolioFetchKey='';
+let reportTabInitInFlight=false;
+let reportTabInitWaiters=[];
 const PORTFOLIO_CACHE_LIMIT=16;
 const AGGREGATE_PRELOAD_ROW_LIMIT=800;
 const AGGREGATE_LIVE_FRESH_MS=60*1000;
@@ -350,6 +353,12 @@ function ensureReportTabInitData_(options){
     }
   }
   if(hasImmediateRoster && hasImmediateUnits) return false;
+  if(reportTabInitInFlight){
+    reportTabInitWaiters.push(opts);
+    return true;
+  }
+  reportTabInitInFlight=true;
+  reportTabInitWaiters=[opts];
   google.script.run
     .withSuccessHandler(d=>{
       if(Array.isArray(d && d.units)){
@@ -361,15 +370,24 @@ function ensureReportTabInitData_(options){
         persistTeacherPreloadCache_();
       }
       teacherBuild=d.build||teacherBuild||'';
-      if(typeof opts.onSuccess==='function') opts.onSuccess(d||{});
+      const waiters=reportTabInitWaiters.slice();
+      reportTabInitWaiters=[];
+      reportTabInitInFlight=false;
+      waiters.forEach(waiter=>{
+        if(typeof waiter.onSuccess==='function') waiter.onSuccess(d||{});
+      });
     })
     .withFailureHandler(err=>{
-      if(typeof opts.onFailure==='function') opts.onFailure(err);
+      const waiters=reportTabInitWaiters.slice();
+      reportTabInitWaiters=[];
+      reportTabInitInFlight=false;
+      waiters.forEach(waiter=>{
+        if(typeof waiter.onFailure==='function') waiter.onFailure(err);
+      });
     })
     .teacherInit();
   return true;
 }
-
 function loadPortfolioTab(){
   const body=document.getElementById('portfolioBody');
   syncTeacherAiUi_();
@@ -434,7 +452,7 @@ function loadPortfolioData(){
   const body=document.getElementById('portfolioBody');
   const cards=document.getElementById('portfolioCards');
   const debugBox=document.getElementById('portfolioDebug');
-  const requestSeq=++portfolioDataRequestSeq;
+  const requestKey=buildPortfolioCacheKey_(studentNumber, unitId);
   const immediate=readPortfolioCache_(studentNumber, unitId);
   let renderedImmediate=false;
   if(debugBox && !String(debugBox.dataset.baseText||'').trim()){
@@ -442,6 +460,7 @@ function loadPortfolioData(){
   }
   document.getElementById('portfolioReport').style.display='none';
   if(!studentNumber){
+    portfolioFetchKey='';
     portfolioRows=[];
     body.innerHTML='<tr><td colspan="6" style="text-align:center;padding:14px;color:#999;">児童を選択してください</td></tr>';
     cards.innerHTML='<div class="portfolio-empty">児童を選択してください</div>';
@@ -464,8 +483,14 @@ function loadPortfolioData(){
     cards.innerHTML='<div class="portfolio-empty"><span class="spinner"></span></div>';
     debugBox.textContent='取得状況を確認中…';
   }
+  if(portfolioFetchKey===requestKey){
+    return;
+  }
+  const requestSeq=++portfolioDataRequestSeq;
+  portfolioFetchKey=requestKey;
   google.script.run
     .withSuccessHandler(raw=>{
+      if(portfolioFetchKey===requestKey) portfolioFetchKey='';
       if(requestSeq!==portfolioDataRequestSeq) return;
       let res=null;
       try{
@@ -502,12 +527,12 @@ function loadPortfolioData(){
       renderPortfolioRows();
     })
     .withFailureHandler(err=>{
+      if(portfolioFetchKey===requestKey) portfolioFetchKey='';
       if(requestSeq!==portfolioDataRequestSeq) return;
       handlePortfolioLoadFailure_(body, cards, debugBox, err, renderedImmediate);
     })
     .getStudentPortfolioDataJson(studentNumber, unitId||null);
 }
-
 function renderPortfolioDebug(debug){
   const box=document.getElementById('portfolioDebug');
   if(!debug){
@@ -1795,6 +1820,9 @@ function escTextArea(s){
 // 初期ロード
 loadStatusInit({ startPolling:true });
 </script>
+
+
+
 
 
 

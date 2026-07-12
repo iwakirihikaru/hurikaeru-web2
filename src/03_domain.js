@@ -92,6 +92,9 @@ function listTeacherAssessments_() {
 }
 
 function listTeacherCommentDrafts_(lessonId) {
+  const normalizedLessonId = String(lessonId || '').trim();
+  const cached = readCachedTeacherCommentDrafts_(normalizedLessonId);
+  if (cached) return cached;
   let sheet = null;
   try {
     sheet = getTenantSpreadsheet_().getSheetByName('TeacherCommentDrafts');
@@ -101,23 +104,10 @@ function listTeacherCommentDrafts_(lessonId) {
   if (!sheet) return [];
   const lastRow = sheet.getLastRow();
   const rows = lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, TEACHER_COMMENT_DRAFT_HEADERS.length).getValues() : [];
-  return rows
-    .map(row => ({
-      draftId: row[0] || '',
-      responseId: row[1] || '',
-      lessonId: row[2] || '',
-      unitId: row[3] || '',
-      studentId: row[4] || '',
-      studentNumber: row[5] || '',
-      draftComment: row[6] || '',
-      draftRank: row[7] || '',
-      draftScore: Number(row[8] || 0),
-      status: row[9] || '',
-      createdAt: row[10] || '',
-      updatedAt: row[11] || '',
-      returnedAt: row[12] || '',
-    }))
-    .filter(item => !lessonId || String(item.lessonId || '') === String(lessonId || ''));
+  const drafts = rows.map(mapTeacherCommentDraftRow_);
+  return cacheTeacherCommentDrafts_(normalizedLessonId, normalizedLessonId
+    ? drafts.filter(item => String(item.lessonId || '') === normalizedLessonId)
+    : drafts);
 }
 
 function saveTeacherAssessment(unitId, studentNumber, patch) {
@@ -273,12 +263,9 @@ function upsertTeacherCommentDrafts_(items, actor) {
   const list = Array.isArray(items) ? items : [];
   if (!list.length) return [];
   const sheet = getTeacherCommentDraftsDbSheet_();
-  const lastRow = sheet.getLastRow();
-  const rows = lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, TEACHER_COMMENT_DRAFT_HEADERS.length).getValues() : [];
-  const indexMap = {};
-  rows.forEach((row, idx) => {
-    indexMap[String(row[1] || '')] = idx;
-  });
+  const draftRows = resolveTeacherCommentDraftRows_(sheet, list);
+  const indexMap = draftRows.indexMap;
+  const rowMap = draftRows.rowMap;
 
   const updates = [];
   const appends = [];
@@ -287,22 +274,9 @@ function upsertTeacherCommentDrafts_(items, actor) {
   list.forEach(item => {
     const responseId = String(item.responseId || '').trim();
     if (!responseId) return;
-    const existingIndex = Object.prototype.hasOwnProperty.call(indexMap, responseId) ? indexMap[responseId] : -1;
-    const before = existingIndex >= 0 ? {
-      draftId: rows[existingIndex][0] || '',
-      responseId: rows[existingIndex][1] || '',
-      lessonId: rows[existingIndex][2] || '',
-      unitId: rows[existingIndex][3] || '',
-      studentId: rows[existingIndex][4] || '',
-      studentNumber: rows[existingIndex][5] || '',
-      draftComment: rows[existingIndex][6] || '',
-      draftRank: rows[existingIndex][7] || '',
-      draftScore: Number(rows[existingIndex][8] || 0),
-      status: rows[existingIndex][9] || '',
-      createdAt: rows[existingIndex][10] || '',
-      updatedAt: rows[existingIndex][11] || '',
-      returnedAt: rows[existingIndex][12] || '',
-    } : null;
+    const existingIndex = Object.prototype.hasOwnProperty.call(indexMap, responseId) ? Number(indexMap[responseId] || 0) : 0;
+    const existingRow = existingIndex > 0 ? rowMap[existingIndex] || null : null;
+    const before = existingRow ? mapTeacherCommentDraftRow_(existingRow) : null;
     const next = {
       draftId: before?.draftId || makeId_('draft'),
       responseId,
@@ -318,7 +292,7 @@ function upsertTeacherCommentDrafts_(items, actor) {
       updatedAt: nowIso_(),
       returnedAt: String(item.returnedAt ?? before?.returnedAt ?? ''),
     };
-    const values = [[
+    const values = [
       next.draftId,
       next.responseId,
       next.lessonId,
@@ -332,11 +306,13 @@ function upsertTeacherCommentDrafts_(items, actor) {
       next.createdAt,
       next.updatedAt,
       next.returnedAt,
-    ]];
-    if (existingIndex >= 0) {
-      updates.push({ rowNumber: existingIndex + 2, values });
+    ];
+    if (existingIndex > 0) {
+      updates.push({ rowNumber: existingIndex, values });
+      rowMap[existingIndex] = values.slice();
+      writeTeacherCommentDraftRowCache_(responseId, existingIndex);
     } else {
-      appends.push(values[0]);
+      appends.push(values);
     }
     auditLogs.push({
       targetType: 'teacherCommentDraft',
@@ -351,8 +327,13 @@ function upsertTeacherCommentDrafts_(items, actor) {
 
   writeSheetRowBatches_(sheet, updates, TEACHER_COMMENT_DRAFT_HEADERS.length);
   if (appends.length) {
-    sheet.getRange(sheet.getLastRow() + 1, 1, appends.length, TEACHER_COMMENT_DRAFT_HEADERS.length).setValues(appends);
+    const startRow = Math.max(2, sheet.getLastRow() + 1);
+    sheet.getRange(startRow, 1, appends.length, TEACHER_COMMENT_DRAFT_HEADERS.length).setValues(appends);
+    appends.forEach((row, idx) => {
+      writeTeacherCommentDraftRowCache_(row[1], startRow + idx);
+    });
   }
+  if (updates.length || appends.length) invalidateTeacherCommentDraftCaches_();
   writeAuditLogs_(auditLogs);
   return saved;
 }
@@ -444,10 +425,13 @@ function listLessonRecords_() {
 function getLessonRecordByUnitPeriod_(unitId, period) {
   const unitKey = String(unitId || '');
   const periodKey = String(period || '');
+  const cached = readCachedLessonRecordByUnitPeriod_(unitKey, periodKey);
+  if (cached) return cached;
   const rows = listLessonRecords_();
   for (let i = 0; i < rows.length; i++) {
     const lesson = rows[i];
     if (String(lesson?.unitId || '') === unitKey && String(lesson?.period || '') === periodKey) {
+      cacheLessonRecord_(lesson);
       return lesson;
     }
   }
@@ -500,6 +484,381 @@ function removeDomainCacheKeys_(keys) {
   });
 }
 
+function getAllUnitsCacheKeys_() {
+  return [
+    'all_units_v1',
+    'all_units_meta_v1',
+    'all_units_master_contract_v1',
+    'all_units_master_contract_meta_v1',
+  ];
+}
+
+function getDomainCacheVersionKey_(scope) {
+  return `domain_cache_version_v1:${String(scope || '').trim()}`;
+}
+
+function readDomainCacheVersion_(scope) {
+  const raw = String(getScriptProperties_().getProperty(getDomainCacheVersionKey_(scope)) || '').trim();
+  const num = Number(raw || 0);
+  return Number.isFinite(num) && num > 0 ? num : 0;
+}
+
+function bumpDomainCacheVersion_(scope) {
+  const props = getScriptProperties_();
+  const key = getDomainCacheVersionKey_(scope);
+  const next = readDomainCacheVersion_(scope) + 1;
+  props.setProperty(key, String(next));
+  return next;
+}
+
+function getLessonRecordByUnitPeriodCacheKey_(unitId, period) {
+  return `lesson_record_unit_period_v1:${readDomainCacheVersion_('lessons')}:${String(unitId || '').trim()}:${String(period || '').trim()}`;
+}
+
+function getLessonRecordByIdCacheKey_(lessonId) {
+  return `lesson_record_by_id_v1:${readDomainCacheVersion_('lessons')}:${String(lessonId || '').trim()}`;
+}
+
+function readCachedLessonRecordByUnitPeriod_(unitId, period) {
+  if (!unitId || !period) return null;
+  const cached = getCachedJson_(getLessonRecordByUnitPeriodCacheKey_(unitId, period));
+  return cached && typeof cached === 'object' ? cached : null;
+}
+
+function readCachedLessonRecordById_(lessonId) {
+  if (!lessonId) return null;
+  const cached = getCachedJson_(getLessonRecordByIdCacheKey_(lessonId));
+  return cached && typeof cached === 'object' ? cached : null;
+}
+
+function cacheLessonRecord_(lesson) {
+  if (!lesson || typeof lesson !== 'object') return lesson || null;
+  const ttlSeconds = 20;
+  const lessonId = String(lesson.lessonId || '').trim();
+  const unitId = String(lesson.unitId || '').trim();
+  const period = String(lesson.period || '').trim();
+  if (lessonId) putCachedJson_(getLessonRecordByIdCacheKey_(lessonId), lesson, ttlSeconds);
+  if (unitId && period) putCachedJson_(getLessonRecordByUnitPeriodCacheKey_(unitId, period), lesson, ttlSeconds);
+  return lesson;
+}
+
+function invalidateLessonRecordCaches_() {
+  return bumpDomainCacheVersion_('lessons');
+}
+
+function getLessonResponsesCacheKey_(lessonId) {
+  return `lesson_responses_v1:${readDomainCacheVersion_('responses')}:${String(lessonId || '').trim()}`;
+}
+
+function getAllResponsesCacheKey_() {
+  return `all_responses_v1:${readDomainCacheVersion_('responses')}:${readDomainCacheVersion_('lessons')}`;
+}
+
+function readCachedLessonResponses_(lessonId) {
+  if (!lessonId) return null;
+  const cached = getCachedJson_(getLessonResponsesCacheKey_(lessonId));
+  return Array.isArray(cached) ? cached : null;
+}
+
+function cacheLessonResponses_(lessonId, responses) {
+  const normalizedLessonId = String(lessonId || '').trim();
+  if (!normalizedLessonId) return Array.isArray(responses) ? responses : [];
+  return putCachedJson_(getLessonResponsesCacheKey_(normalizedLessonId), Array.isArray(responses) ? responses : [], 20);
+}
+
+function getLessonResponseRowIndexKey_(lessonId) {
+  return `response_lesson_rows_v1:${String(lessonId || '').trim()}`;
+}
+
+function readLessonResponseRowIndex_(lessonId) {
+  const key = getLessonResponseRowIndexKey_(lessonId);
+  if (key.endsWith(':')) return [];
+  try {
+    const raw = String(getScriptProperties_().getProperty(key) || '').trim();
+    if (!raw) return [];
+    return raw.split(',')
+      .map(value => Number(String(value || '').trim()))
+      .filter(value => Number.isFinite(value) && value >= 2);
+  } catch (_err) {
+    return [];
+  }
+}
+
+function writeLessonResponseRowIndex_(lessonId, rowNumbers) {
+  const key = getLessonResponseRowIndexKey_(lessonId);
+  if (key.endsWith(':')) return [];
+  const normalized = Array.from(new Set((Array.isArray(rowNumbers) ? rowNumbers : [])
+    .map(value => Number(value || 0))
+    .filter(value => Number.isFinite(value) && value >= 2)))
+    .sort((a, b) => a - b);
+  try {
+    getScriptProperties_().setProperty(key, normalized.join(','));
+  } catch (_err) {}
+  return normalized;
+}
+
+function addLessonResponseRowIndex_(lessonId, rowNumber) {
+  const normalizedLessonId = String(lessonId || '').trim();
+  const normalizedRowNumber = Number(rowNumber || 0);
+  if (!normalizedLessonId || !Number.isFinite(normalizedRowNumber) || normalizedRowNumber < 2) return [];
+  const current = readLessonResponseRowIndex_(normalizedLessonId);
+  if (current.includes(normalizedRowNumber)) return current;
+  current.push(normalizedRowNumber);
+  return writeLessonResponseRowIndex_(normalizedLessonId, current);
+}
+
+function readResponseRowsByRowNumbers_(sheet, rowNumbers) {
+  const normalized = Array.from(new Set((Array.isArray(rowNumbers) ? rowNumbers : [])
+    .map(value => Number(value || 0))
+    .filter(value => Number.isFinite(value) && value >= 2)))
+    .sort((a, b) => a - b);
+  if (!sheet || !normalized.length) return [];
+  const lastRow = sheet.getLastRow();
+  const safeRows = normalized.filter(rowNumber => rowNumber <= lastRow);
+  if (!safeRows.length) return [];
+  const batches = [];
+  let start = safeRows[0];
+  let prev = safeRows[0];
+  for (let i = 1; i < safeRows.length; i++) {
+    const current = safeRows[i];
+    if (current === prev + 1) {
+      prev = current;
+      continue;
+    }
+    batches.push({ start, count: prev - start + 1 });
+    start = current;
+    prev = current;
+  }
+  batches.push({ start, count: prev - start + 1 });
+  const rows = [];
+  batches.forEach(batch => {
+    const values = sheet.getRange(batch.start, 1, batch.count, RESPONSE_HEADERS.length).getValues();
+    values.forEach((row, idx) => {
+      rows.push({
+        rowNumber: batch.start + idx,
+        values: row,
+      });
+    });
+  });
+  return rows;
+}
+
+function sortLessonResponsesForCache_(responses) {
+  return (Array.isArray(responses) ? responses.slice() : []).sort((a, b) => {
+    const numA = Number(a?.studentNumber || 0);
+    const numB = Number(b?.studentNumber || 0);
+    if (numA !== numB) return numA - numB;
+    return String(a?.responseId || '').localeCompare(String(b?.responseId || ''));
+  });
+}
+
+function mergeLessonResponseRowsIntoCache_(rows) {
+  const grouped = {};
+  (Array.isArray(rows) ? rows : []).forEach(row => {
+    if (!row) return;
+    const lessonId = String(row[1] || '').trim();
+    if (!lessonId) return;
+    if (!grouped[lessonId]) grouped[lessonId] = [];
+    grouped[lessonId].push(mapResponseRow_(row));
+  });
+  Object.keys(grouped).forEach(lessonId => {
+    const mergedByKey = {};
+    const cached = readCachedLessonResponses_(lessonId);
+    (Array.isArray(cached) ? cached : []).forEach(item => {
+      const key = String(item?.responseId || '').trim() || `${String(item?.lessonId || '')}:${String(item?.studentId || '')}`;
+      if (!key) return;
+      mergedByKey[key] = item;
+    });
+    grouped[lessonId].forEach(item => {
+      const key = String(item?.responseId || '').trim() || `${String(item?.lessonId || '')}:${String(item?.studentId || '')}`;
+      if (!key) return;
+      mergedByKey[key] = item;
+    });
+    cacheLessonResponses_(lessonId, sortLessonResponsesForCache_(Object.keys(mergedByKey).map(key => mergedByKey[key])));
+  });
+}
+
+function invalidateLessonResponseCaches_() {
+  return bumpDomainCacheVersion_('responses');
+}
+
+function getStudentRowCacheKey_(studentNumber) {
+  return `student_row_v1:${readDomainCacheVersion_('students')}:${String(studentNumber || '').trim()}`;
+}
+
+function readStudentRowCache_(studentNumber) {
+  const key = getStudentRowCacheKey_(studentNumber);
+  if (key.endsWith(':')) return 0;
+  try {
+    const raw = getDomainCache_().get(key);
+    const rowNumber = Number(raw || 0);
+    return Number.isFinite(rowNumber) && rowNumber >= 2 ? rowNumber : 0;
+  } catch (_err) {
+    return 0;
+  }
+}
+
+function writeStudentRowCache_(studentNumber, rowNumber) {
+  const key = getStudentRowCacheKey_(studentNumber);
+  const normalizedRowNumber = Number(rowNumber || 0);
+  if (key.endsWith(':') || !Number.isFinite(normalizedRowNumber) || normalizedRowNumber < 2) return;
+  try {
+    getDomainCache_().put(key, String(normalizedRowNumber), 6 * 60 * 60);
+  } catch (_err) {}
+}
+
+function removeStudentRowCache_(studentNumber) {
+  const key = getStudentRowCacheKey_(studentNumber);
+  if (key.endsWith(':')) return;
+  try {
+    getDomainCache_().remove(key);
+  } catch (_err) {}
+}
+
+function mapStudentDbRow_(row, fallbackName) {
+  return {
+    studentId: row[0] || '',
+    number: row[1],
+    name: fallbackName || row[2] || '',
+  };
+}
+
+function readCachedStudentRow_(studentNumber) {
+  const rowNumber = readStudentRowCache_(studentNumber);
+  if (!rowNumber) return null;
+  const sheet = getStudentsDbSheet_();
+  const lastRow = sheet.getLastRow();
+  if (rowNumber > lastRow) {
+    removeStudentRowCache_(studentNumber);
+    return null;
+  }
+  const row = sheet.getRange(rowNumber, 1, 1, STUDENT_HEADERS.length).getValues()[0] || [];
+  if (String(row[1] || '') === String(studentNumber || '') && row[3] !== false) {
+    return { rowNumber, values: row };
+  }
+  removeStudentRowCache_(studentNumber);
+  return null;
+}
+
+function invalidateStudentCaches_() {
+  removeDomainCacheKeys_(['roster_entries_active_v1', 'roster_entries_all_v1', 'student_entry_options_v1']);
+  return bumpDomainCacheVersion_('students');
+}
+
+function getTeacherCommentDraftRowCacheKey_(responseId) {
+  return `teacher_draft_row_v1:${readDomainCacheVersion_('teacher_comment_drafts')}:${String(responseId || '').trim()}`;
+}
+
+function getTeacherCommentDraftListCacheKey_(lessonId) {
+  return `teacher_draft_list_v1:${readDomainCacheVersion_('teacher_comment_drafts')}:${String(lessonId || '').trim()}`;
+}
+
+function mapTeacherCommentDraftRow_(row) {
+  return {
+    draftId: row[0] || '',
+    responseId: row[1] || '',
+    lessonId: row[2] || '',
+    unitId: row[3] || '',
+    studentId: row[4] || '',
+    studentNumber: row[5] || '',
+    draftComment: row[6] || '',
+    draftRank: row[7] || '',
+    draftScore: Number(row[8] || 0),
+    status: row[9] || '',
+    createdAt: row[10] || '',
+    updatedAt: row[11] || '',
+    returnedAt: row[12] || '',
+  };
+}
+
+function readTeacherCommentDraftRowCache_(responseId) {
+  const key = getTeacherCommentDraftRowCacheKey_(responseId);
+  if (key.endsWith(':')) return 0;
+  try {
+    const raw = getDomainCache_().get(key);
+    const rowNumber = Number(raw || 0);
+    return Number.isFinite(rowNumber) && rowNumber >= 2 ? rowNumber : 0;
+  } catch (_err) {
+    return 0;
+  }
+}
+
+function writeTeacherCommentDraftRowCache_(responseId, rowNumber) {
+  const key = getTeacherCommentDraftRowCacheKey_(responseId);
+  const normalizedRowNumber = Number(rowNumber || 0);
+  if (key.endsWith(':') || !Number.isFinite(normalizedRowNumber) || normalizedRowNumber < 2) return;
+  try {
+    getDomainCache_().put(key, String(normalizedRowNumber), 6 * 60 * 60);
+  } catch (_err) {}
+}
+
+function removeTeacherCommentDraftRowCache_(responseId) {
+  const key = getTeacherCommentDraftRowCacheKey_(responseId);
+  if (key.endsWith(':')) return;
+  try {
+    getDomainCache_().remove(key);
+  } catch (_err) {}
+}
+
+function readCachedTeacherCommentDraftRow_(sheet, responseId) {
+  const rowNumber = readTeacherCommentDraftRowCache_(responseId);
+  if (!rowNumber) return null;
+  const lastRow = sheet.getLastRow();
+  if (rowNumber > lastRow) {
+    removeTeacherCommentDraftRowCache_(responseId);
+    return null;
+  }
+  const row = sheet.getRange(rowNumber, 1, 1, TEACHER_COMMENT_DRAFT_HEADERS.length).getValues()[0] || [];
+  if (String(row[1] || '').trim() === String(responseId || '').trim()) {
+    return { rowNumber, values: row };
+  }
+  removeTeacherCommentDraftRowCache_(responseId);
+  return null;
+}
+
+function readCachedTeacherCommentDrafts_(lessonId) {
+  const cached = getCachedJson_(getTeacherCommentDraftListCacheKey_(lessonId));
+  return Array.isArray(cached) ? cached : null;
+}
+
+function cacheTeacherCommentDrafts_(lessonId, drafts) {
+  return putCachedJson_(getTeacherCommentDraftListCacheKey_(lessonId), Array.isArray(drafts) ? drafts : [], 20);
+}
+
+function invalidateTeacherCommentDraftCaches_() {
+  return bumpDomainCacheVersion_('teacher_comment_drafts');
+}
+
+function resolveTeacherCommentDraftRows_(sheet, items) {
+  const rowMap = {};
+  const indexMap = {};
+  const missingIds = [];
+  (Array.isArray(items) ? items : []).forEach(item => {
+    const responseId = String(item?.responseId || '').trim();
+    if (!responseId || Object.prototype.hasOwnProperty.call(indexMap, responseId)) return;
+    const cached = readCachedTeacherCommentDraftRow_(sheet, responseId);
+    if (cached) {
+      indexMap[responseId] = cached.rowNumber;
+      rowMap[cached.rowNumber] = cached.values;
+      return;
+    }
+    missingIds.push(responseId);
+  });
+  if (missingIds.length) {
+    const lastRow = sheet.getLastRow();
+    const rows = lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, TEACHER_COMMENT_DRAFT_HEADERS.length).getValues() : [];
+    rows.forEach((row, idx) => {
+      const responseId = String(row[1] || '').trim();
+      if (!responseId) return;
+      const rowNumber = idx + 2;
+      indexMap[responseId] = rowNumber;
+      rowMap[rowNumber] = row;
+      writeTeacherCommentDraftRowCache_(responseId, rowNumber);
+    });
+  }
+  return { indexMap, rowMap };
+}
+
 function getRosterEntries_(includeInactive) {
   const cacheKey = includeInactive ? 'roster_entries_all_v1' : 'roster_entries_active_v1';
   const cached = getCachedJson_(cacheKey);
@@ -516,7 +875,7 @@ function getRosterEntries_(includeInactive) {
     }))
     .filter(entry => entry.number > 0)
     .sort((a, b) => a.number - b.number);
-  const baseEntries = getLegacyRosterEntries_();
+  const baseEntries = readRosterSheetEntries_();
   const mergedByNumber = {};
   (baseEntries || []).forEach(entry => {
     if (!(entry && entry.number > 0)) return;
@@ -546,7 +905,7 @@ function getRosterEntries_(includeInactive) {
   return putCachedJson_(cacheKey, mergedEntries, 20);
 }
 
-function getLegacyRosterEntries_() {
+function readRosterSheetEntries_() {
   const roster = getTenantSpreadsheet_().getSheetByName('名簿');
   if (!roster) return buildDefaultRosterEntries_();
   const lastRow = Math.max(roster.getLastRow(), 1);
@@ -599,8 +958,9 @@ function saveRosterEntries(entries) {
       nowIso_(),
     ])));
   }
-  syncLegacyRosterSheet_(normalized.filter(entry => entry.active));
-  removeDomainCacheKeys_(['roster_entries_active_v1', 'roster_entries_all_v1', 'student_entry_options_v1']);
+  writeRosterSheetEntries_(normalized.filter(entry => entry.active));
+  syncRosterEntriesToMaster_(normalized, { updatedBy: 'legacy_saveRosterEntries' });
+  invalidateStudentCaches_();
   return { ok: true };
 }
 
@@ -611,7 +971,7 @@ function clearSheetBody_(sheet, columnCount) {
   }
 }
 
-function syncLegacyRosterSheet_(entries) {
+function writeRosterSheetEntries_(entries) {
   const ss = getTenantSpreadsheet_();
   let sheet = ss.getSheetByName('名簿');
   if (!sheet) sheet = ss.insertSheet('名簿');
@@ -684,12 +1044,49 @@ function extractReviewText_(fields, answersMap) {
 
 function saveResponseSnapshotToDb_(unitId, period, num, studentName, fields, customs, opts) {
   const lesson = opts?.lesson || getOrCreateLesson_(unitId, period);
-  const student = opts?.student || getOrCreateStudent_(num, studentName);
+  let student = opts?.student || getOrCreateStudent_(num, studentName);
   const answersMap = buildAnswersMap_(fields, customs || []);
   const reviewText = extractReviewText_(fields, answersMap);
-  const responseData = opts?.responseData || getResponseSheetData_();
-  const existing = findResponseRow_(lesson.lessonId, student.studentId, responseData);
-  const existingValues = existing ? existing.values : null;
+  let existingResponse = getResponseRecord_(lesson.lessonId, student.studentId);
+  if (!existingResponse) existingResponse = getResponseRecordByStudentNumber_(lesson.lessonId, num);
+  let existing = existingResponse && existingResponse.responseId
+    ? findResponseSheetRowEntryByResponseId_(existingResponse.responseId)
+    : null;
+  const existingStudentId = String(
+    existingResponse?.studentId
+    || ''
+  ).trim();
+  if (existingStudentId && existingStudentId !== String(student.studentId || '').trim()) {
+    student = {
+      studentId: existingStudentId,
+      number: student.number,
+      name: String(
+        existingResponse?.studentName
+        || studentName
+        || student.name
+        || ''
+      ).trim(),
+    };
+    writeAuditLog_({
+      targetType: 'response',
+      targetId: String(existingResponse?.responseId || ''),
+      action: 'response_student_id_relinked',
+      before: {
+        lessonId: lesson.lessonId,
+        studentId: opts?.student?.studentId || '',
+        studentNumber: num,
+      },
+      after: {
+        lessonId: lesson.lessonId,
+        studentId: existingStudentId,
+        studentNumber: num,
+      },
+      actor: 'system',
+    });
+  }
+  const existingValues = existing
+    ? existing.values
+    : (existingResponse ? buildResponseSheetRowValues_(existingResponse) : null);
   const isSubmitting = opts?.submitted === true;
   const shouldQueueStudentAi = isSubmitting
     && opts?.queueStudentAi === true
@@ -768,49 +1165,398 @@ function saveResponseSnapshotToDb_(unitId, period, num, studentName, fields, cus
   };
 }
 
+function isMasterResponseMirrorEnabled_() {
+  const raw = String(getScriptProperties_().getProperty(MASTER_RESPONSE_MIRROR_PROP) || '').trim().toLowerCase();
+  return raw !== 'false' && raw !== '0' && raw !== 'off';
+}
+
+function isMasterResponsePreferredReadEnabled_() {
+  return true;
+}
+
+function mapMasterRecordToResponse_(record) {
+  if (!record || String(record.recordType || '') !== MASTER_RESPONSE_RECORD_TYPE) return null;
+  const payload = parseAnswersJson_(record.payloadJson);
+  if (!payload || typeof payload !== 'object') return null;
+  return {
+    readSource: 'master',
+    responseId: String(payload.responseId || ''),
+    lessonId: String(payload.lessonId || record.lessonId || ''),
+    unitId: String(payload.unitId || ''),
+    studentId: String(payload.studentId || record.studentId || ''),
+    studentNumber: String(payload.studentNumber || record.studentNo || ''),
+    studentName: String(payload.studentName || ''),
+    answersJson: JSON.stringify(payload.answersMap || {}),
+    answersMap: payload.answersMap && typeof payload.answersMap === 'object' ? payload.answersMap : {},
+    reviewText: String(payload.reviewText || ''),
+    submitted: payload.submitted === true,
+    submittedAt: String(payload.submittedAt || ''),
+    score: Number(payload.score || 0),
+    rank: String(payload.rank || ''),
+    medal: String(payload.medal || ''),
+    comment: String(payload.comment || ''),
+    isRewrite: payload.isRewrite === true,
+    updatedAt: String(payload.updatedAt || record.updatedAt || record.createdAt || ''),
+    aiStatus: String(payload.aiStatus || ''),
+    aiQueuedAt: String(payload.aiQueuedAt || ''),
+    aiProcessedAt: String(payload.aiProcessedAt || ''),
+    aiError: String(payload.aiError || ''),
+    aiBatchId: String(payload.aiBatchId || ''),
+    aiRetryCount: Number(payload.aiRetryCount || 0),
+    aiStartedAt: String(payload.aiStartedAt || ''),
+    aiLatencyMs: Number(payload.aiLatencyMs || 0),
+    aiModelLatencyMs: Number(payload.aiModelLatencyMs || 0),
+  };
+}
+
+function compareResponseUpdatedAtDesc_(left, right) {
+  const leftKey = String(left?.updatedAt || left?.aiProcessedAt || left?.submittedAt || '');
+  const rightKey = String(right?.updatedAt || right?.aiProcessedAt || right?.submittedAt || '');
+  if (leftKey === rightKey) {
+    return String(right?.responseId || '').localeCompare(String(left?.responseId || ''));
+  }
+  return leftKey < rightKey ? 1 : -1;
+}
+
+function makeMasterResponseClientSubmitId_(response) {
+  const responseId = String(response?.responseId || '').trim();
+  if (!responseId) return '';
+  return `${responseId}:${String(response?.updatedAt || nowIso_()).trim()}`;
+}
+
+function buildMasterResponseMirrorPayload_(response, source) {
+  const mapped = response && typeof response === 'object' ? response : {};
+  return {
+    recordId: '',
+    recordType: MASTER_RESPONSE_RECORD_TYPE,
+    classId: '',
+    lessonId: mapped.lessonId || '',
+    studentId: mapped.studentId || '',
+    studentNo: mapped.studentNumber || '',
+    clientSubmitId: makeMasterResponseClientSubmitId_(mapped),
+    payload: {
+      responseId: mapped.responseId || '',
+      lessonId: mapped.lessonId || '',
+      unitId: mapped.unitId || '',
+      studentId: mapped.studentId || '',
+      studentNumber: mapped.studentNumber || '',
+      studentName: mapped.studentName || '',
+      answersMap: mapped.answersMap || {},
+      reviewText: mapped.reviewText || '',
+      submitted: mapped.submitted === true,
+      submittedAt: mapped.submittedAt || '',
+      score: Number(mapped.score || 0),
+      rank: mapped.rank || '',
+      medal: mapped.medal || '',
+      comment: mapped.comment || '',
+      isRewrite: mapped.isRewrite === true,
+      updatedAt: mapped.updatedAt || nowIso_(),
+      aiStatus: mapped.aiStatus || '',
+      aiQueuedAt: mapped.aiQueuedAt || '',
+      aiProcessedAt: mapped.aiProcessedAt || '',
+      aiError: mapped.aiError || '',
+      aiBatchId: mapped.aiBatchId || '',
+      aiRetryCount: Number(mapped.aiRetryCount || 0),
+      aiStartedAt: mapped.aiStartedAt || '',
+      aiLatencyMs: Number(mapped.aiLatencyMs || 0),
+      aiModelLatencyMs: Number(mapped.aiModelLatencyMs || 0),
+    },
+    source: String(source || 'legacy_response_dual_write'),
+    deleted: false,
+  };
+}
+
+function buildMasterResponseDeletePayload_(response, source) {
+  const payload = buildMasterResponseMirrorPayload_(response, source);
+  payload.deleted = true;
+  return payload;
+}
+
+function listMasterResponseRecordsForLessonViaContract_(lessonId) {
+  const snapshot = getMasterGasApiRecordSnapshot_(MASTER_GAS_API_APP_ID, {
+    recordType: MASTER_RESPONSE_RECORD_TYPE,
+    lessonId: String(lessonId || '').trim(),
+    includeDeleted: true,
+    limit: MASTER_GAS_API_MAX_LIMIT,
+  });
+  return Array.isArray(snapshot && snapshot.items) ? snapshot.items : [];
+}
+
+function listMasterResponseRecordsForAllViaContract_() {
+  const snapshot = getMasterGasApiRecordSnapshot_(MASTER_GAS_API_APP_ID, {
+    recordType: MASTER_RESPONSE_RECORD_TYPE,
+    includeDeleted: true,
+    limit: MASTER_GAS_API_MAX_LIMIT,
+  });
+  return Array.isArray(snapshot && snapshot.items) ? snapshot.items : [];
+}
+
+function collectLatestMasterResponsesByLesson_(items, lessonId) {
+  const normalizedLessonId = String(lessonId || '').trim();
+  const latestByKey = {};
+  (Array.isArray(items) ? items : []).forEach(item => {
+    const mapped = mapMasterRecordToResponse_(item);
+    if (!mapped) return;
+    const currentLessonId = String(mapped.lessonId || '').trim();
+    if (!currentLessonId) return;
+    if (normalizedLessonId && currentLessonId !== normalizedLessonId) return;
+    const studentKey = String(mapped.studentId || '').trim() || `num:${String(mapped.studentNumber || '').trim()}`;
+    if (!studentKey) return;
+    const compositeKey = `${currentLessonId}::${studentKey}`;
+    const current = latestByKey[compositeKey];
+    if (!current || compareResponseUpdatedAtDesc_(mapped, current.response) < 0) {
+      latestByKey[compositeKey] = {
+        response: mapped,
+        deleted: item.deleted === true,
+      };
+    }
+  });
+  const grouped = {};
+  Object.keys(latestByKey).forEach(key => {
+    const entry = latestByKey[key];
+    if (!entry || entry.deleted === true || !entry.response) return;
+    const currentLessonId = String(entry.response.lessonId || '').trim();
+    if (!currentLessonId) return;
+    if (!grouped[currentLessonId]) grouped[currentLessonId] = [];
+    grouped[currentLessonId].push(entry.response);
+  });
+  Object.keys(grouped).forEach(currentLessonId => {
+    grouped[currentLessonId] = sortLessonResponsesForCache_(grouped[currentLessonId]);
+  });
+  return grouped;
+}
+
+function listMasterResponseRecordsForLesson_(lessonId) {
+  const normalizedLessonId = String(lessonId || '').trim();
+  if (!normalizedLessonId) return [];
+  let items = [];
+  try {
+    items = listMasterResponseRecordsForLessonViaContract_(normalizedLessonId);
+  } catch (_err) {
+    items = readMasterGasApiRows_(MASTER_GAS_API_SHEETS.RECORDS, MASTER_GAS_API_HEADERS.Records)
+      .map(mapMasterGasApiRecordRow_)
+      .filter(item => item.appId === MASTER_GAS_API_APP_ID)
+      .filter(item => item.recordType === MASTER_RESPONSE_RECORD_TYPE)
+      .filter(item => item.lessonId === normalizedLessonId);
+  }
+  const grouped = collectLatestMasterResponsesByLesson_(items, normalizedLessonId);
+  return grouped[normalizedLessonId] || [];
+}
+
+function listMasterResponseRecordsForAll_() {
+  let items = [];
+  try {
+    items = listMasterResponseRecordsForAllViaContract_();
+  } catch (_err) {
+    items = readMasterGasApiRows_(MASTER_GAS_API_SHEETS.RECORDS, MASTER_GAS_API_HEADERS.Records)
+      .map(mapMasterGasApiRecordRow_)
+      .filter(item => item.appId === MASTER_GAS_API_APP_ID)
+      .filter(item => item.recordType === MASTER_RESPONSE_RECORD_TYPE);
+  }
+  const grouped = collectLatestMasterResponsesByLesson_(items);
+  return sortLessonResponsesForCache_(
+    Object.keys(grouped).reduce((list, currentLessonId) => list.concat(grouped[currentLessonId] || []), [])
+  );
+}
+
+function summarizeResponseReadForLesson_(lessonId, responses) {
+  const normalizedLessonId = String(lessonId || '').trim();
+  const masterResponses = normalizedLessonId
+    ? listMasterResponseRecordsForLesson_(normalizedLessonId)
+    : [];
+  const mergedResponses = Array.isArray(responses) ? responses : [];
+  return {
+    scope: 'lesson',
+    lessonId: normalizedLessonId,
+    preferMaster: true,
+    masterCount: masterResponses.length,
+    mergedCount: mergedResponses.length,
+    mode: 'master_only',
+  };
+}
+
+function summarizeResponseReadForAll_(responses) {
+  const list = Array.isArray(responses) ? responses : listAllResponses_();
+  let masterTaggedCount = 0;
+  list.forEach(item => {
+    if (String(item?.readSource || '') !== 'master') return;
+    masterTaggedCount++;
+  });
+  return {
+    scope: 'all',
+    preferMaster: true,
+    totalCount: list.length,
+    estimatedMasterOnlyCount: masterTaggedCount,
+    mode: 'master_only',
+  };
+}
+
+function mirrorResponseRowToMaster_(row, source) {
+  if (!isMasterResponseMirrorEnabled_() || !Array.isArray(row) || !row.length) return null;
+  ensureMasterGasApiSheets_();
+  const mapped = mapResponseRow_(row);
+  const body = { appId: MASTER_GAS_API_APP_ID };
+  const payload = buildMasterResponseMirrorPayload_(mapped, source);
+  const mirrorRow = buildMasterGasApiRecordRow_(payload, body);
+  return appendMasterGasApiRow_(getMasterGasApiSheetByName_(MASTER_GAS_API_SHEETS.RECORDS), mirrorRow);
+}
+
+function mirrorResponseRowsToMaster_(rows, source, action, actor) {
+  if (!isMasterResponseMirrorEnabled_()) return { mirrored: 0, failed: 0 };
+  const list = Array.isArray(rows) ? rows.filter(row => Array.isArray(row) && row.length) : [];
+  if (!list.length) return { mirrored: 0, failed: 0 };
+  const auditLogs = [];
+  let mirrored = 0;
+  list.forEach(row => {
+    try {
+      mirrorResponseRowToMaster_(row, source);
+      mirrored++;
+    } catch (err) {
+      auditLogs.push({
+        targetType: 'response',
+        targetId: String(row[0] || ''),
+        action: action || 'master_mirror_failed_batch',
+        before: null,
+        after: { error: String(err && err.message ? err.message : err) },
+        actor: actor || 'system',
+      });
+    }
+  });
+  if (auditLogs.length) writeAuditLogs_(auditLogs);
+  return { mirrored, failed: auditLogs.length };
+}
+
+function deleteResponseRowFromMaster_(response, source) {
+  if (!isMasterResponseMirrorEnabled_() || !response) return null;
+  ensureMasterGasApiSheets_();
+  const mapped = Array.isArray(response) ? mapResponseRow_(response) : response;
+  const body = { appId: MASTER_GAS_API_APP_ID };
+  const payload = buildMasterResponseDeletePayload_(mapped, source);
+  const mirrorRow = buildMasterGasApiRecordRow_(payload, body);
+  return appendMasterGasApiRow_(getMasterGasApiSheetByName_(MASTER_GAS_API_SHEETS.RECORDS), mirrorRow);
+}
+
+function deleteResponseRowsFromMaster_(responses, source, action, actor) {
+  if (!isMasterResponseMirrorEnabled_()) return { deleted: 0, failed: 0 };
+  const list = Array.isArray(responses) ? responses.filter(Boolean) : [];
+  if (!list.length) return { deleted: 0, failed: 0 };
+  const auditLogs = [];
+  let deleted = 0;
+  list.forEach(response => {
+    const responseId = String(Array.isArray(response) ? response[0] : response?.responseId || '').trim();
+    try {
+      deleteResponseRowFromMaster_(response, source);
+      deleted++;
+    } catch (err) {
+      auditLogs.push({
+        targetType: 'response',
+        targetId: responseId,
+        action: action || 'master_response_delete_failed_batch',
+        before: null,
+        after: { error: String(err && err.message ? err.message : err) },
+        actor: actor || 'system',
+      });
+    }
+  });
+  if (deleted) invalidateLessonResponseCaches_();
+  if (auditLogs.length) writeAuditLogs_(auditLogs);
+  return { deleted, failed: auditLogs.length };
+}
+
 function updateResponseAiResult_(lessonId, studentId, result) {
   const lock = LockService.getDocumentLock();
   if (!lock.tryLock(LOCK_AI_RESULT_MS)) {
     throw new Error('AI結果の保存が混み合っています。少し後にもう一度確認してください。');
   }
   try {
-    const existing = findResponseRow_(lessonId, studentId, getResponseSheetData_());
-    if (!existing) return;
-    const row = existing.values.slice();
-    row[10] = result.score ?? row[10];
-    row[11] = result.rank ?? row[11];
-    row[12] = result.medal ?? row[12];
-    row[13] = result.comment ?? row[13];
-    row[15] = nowIso_();
-    row[16] = result.aiStatus ?? row[16];
-    row[17] = result.aiQueuedAt ?? row[17];
-    row[18] = result.aiProcessedAt ?? row[18];
-    row[19] = result.aiError ?? row[19];
-    row[20] = result.aiBatchId ?? row[20];
-    row[21] = Number(result.aiRetryCount ?? row[21] ?? 0);
-    row[22] = result.aiStartedAt ?? row[22];
-    row[23] = Number(result.aiLatencyMs ?? row[23] ?? 0);
-    row[24] = Number(result.aiModelLatencyMs ?? row[24] ?? 0);
-    getResponsesDbSheet_().getRange(existing.rowNumber, 1, 1, row.length).setValues([row]);
+    const existingResponse = getResponseRecord_(lessonId, studentId);
+    if (!existingResponse) return;
+    const updatedAt = nowIso_();
+    const next = Object.assign({}, existingResponse, {
+      score: result.score ?? existingResponse.score,
+      rank: result.rank ?? existingResponse.rank,
+      medal: result.medal ?? existingResponse.medal,
+      comment: result.comment ?? existingResponse.comment,
+      updatedAt,
+      aiStatus: result.aiStatus ?? existingResponse.aiStatus,
+      aiQueuedAt: result.aiQueuedAt ?? existingResponse.aiQueuedAt,
+      aiProcessedAt: result.aiProcessedAt ?? existingResponse.aiProcessedAt,
+      aiError: result.aiError ?? existingResponse.aiError,
+      aiBatchId: result.aiBatchId ?? existingResponse.aiBatchId,
+      aiRetryCount: Number(result.aiRetryCount ?? existingResponse.aiRetryCount ?? 0),
+      aiStartedAt: result.aiStartedAt ?? existingResponse.aiStartedAt,
+      aiLatencyMs: Number(result.aiLatencyMs ?? existingResponse.aiLatencyMs ?? 0),
+      aiModelLatencyMs: Number(result.aiModelLatencyMs ?? existingResponse.aiModelLatencyMs ?? 0),
+    });
+    const responseSheetRowValues = buildResponseSheetRowValues_(next);
+    mirrorResponseRowsWithAudit_([responseSheetRowValues], 'response_ai_result_update', 'master_mirror_failed_ai_result', 'system');
+    const existingRowEntry = next.responseId ? findResponseSheetRowEntryByResponseId_(next.responseId) : null;
+    if (existingRowEntry) {
+      upsertResponseSheetRowValues_(responseSheetRowValues, existingRowEntry);
+    }
   } finally {
     lock.releaseLock();
   }
 }
 
 function getResponseRecord_(lessonId, studentId) {
-  const existing = findResponseRow_(lessonId, studentId);
-  if (!existing) return null;
-  return mapResponseRow_(existing.values);
+  const responses = listResponsesForLesson_(lessonId);
+  return responses.find(item => String(item.studentId || '') === String(studentId || '')) || null;
+}
+
+function getResponseRecordByStudentNumber_(lessonId, studentNumber) {
+  const normalizedLessonId = String(lessonId || '').trim();
+  const normalizedStudentNumber = String(studentNumber || '').trim();
+  if (!normalizedLessonId || !normalizedStudentNumber) return null;
+  const responses = listResponsesForLesson_(normalizedLessonId);
+  return responses.find(item => String(item.studentNumber || '').trim() === normalizedStudentNumber) || null;
+}
+
+function getResponseRecordByResponseId_(responseId) {
+  const normalizedResponseId = String(responseId || '').trim();
+  if (!normalizedResponseId) return null;
+  const responses = listAllResponses_();
+  return responses.find(item => String(item.responseId || '').trim() === normalizedResponseId) || null;
 }
 
 function listResponsesForLesson_(lessonId) {
-  return getResponseSheetData_().rows
-    .filter(row => String(row[1] || '') === String(lessonId))
-    .map(mapResponseRow_);
+  const normalizedLessonId = String(lessonId || '').trim();
+  if (!normalizedLessonId) return [];
+  const cached = readCachedLessonResponses_(normalizedLessonId);
+  if (cached) return cached;
+  return cacheLessonResponses_(normalizedLessonId, listMasterResponseRecordsForLesson_(normalizedLessonId));
+}
+
+function listAllResponses_() {
+  const cached = getCachedJson_(getAllResponsesCacheKey_());
+  if (Array.isArray(cached)) return cached;
+  const lessonIdSet = {};
+  listLessonRecords_().forEach(lesson => {
+    const lessonId = String(lesson?.lessonId || '').trim();
+    if (lessonId) lessonIdSet[lessonId] = true;
+  });
+  const knownLessonIds = Object.keys(lessonIdSet);
+  const allResponses = listMasterResponseRecordsForAll_().filter(response => {
+    const lessonId = String(response?.lessonId || '').trim();
+    if (!knownLessonIds.length) return true;
+    return lessonIdSet[lessonId] === true;
+  });
+  const grouped = {};
+  allResponses.forEach(response => {
+    const lessonId = String(response?.lessonId || '').trim();
+    if (!lessonId) return;
+    if (!grouped[lessonId]) grouped[lessonId] = [];
+    grouped[lessonId].push(response);
+  });
+  Object.keys(grouped).forEach(lessonId => {
+    cacheLessonResponses_(lessonId, grouped[lessonId]);
+  });
+  return putCachedJson_(getAllResponsesCacheKey_(), sortLessonResponsesForCache_(allResponses), 20);
 }
 
 function mapResponseRow_(row) {
   return {
+    readSource: 'legacy',
     responseId: row[0] || '',
     lessonId: row[1] || '',
     unitId: row[2] || '',
@@ -873,37 +1619,45 @@ function formatDurationShort_(ms) {
 
 function getPreviousReviewFromDb_(unitId, period, studentNumber, unit) {
   if (period <= 1) return '';
-  const previousLesson = getLessonsDbSheet_()
-    .getDataRange()
-    .getValues()
-    .slice(1)
-    .find(row => String(row[1] || '') === String(unitId) && String(row[2] || '') === String(period - 1));
+  const previousLesson = getLessonRecordByUnitPeriod_(unitId, period - 1);
   if (!previousLesson) return '';
-  const student = getOrCreateStudent_(studentNumber, '');
-  const response = getResponseRecord_(previousLesson[0], student.studentId);
+  const response = getResponseRecordByStudentNumber_(previousLesson.lessonId, studentNumber);
   if (response && response.reviewText) return response.reviewText;
   return '';
 }
 
 function getOrCreateStudent_(number, name) {
   const sheet = getStudentsDbSheet_();
-  const lastRow = sheet.getLastRow();
-  const rows = lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, STUDENT_HEADERS.length).getValues() : [];
   const normalizedNumber = String(number || '');
   const normalizedName = String(name || '');
+  const cached = readCachedStudentRow_(normalizedNumber);
+  if (cached) {
+    if (normalizedName && cached.values[2] !== normalizedName) {
+      const updatedAt = nowIso_();
+      sheet.getRange(cached.rowNumber, 3).setValue(normalizedName);
+      sheet.getRange(cached.rowNumber, 6).setValue(updatedAt);
+      cached.values[2] = normalizedName;
+      cached.values[5] = updatedAt;
+      removeDomainCacheKeys_(['roster_entries_active_v1', 'roster_entries_all_v1', 'student_entry_options_v1']);
+    }
+    return mapStudentDbRow_(cached.values, normalizedName);
+  }
 
+  const lastRow = sheet.getLastRow();
+  const rows = lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, STUDENT_HEADERS.length).getValues() : [];
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
     if (String(row[1] || '') === normalizedNumber && row[3] !== false) {
       if (normalizedName && row[2] !== normalizedName) {
+        const updatedAt = nowIso_();
         sheet.getRange(i + 2, 3).setValue(normalizedName);
-        sheet.getRange(i + 2, 6).setValue(nowIso_());
+        sheet.getRange(i + 2, 6).setValue(updatedAt);
+        row[2] = normalizedName;
+        row[5] = updatedAt;
+        removeDomainCacheKeys_(['roster_entries_active_v1', 'roster_entries_all_v1', 'student_entry_options_v1']);
       }
-      return {
-        studentId: row[0],
-        number: row[1],
-        name: normalizedName || row[2] || '',
-      };
+      writeStudentRowCache_(normalizedNumber, i + 2);
+      return mapStudentDbRow_(row, normalizedName);
     }
   }
 
@@ -915,14 +1669,17 @@ function getOrCreateStudent_(number, name) {
     createdAt: nowIso_(),
     updatedAt: nowIso_(),
   };
-  sheet.appendRow([
+  const rowNumber = Math.max(2, sheet.getLastRow() + 1);
+  sheet.getRange(rowNumber, 1, 1, STUDENT_HEADERS.length).setValues([[
     student.studentId,
     student.number,
     student.name,
     student.active,
     student.createdAt,
     student.updatedAt,
-  ]);
+  ]]);
+  invalidateStudentCaches_();
+  writeStudentRowCache_(normalizedNumber, rowNumber);
   return student;
 }
 
@@ -953,7 +1710,8 @@ function getOrCreateLesson_(unitId, period, lessonDate) {
     lesson.updatedAt,
     JSON.stringify(fields),
   ]);
-  return lesson;
+  invalidateLessonRecordCaches_();
+  return cacheLessonRecord_(lesson);
 }
 
 function getResponseSheetData_() {
@@ -965,73 +1723,252 @@ function getResponseSheetData_() {
   return { sheet, rows, lastRow };
 }
 
-function findResponseRow_(lessonId, studentId, responseData) {
-  const rows = (responseData && responseData.rows) || [];
-  const sourceRows = responseData ? rows : getResponseSheetData_().rows;
-  for (let i = 0; i < sourceRows.length; i++) {
-    const row = sourceRows[i];
-    if (String(row[1] || '') === String(lessonId) && String(row[3] || '') === String(studentId)) {
-      return { rowNumber: i + 2, values: row };
+function getResponseSheetRowNumberCacheKey_(lessonId, studentId) {
+  return `response_row_v1:${String(lessonId || '').trim()}:${String(studentId || '').trim()}`;
+}
+
+function getResponseIdSheetRowNumberCacheKey_(responseId) {
+  return `response_id_row_v1:${String(responseId || '').trim()}`;
+}
+
+function getResponseSheetRowNumberCache_() {
+  return CacheService.getScriptCache();
+}
+
+function readResponseSheetRowNumberCache_(lessonId, studentId) {
+  const key = getResponseSheetRowNumberCacheKey_(lessonId, studentId);
+  if (!key.endsWith('::')) {
+    try {
+      const raw = getResponseSheetRowNumberCache_().get(key);
+      const rowNumber = Number(raw || 0);
+      return Number.isFinite(rowNumber) && rowNumber >= 2 ? rowNumber : 0;
+    } catch (_err) {
+      return 0;
     }
   }
+  return 0;
+}
+
+function writeResponseSheetRowNumberCache_(lessonId, studentId, rowNumber) {
+  const key = getResponseSheetRowNumberCacheKey_(lessonId, studentId);
+  const normalizedRowNumber = Number(rowNumber || 0);
+  if (key.endsWith('::') || !Number.isFinite(normalizedRowNumber) || normalizedRowNumber < 2) return;
+  try {
+    getResponseSheetRowNumberCache_().put(key, String(normalizedRowNumber), 6 * 60 * 60);
+  } catch (_err) {}
+}
+
+function readResponseIdSheetRowNumberCache_(responseId) {
+  const key = getResponseIdSheetRowNumberCacheKey_(responseId);
+  if (key.endsWith(':')) return 0;
+  try {
+    const raw = getResponseSheetRowNumberCache_().get(key);
+    const rowNumber = Number(raw || 0);
+    return Number.isFinite(rowNumber) && rowNumber >= 2 ? rowNumber : 0;
+  } catch (_err) {
+    return 0;
+  }
+}
+
+function writeResponseIdSheetRowNumberCache_(responseId, rowNumber) {
+  const key = getResponseIdSheetRowNumberCacheKey_(responseId);
+  const normalizedRowNumber = Number(rowNumber || 0);
+  if (key.endsWith(':') || !Number.isFinite(normalizedRowNumber) || normalizedRowNumber < 2) return;
+  try {
+    getResponseSheetRowNumberCache_().put(key, String(normalizedRowNumber), 6 * 60 * 60);
+  } catch (_err) {}
+}
+
+function removeResponseSheetRowNumberCache_(lessonId, studentId) {
+  const key = getResponseSheetRowNumberCacheKey_(lessonId, studentId);
+  if (key.endsWith('::')) return;
+  try {
+    getResponseSheetRowNumberCache_().remove(key);
+  } catch (_err) {}
+}
+
+function removeResponseIdSheetRowNumberCache_(responseId) {
+  const key = getResponseIdSheetRowNumberCacheKey_(responseId);
+  if (key.endsWith(':')) return;
+  try {
+    getResponseSheetRowNumberCache_().remove(key);
+  } catch (_err) {}
+}
+
+function readCachedResponseSheetRowEntry_(lessonId, studentId) {
+  const rowNumber = readResponseSheetRowNumberCache_(lessonId, studentId);
+  if (!rowNumber) return null;
+  const sheet = getResponsesDbSheet_();
+  const lastRow = sheet.getLastRow();
+  if (rowNumber > lastRow) {
+    removeResponseSheetRowNumberCache_(lessonId, studentId);
+    return null;
+  }
+  const values = sheet.getRange(rowNumber, 1, 1, RESPONSE_HEADERS.length).getValues()[0] || [];
+  if (String(values[1] || '') === String(lessonId) && String(values[3] || '') === String(studentId)) {
+    writeResponseIdSheetRowNumberCache_(values[0], rowNumber);
+    addLessonResponseRowIndex_(values[1], rowNumber);
+    return { rowNumber, values };
+  }
+  removeResponseSheetRowNumberCache_(lessonId, studentId);
   return null;
 }
 
-function findResponseRowByResponseId_(responseId, responseData) {
+function readCachedResponseSheetRowEntryByResponseId_(responseId) {
+  const rowNumber = readResponseIdSheetRowNumberCache_(responseId);
+  if (!rowNumber) return null;
+  const sheet = getResponsesDbSheet_();
+  const lastRow = sheet.getLastRow();
+  if (rowNumber > lastRow) {
+    removeResponseIdSheetRowNumberCache_(responseId);
+    return null;
+  }
+  const values = sheet.getRange(rowNumber, 1, 1, RESPONSE_HEADERS.length).getValues()[0] || [];
+  if (String(values[0] || '').trim() === String(responseId || '').trim()) {
+    writeResponseSheetRowNumberCache_(values[1], values[3], rowNumber);
+    addLessonResponseRowIndex_(values[1], rowNumber);
+    return { rowNumber, values };
+  }
+  removeResponseIdSheetRowNumberCache_(responseId);
+  return null;
+}
+
+function findResponseSheetRowEntryByResponseId_(responseId, responseData) {
   const targetId = String(responseId || '').trim();
   if (!targetId) return null;
+  if (!responseData) {
+    const cached = readCachedResponseSheetRowEntryByResponseId_(targetId);
+    if (cached) return cached;
+  }
   const rows = (responseData && responseData.rows) || [];
   const sourceRows = responseData ? rows : getResponseSheetData_().rows;
   for (let i = 0; i < sourceRows.length; i++) {
     const row = sourceRows[i];
     if (String(row[0] || '').trim() === targetId) {
-      return { rowNumber: i + 2, values: row };
+      const foundRowEntry = { rowNumber: i + 2, values: row };
+      writeResponseIdSheetRowNumberCache_(targetId, foundRowEntry.rowNumber);
+      writeResponseSheetRowNumberCache_(row[1], row[3], foundRowEntry.rowNumber);
+      addLessonResponseRowIndex_(row[1], foundRowEntry.rowNumber);
+      return foundRowEntry;
     }
   }
+  if (!responseData) removeResponseIdSheetRowNumberCache_(targetId);
   return null;
 }
 
-function upsertResponse_(params, existing) {
-  const sheet = getResponsesDbSheet_();
-  const row = [
-    params.responseId || makeId_('response'),
-    params.lessonId || '',
-    params.unitId || '',
-    params.studentId || '',
-    params.studentNumber || '',
-    params.studentName || '',
-    JSON.stringify(params.answersMap || {}),
-    params.reviewText || '',
-    params.submitted === true,
-    params.submittedAt || '',
-    params.score || 0,
-    params.rank || '',
-    params.medal || '',
-    params.comment || '',
-    params.isRewrite === true,
-    nowIso_(),
-    params.aiStatus || '',
-    params.aiQueuedAt || '',
-    params.aiProcessedAt || '',
-    params.aiError || '',
-    params.aiBatchId || '',
-    Number(params.aiRetryCount || 0),
-    params.aiStartedAt || '',
-    Number(params.aiLatencyMs || 0),
-    Number(params.aiModelLatencyMs || 0),
+function buildResponseSheetRowValues_(response) {
+  const item = response && typeof response === 'object' ? response : {};
+  return [
+    item.responseId || makeId_('response'),
+    item.lessonId || '',
+    item.unitId || '',
+    item.studentId || '',
+    item.studentNumber || '',
+    item.studentName || '',
+    JSON.stringify(item.answersMap || {}),
+    item.reviewText || '',
+    item.submitted === true,
+    item.submittedAt || '',
+    Number(item.score || 0),
+    item.rank || '',
+    item.medal || '',
+    item.comment || '',
+    item.isRewrite === true,
+    item.updatedAt || nowIso_(),
+    item.aiStatus || '',
+    item.aiQueuedAt || '',
+    item.aiProcessedAt || '',
+    item.aiError || '',
+    item.aiBatchId || '',
+    Number(item.aiRetryCount || 0),
+    item.aiStartedAt || '',
+    Number(item.aiLatencyMs || 0),
+    Number(item.aiModelLatencyMs || 0),
   ];
-  if (existing) {
-    row[0] = existing.values[0] || row[0];
-    sheet.getRange(existing.rowNumber, 1, 1, row.length).setValues([row]);
-    return { rowNumber: existing.rowNumber, responseId: row[0] };
+}
+
+function cacheResponseRows_(rows) {
+  const list = (Array.isArray(rows) ? rows : []).filter(row => Array.isArray(row) && row.length);
+  if (!list.length) return 0;
+  invalidateLessonResponseCaches_();
+  mergeLessonResponseRowsIntoCache_(list);
+  return list.length;
+}
+
+function mirrorResponseRowsWithAudit_(rows, source, action, actor) {
+  const list = (Array.isArray(rows) ? rows : []).filter(row => Array.isArray(row) && row.length);
+  if (!list.length) return { mirrored: 0, failed: 0 };
+  const result = mirrorResponseRowsToMaster_(list, source, action, actor);
+  if (!result.failed) {
+    cacheResponseRows_(list);
   }
-  sheet.appendRow(row);
-  return { rowNumber: sheet.getLastRow(), responseId: row[0] };
+  return result;
+}
+
+function writeResponseSheetRowEntryUpdates_(updates, mirrorSource, mirrorAction, actor) {
+  const list = Array.isArray(updates) ? updates.filter(item => item && item.rowNumber && Array.isArray(item.values)) : [];
+  if (!list.length) return 0;
+  const sheet = getResponsesDbSheet_();
+  writeSheetRowBatches_(sheet, list, RESPONSE_HEADERS.length);
+  list.forEach(item => {
+    writeResponseSheetRowNumberCache_(item.values[1], item.values[3], item.rowNumber);
+    writeResponseIdSheetRowNumberCache_(item.values[0], item.rowNumber);
+  });
+  invalidateLessonResponseCaches_();
+  mergeLessonResponseRowsIntoCache_(list.map(item => item.values).filter(Boolean));
+  if (mirrorSource) {
+    mirrorResponseRowsToMaster_(
+      list.map(item => item.values),
+      mirrorSource,
+      mirrorAction || 'master_mirror_failed_response_row_update',
+      actor || 'system'
+    );
+  }
+  return list.length;
+}
+
+function upsertResponseSheetRowValues_(rowValues, existingRowEntry) {
+  const safeRowValues = Array.isArray(rowValues) ? rowValues.slice() : [];
+  if (!safeRowValues.length) return { rowNumber: 0, responseId: '' };
+  const resolvedExistingRowEntry = existingRowEntry || findResponseSheetRowEntryByResponseId_(safeRowValues[0]);
+  if (resolvedExistingRowEntry) {
+    safeRowValues[0] = resolvedExistingRowEntry.values[0] || safeRowValues[0];
+    writeResponseSheetRowEntryUpdates_([{
+      rowNumber: resolvedExistingRowEntry.rowNumber,
+      values: safeRowValues,
+    }], null);
+    addLessonResponseRowIndex_(safeRowValues[1], resolvedExistingRowEntry.rowNumber);
+    return { rowNumber: resolvedExistingRowEntry.rowNumber, responseId: safeRowValues[0] };
+  }
+  const sheet = getResponsesDbSheet_();
+  const rowNumber = Math.max(2, sheet.getLastRow() + 1);
+  sheet.getRange(rowNumber, 1, 1, safeRowValues.length).setValues([safeRowValues]);
+  writeResponseSheetRowNumberCache_(safeRowValues[1], safeRowValues[3], rowNumber);
+  writeResponseIdSheetRowNumberCache_(safeRowValues[0], rowNumber);
+  addLessonResponseRowIndex_(safeRowValues[1], rowNumber);
+  cacheResponseRows_([safeRowValues]);
+  return { rowNumber, responseId: safeRowValues[0] };
+}
+
+function upsertResponse_(params, existing) {
+  const responseSheetRowValues = buildResponseSheetRowValues_(Object.assign({}, params, {
+    updatedAt: nowIso_(),
+  }));
+  if (existing && existing.values) {
+    responseSheetRowValues[0] = existing.values[0] || responseSheetRowValues[0];
+  }
+  mirrorResponseRowsWithAudit_(
+    [responseSheetRowValues],
+    existing ? 'response_upsert' : 'response_insert',
+    existing ? 'master_mirror_failed_upsert' : 'master_mirror_failed_insert',
+    'system'
+  );
+  return upsertResponseSheetRowValues_(responseSheetRowValues, existing || null);
 }
 
 function appendResponseHistory_(params) {
   const sheet = getResponseHistoryDbSheet_();
-  sheet.appendRow([
+  const row = [
     makeId_('history'),
     params.responseId || '',
     params.lessonId || '',
@@ -1045,7 +1982,9 @@ function appendResponseHistory_(params) {
     params.editedBy || '',
     nowIso_(),
     params.editType || 'system',
-  ]);
+  ];
+  const rowNumber = Math.max(2, sheet.getLastRow() + 1);
+  sheet.getRange(rowNumber, 1, 1, row.length).setValues([row]);
 }
 
 function writeAuditLog_(params) {
@@ -1252,9 +2191,9 @@ function migrateLessonSheetsToDb_() {
       if (!hasPayload) return;
 
       const student = getOrCreateStudent_(number, studentName);
-      const existing = findResponseRow_(lesson.lessonId, student.studentId);
+      const existing = getResponseRecord_(lesson.lessonId, student.studentId);
       upsertResponse_({
-        responseId: existing ? existing.values[0] : '',
+        responseId: existing ? existing.responseId : '',
         lessonId: lesson.lessonId,
         unitId,
         studentId: student.studentId,
@@ -1288,36 +2227,142 @@ function migrateLessonSheetsToDb_() {
   };
 }
 
-function getAllUnits() {
-  const cached = getCachedJson_('all_units_v1');
-  if (Array.isArray(cached)) return cached;
+function getAllUnits(options) {
+  return getAllUnitsSnapshot_(options).units;
+}
+
+function getAllUnitsSnapshot_(options) {
+  const opts = options && typeof options === 'object' ? options : {};
+  const useMasterContract = opts.useMasterContract === true;
+  const cacheKey = useMasterContract ? 'all_units_master_contract_v1' : 'all_units_v1';
+  const metaCacheKey = useMasterContract ? 'all_units_master_contract_meta_v1' : 'all_units_meta_v1';
+  const cached = getCachedJson_(cacheKey);
+  if (Array.isArray(cached)) {
+    const cachedMeta = getCachedJson_(metaCacheKey) || {
+      scope: 'all_units',
+      cached: true,
+      preferMaster: true,
+      mode: 'cache',
+      masterCount: cached.length,
+      mergedCount: cached.length,
+      masterReadPath: useMasterContract ? 'GET_MASTER' : 'internal',
+    };
+    setLastUnitsReadMeta_(cachedMeta);
+    return {
+      units: cached,
+      meta: cachedMeta,
+    };
+  }
+  const units = useMasterContract ? listMasterUnitRecordsViaContract_() : listMasterUnitRecords_();
+  const meta = summarizeUnitReadForAll_(units, {
+    useMasterContract,
+  });
+  setLastUnitsReadMeta_(meta);
+  putCachedJson_(metaCacheKey, meta, 20);
+  return {
+    units: putCachedJson_(cacheKey, units, 20),
+    meta,
+  };
+}
+
+let lastUnitsReadMeta_ = null;
+
+function setLastUnitsReadMeta_(meta) {
+  lastUnitsReadMeta_ = meta && typeof meta === 'object' ? meta : null;
+  return lastUnitsReadMeta_;
+}
+
+function getLastUnitsReadMeta_() {
+  return lastUnitsReadMeta_ && typeof lastUnitsReadMeta_ === 'object'
+    ? lastUnitsReadMeta_
+    : null;
+}
+
+function normalizeUnitRecord_(source, raw) {
+  const unit = raw && typeof raw === 'object' ? raw : {};
+  const createdAtRaw = String(unit.createdAt || '').trim();
+  const createdDate = createdAtRaw ? new Date(createdAtRaw) : null;
+  const createdAtValue = createdDate && !Number.isNaN(createdDate.getTime()) ? createdDate.getTime() : 0;
+  return {
+    readSource: String(source || 'legacy'),
+    id: String(unit.id || '').trim(),
+    name: String(unit.name || '').trim(),
+    subject: String(unit.subject || '').trim(),
+    maxPeriod: Number(unit.maxPeriod) || 10,
+    createdAt: createdAtValue ? Utilities.formatDate(createdDate, 'Asia/Tokyo', 'yyyy/MM/dd') : createdAtRaw,
+    createdAtValue,
+    fields: Array.isArray(unit.fields) ? unit.fields : [],
+  };
+}
+
+function readUnitSheetRecords_() {
   const s = getUnitSheet();
   if (!s) return [];
   const data = s.getDataRange().getValues();
-  const units = data.slice(1)
+  return data.slice(1)
     .filter(r => r[0] && r[6] !== '削除')
     .map(r => {
       let fields = [];
       try { fields = JSON.parse(r[5] || '[]'); } catch(e) {}
       const createdDate = r[4] ? new Date(r[4]) : null;
-      const createdAtValue = createdDate && !Number.isNaN(createdDate.getTime()) ? createdDate.getTime() : 0;
-      return {
-        id        : r[0],
-        name      : r[1],
-        subject   : r[2],
-        maxPeriod : r[3] || 10,
-        createdAt : createdAtValue ? Utilities.formatDate(createdDate,'Asia/Tokyo','yyyy/MM/dd') : '',
-        createdAtValue,
-        fields,   // 項目定義の配列
-      };
+      const createdAt = createdDate && !Number.isNaN(createdDate.getTime())
+        ? Utilities.formatDate(createdDate, 'Asia/Tokyo', 'yyyy/MM/dd')
+        : '';
+      return normalizeUnitRecord_('legacy', {
+        id: r[0],
+        name: r[1],
+        subject: r[2],
+        maxPeriod: r[3] || 10,
+        createdAt,
+        fields,
+      });
     });
-  return putCachedJson_('all_units_v1', units, 20);
+}
+
+function listMasterUnitRecords_() {
+  return listMasterGasApiMasterItems_(MASTER_GAS_API_APP_ID, { masterType: 'unit' })
+    .map(item => {
+      const payload = parseAnswersJson_(item.payloadJson);
+      if (!(payload && typeof payload === 'object')) return null;
+      return normalizeUnitRecord_('master', payload);
+    })
+    .filter(item => item && item.id);
+}
+
+function listMasterUnitRecordsViaContract_() {
+  const snapshot = getMasterGasApiMasterSnapshot_(MASTER_GAS_API_APP_ID, { masterType: 'unit' });
+  const items = Array.isArray(snapshot && snapshot.items) ? snapshot.items : [];
+  return items
+    .map(item => {
+      const payload = parseAnswersJson_(item && item.payloadJson);
+      if (!(payload && typeof payload === 'object')) return null;
+      return normalizeUnitRecord_('master', payload);
+    })
+    .filter(item => item && item.id);
+}
+
+function summarizeUnitReadForAll_(units, options) {
+  const unitList = Array.isArray(units) ? units : [];
+  const opts = options && typeof options === 'object' ? options : {};
+  const useMasterContract = opts.useMasterContract === true;
+  return {
+    scope: 'all_units',
+    cached: false,
+    preferMaster: true,
+    masterCount: unitList.length,
+    mergedCount: unitList.length,
+    mode: 'master_only',
+    masterReadPath: useMasterContract ? 'GET_MASTER' : 'internal',
+  };
 }
 
 function getLessonRecordById_(lessonId) {
   const normalizedLessonId = String(lessonId || '').trim();
   if (!normalizedLessonId) return null;
-  return listLessonRecords_().find(lesson => String(lesson.lessonId || '') === normalizedLessonId) || null;
+  const cached = readCachedLessonRecordById_(normalizedLessonId);
+  if (cached) return cached;
+  const lesson = listLessonRecords_().find(item => String(item.lessonId || '') === normalizedLessonId) || null;
+  return lesson ? cacheLessonRecord_(lesson) : null;
 }
 
 function addUnit(name, subject, maxPeriod) {
@@ -1348,8 +2393,6 @@ function saveUnit(params) {
       const cached = getSavedUnitRequestResult_(requestToken);
       if (cached) return cached;
     }
-    const s = getUnitSheet();
-    const data = s.getDataRange().getValues();
     const normalizedId = String(payload.id || '').trim();
     const normalizedName = String(payload.name || '').trim();
     const normalizedSubject = String(payload.subject || '').trim();
@@ -1365,30 +2408,20 @@ function saveUnit(params) {
       ? payload.fields
       : getSubjectDefaultFields(normalizedSubject).map(field => ({ ...field, enabled: field.enabled !== false }));
     const safeFields = safeFieldsSource.map(field => ({ ...field, enabled: field && field.enabled !== false }));
-    let rowIndex = -1;
-    for (let i = 1; i < data.length; i++) {
-      if (String(data[i][0] || '') === normalizedId) {
-        rowIndex = i;
-        break;
-      }
-    }
-    let unitId = normalizedId;
-    let createdAt = new Date();
-    if (rowIndex >= 0) {
-      createdAt = data[rowIndex][4] || createdAt;
-      s.getRange(rowIndex + 1, 2).setValue(normalizedName);
-      s.getRange(rowIndex + 1, 3).setValue(normalizedSubject);
-      s.getRange(rowIndex + 1, 4).setValue(numericMax);
-      s.getRange(rowIndex + 1, 6).setValue(JSON.stringify(safeFields));
-      s.getRange(rowIndex + 1, 7).setValue('');
-    } else {
-      const activeIds = data.slice(1)
-        .filter(row => row[0] && row[6] !== '削除')
-        .map(row => Number(row[0]) || 0);
-      unitId = String(activeIds.length ? Math.max.apply(null, activeIds) + 1 : 1);
-      s.appendRow([unitId, normalizedName, normalizedSubject, numericMax, createdAt, JSON.stringify(safeFields), '']);
-    }
-    removeDomainCacheKeys_('all_units_v1');
+    const units = getAllUnits();
+    const existingUnit = normalizedId
+      ? units.find(unit => String(unit?.id || '').trim() === normalizedId) || null
+      : null;
+    const activeIds = units
+      .map(unit => Number(unit && unit.id || 0) || 0)
+      .filter(id => id > 0);
+    const unitId = existingUnit
+      ? String(existingUnit.id || '').trim()
+      : String(activeIds.length ? Math.max.apply(null, activeIds) + 1 : 1);
+    const createdAt = existingUnit && existingUnit.createdAt
+      ? String(existingUnit.createdAt || '').trim()
+      : Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd');
+    removeDomainCacheKeys_(getAllUnitsCacheKeys_());
     const result = {
       ok: true,
       id: unitId,
@@ -1397,11 +2430,12 @@ function saveUnit(params) {
         name: normalizedName,
         subject: normalizedSubject,
         maxPeriod: numericMax,
-        createdAt: Utilities.formatDate(new Date(createdAt), 'Asia/Tokyo', 'yyyy/MM/dd'),
+        createdAt,
         createdAtValue: Number(new Date(createdAt).getTime()) || 0,
         fields: safeFields,
       },
     };
+    syncUnitToMaster_(result.unit, { updatedBy: 'master_saveUnit', noLock: true });
     if (requestToken) putSavedUnitRequestResult_(requestToken, result);
     return result;
   } finally {
@@ -1430,29 +2464,27 @@ function putSavedUnitRequestResult_(requestToken, result) {
 }
 
 function updateUnitFields(id, fields) {
-  const s    = getUnitSheet();
-  const data = s.getDataRange().getValues();
-  for (let i = 1; i < data.length; i++) {
-    if (data[i][0] == id) {
-      s.getRange(i+1,6).setValue(JSON.stringify(fields));
-      removeDomainCacheKeys_('all_units_v1');
-      return { ok: true };
-    }
-  }
-  return { ok: false };
+  const unit = getUnitById_(id);
+  if (!unit) return { ok: false };
+  const nextFields = normalizeFieldConfigArray_(fields);
+  syncUnitToMaster_({
+    id: unit.id,
+    name: unit.name,
+    subject: unit.subject,
+    maxPeriod: unit.maxPeriod,
+    createdAt: unit.createdAt,
+    fields: nextFields,
+  }, { updatedBy: 'master_updateUnitFields' });
+  removeDomainCacheKeys_(getAllUnitsCacheKeys_());
+  return { ok: true };
 }
 
 function deleteUnit(id) {
-  const s    = getUnitSheet();
-  const data = s.getDataRange().getValues();
-  for (let i = 1; i < data.length; i++) {
-    if (data[i][0] == id) {
-      s.getRange(i+1,7).setValue('削除');
-      removeDomainCacheKeys_('all_units_v1');
-      return { ok: true };
-    }
-  }
-  return { ok: false };
+  const unit = getUnitById_(id);
+  if (!unit) return { ok: false };
+  syncDeletedUnitToMaster_(id, { updatedBy: 'master_deleteUnit' });
+  removeDomainCacheKeys_(getAllUnitsCacheKeys_());
+  return { ok: true };
 }
 
 // ============================================================
@@ -1562,6 +2594,8 @@ function saveLessonFieldConfig(unitId, period, fields) {
         updatedAt,
         JSON.stringify(nextFields),
       ], unit);
+      invalidateLessonRecordCaches_();
+      cacheLessonRecord_(lesson);
       return { ok: true, unit, lesson, fields: lesson.fields };
     }
   }
@@ -1592,4 +2626,12 @@ function getLessonRowByStudentNumber_(sheet, studentNumber) {
   }
   return HEADER_ROWS + Number(studentNumber || 0);
 }
+
+
+
+
+
+
+
+
 

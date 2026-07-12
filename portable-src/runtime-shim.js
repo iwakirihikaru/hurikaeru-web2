@@ -5,7 +5,7 @@
   var TEACHER_BOOTSTRAP_CACHE_KEY = "jibun-matome-teacher-bootstrap-fast";
   var TEACHER_BOOTSTRAP_TTL_MS = 60 * 1000;
   var PORTABLE_FETCH_TIMEOUT_MS = 15000;
-  var PORTABLE_FETCH_RETRY_COUNT = 1;
+  var PORTABLE_FETCH_RETRY_COUNT = 0;
 
   function readApiUrlFromQuery() {
     try {
@@ -289,6 +289,21 @@
     });
   }
 
+  function readEmptyStudentBootstrap() {
+    return { students: [], shell: {} };
+  }
+
+  function bootstrapStudentAsync() {
+    if (!getApiUrl()) {
+      redirectToSetupIfNeeded();
+      return Promise.resolve(readEmptyStudentBootstrap());
+    }
+    return callPortableMethod("getStudentEntryOptions", [])
+      .then(function (data) {
+        return data || readEmptyStudentBootstrap();
+      });
+  }
+
   function createRunner(successHandler, failureHandler) {
     var proxy = new Proxy(
       {},
@@ -349,10 +364,10 @@
     bootstrapStudent: function () {
       if (!getApiUrl()) {
         redirectToSetupIfNeeded();
-        return { students: [], shell: {} };
       }
-      return callPortableMethodSync("getStudentEntryOptions", []) || { students: [], shell: {} };
-    }
+      return readEmptyStudentBootstrap();
+    },
+    bootstrapStudentAsync: bootstrapStudentAsync
   };
 
   if (!window.google) {
@@ -367,4 +382,5 @@
 
   syncMemoryApiUrl();
 })();
+
 

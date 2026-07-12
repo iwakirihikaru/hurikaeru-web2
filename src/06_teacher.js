@@ -1795,48 +1795,110 @@ function normalizeAggregateFilterOptions_(options) {
   };
 }
 
-function getAggregateData(unitId, options) {
-  const filters = normalizeAggregateFilterOptions_(options);
+function logTeacherPerf_(name, payload) {
+  try {
+    console.log('[teacher_perf] ' + JSON.stringify({
+      name: String(name || ''),
+      ...(payload && typeof payload === 'object' ? payload : {}),
+    }));
+  } catch (_err) {}
+}
+
+function readTeacherRecordSource_(options) {
+  const opts = options && typeof options === 'object' ? options : {};
+  const timing = {};
+  const counts = {};
+  const startedAt = Date.now();
+
+  let t0 = Date.now();
   const units = getAllUnits();
-  const lessons = getLessonsDbSheet_().getDataRange().getValues().slice(1);
-  const allResponses = listAllResponses_();
-  const responseReadMeta = summarizeResponseReadForAll_(allResponses);
-  const responses = allResponses.filter(response => !isAiLoadTestResponse_(response));
-  const assessments = listTeacherAssessments_();
+  timing.unitsMs = Date.now() - t0;
+  counts.unitCount = units.length;
   const unitMap = {};
   units.forEach(item => {
-    unitMap[String(item.id)] = item;
+    unitMap[String(item.id || '')] = item;
   });
+
+  t0 = Date.now();
+  const lessons = listLessonRecords_();
+  timing.lessonsMs = Date.now() - t0;
+  counts.lessonCount = lessons.length;
   const lessonMap = {};
   lessons.forEach(item => {
-    lessonMap[String(item[0])] = item;
+    lessonMap[String(item.lessonId || '')] = item;
   });
+
+  t0 = Date.now();
+  const allResponses = listAllResponses_();
+  timing.responsesMs = Date.now() - t0;
+  counts.rawResponseCount = allResponses.length;
+
+  t0 = Date.now();
+  const responseReadMeta = summarizeResponseReadForAll_(allResponses);
+  const responses = allResponses.filter(response => !isAiLoadTestResponse_(response));
+  timing.responseTransformMs = Date.now() - t0;
+  counts.responseCount = responses.length;
+
+  let roster = null;
+  if (opts.includeRoster) {
+    t0 = Date.now();
+    roster = getRosterEntries_(true);
+    timing.rosterMs = Date.now() - t0;
+    counts.rosterCount = Array.isArray(roster) ? roster.length : 0;
+  }
+
+  let assessments = null;
+  if (opts.includeAssessments) {
+    t0 = Date.now();
+    assessments = listTeacherAssessments_();
+    timing.assessmentsMs = Date.now() - t0;
+    counts.assessmentCount = Array.isArray(assessments) ? assessments.length : 0;
+  }
+
+  timing.totalReadMs = Date.now() - startedAt;
+  return {
+    units,
+    unitMap,
+    lessons,
+    lessonMap,
+    responses,
+    responseReadMeta,
+    roster,
+    assessments,
+    timing,
+    counts,
+  };
+}
+function getAggregateData(unitId, options) {
+  const startedAt = Date.now();
+  const filters = normalizeAggregateFilterOptions_(options);
+  const source = readTeacherRecordSource_({ includeAssessments: true });
   const assessmentMap = {};
-  assessments.forEach(item => {
+  (source.assessments || []).forEach(item => {
     assessmentMap[`${String(item.unitId || '')}:${String(item.studentNumber || '')}`] = item;
   });
-  const rows = responses
+  const mapStartedAt = Date.now();
+  const rows = source.responses
     .filter(response => {
       if (unitId && String(response.unitId) !== String(unitId)) return false;
       if (filters.subject) {
-        const unit = unitMap[String(response.unitId)];
+        const unit = source.unitMap[String(response.unitId || '')];
         if (String(unit?.subject || '') !== filters.subject) return false;
       }
       return true;
     })
     .map(response => {
-      const unit = unitMap[String(response.unitId)];
-      const lesson = lessonMap[String(response.lessonId)];
-      const lessonRecord = lesson ? buildLessonRecord_(lesson, unit) : null;
-      const fields = getLessonFields_(lessonRecord, unit);
+      const unit = source.unitMap[String(response.unitId || '')];
+      const lesson = source.lessonMap[String(response.lessonId || '')] || null;
+      const fields = getLessonFields_(lesson, unit);
       const assessment = assessmentMap[`${String(response.unitId || '')}:${String(response.studentNumber || '')}`] || null;
       return {
         unitName: unit?.name || '',
         subject: unit?.subject || '',
-        period: lesson?.[2] || '',
+        period: lesson?.period || '',
         num: response.studentNumber,
         name: response.studentName,
-        date: lesson?.[3] || '',
+        date: lesson?.lessonDate || '',
         review: response.reviewText || '',
         rank: response.rank || '',
         comment: response.comment || '',
@@ -1846,25 +1908,40 @@ function getAggregateData(unitId, options) {
         teacherAssessment: assessment,
       };
     });
-  if (rows.length > 0) {
-    rows.responseReadMeta = responseReadMeta;
-    return rows;
-  }
-  rows.responseReadMeta = {
-    ...responseReadMeta,
+  const performanceMeta = {
+    timing: {
+      ...source.timing,
+      aggregateMs: Date.now() - mapStartedAt,
+      totalMs: Date.now() - startedAt,
+    },
+    counts: {
+      ...source.counts,
+      resultCount: rows.length,
+    },
   };
+  rows.responseReadMeta = source.responseReadMeta;
+  rows.performanceMeta = performanceMeta;
+  logTeacherPerf_('getAggregateData', {
+    unitFilter: String(unitId || ''),
+    subjectFilter: filters.subject,
+    ...performanceMeta.timing,
+    ...performanceMeta.counts,
+  });
   return rows;
 }
-
 function getAggregateDataJson(unitId, optionsJson) {
+  const startedAt = Date.now();
   try {
     let options = null;
     if (optionsJson && String(optionsJson).trim()) {
       options = JSON.parse(String(optionsJson));
     }
+    const dataStartedAt = Date.now();
     const rows = getAggregateData(unitId, options);
+    const dataMs = Date.now() - dataStartedAt;
     const filters = normalizeAggregateFilterOptions_(options);
-    return JSON.stringify({
+    const jsonStartedAt = Date.now();
+    const payload = JSON.stringify({
       ok: true,
       build: APP_BUILD,
       debug: {
@@ -1872,6 +1949,7 @@ function getAggregateDataJson(unitId, optionsJson) {
         subject: filters.subject,
         rowCount: rows.length,
         responseReadMeta: rows.responseReadMeta || null,
+        performanceMeta: rows.performanceMeta || null,
         sampleRows: rows.slice(0, 5).map(row => ({
           subject: row.subject || '',
           unitName: row.unitName || '',
@@ -1883,6 +1961,15 @@ function getAggregateDataJson(unitId, optionsJson) {
       },
       rows,
     });
+    logTeacherPerf_('getAggregateDataJson', {
+      unitFilter: String(unitId || ''),
+      subjectFilter: filters.subject,
+      dataMs,
+      jsonMs: Date.now() - jsonStartedAt,
+      totalMs: Date.now() - startedAt,
+      resultCount: rows.length,
+    });
+    return payload;
   } catch (e) {
     return JSON.stringify({
       ok: false,
@@ -1891,7 +1978,6 @@ function getAggregateDataJson(unitId, optionsJson) {
     });
   }
 }
-
 function exportAggregateCsv(unitId, period) {
   const rows = getAggregateData(unitId).filter(row => {
     if (period && String(row.period) !== String(period)) return false;
@@ -1937,27 +2023,16 @@ function getStudentPortfolioData(studentNumber, unitId) {
   const cacheKey = `student_portfolio_v2_${String(studentNumber || '').trim()}_${String(unitId || '').trim() || 'all'}`;
   const cached = getCachedJson_(cacheKey);
   if (cached && Array.isArray(cached.rows)) return cached;
-  const units = getAllUnits();
-  const lessons = getLessonsDbSheet_().getDataRange().getValues().slice(1);
-  const allResponses = listAllResponses_();
-  const responseReadMeta = summarizeResponseReadForAll_(allResponses);
-  const responses = allResponses.filter(response => !isAiLoadTestResponse_(response));
-  const selectedUnit = units.find(item => String(item.id) === String(unitId));
-  const roster = getRosterEntries_(true);
+  const startedAt = Date.now();
+  const source = readTeacherRecordSource_({ includeRoster: true });
+  const selectedUnit = source.units.find(item => String(item.id) === String(unitId));
+  const roster = Array.isArray(source.roster) ? source.roster : [];
   const student = roster.find(item => String(item.number) === String(studentNumber));
   const rosterNameMap = {};
   roster.forEach(item => {
     const normalizedNumber = String(item && item.number || '').trim();
     if (!normalizedNumber) return;
     rosterNameMap[normalizedNumber] = String(item && item.name || '').trim();
-  });
-  const unitMap = {};
-  units.forEach(item => {
-    unitMap[String(item.id)] = item;
-  });
-  const lessonMap = {};
-  lessons.forEach(item => {
-    lessonMap[String(item[0])] = item;
   });
   const studentIdSet = {};
   const studentNameSet = {};
@@ -1968,12 +2043,13 @@ function getStudentPortfolioData(studentNumber, unitId) {
     selectedStudentId: student?.studentId || '',
     selectedStudentName: student?.name || '',
     selectedUnitId: String(unitId || ''),
-    responseCount: responses.length,
+    responseCount: source.responses.length,
     matchedStudentCount: 0,
     matchedUnitCount: 0,
     sampleMatchedRows: [],
   };
-  const matchedStudentRows = responses.filter(row => {
+  const matchStartedAt = Date.now();
+  const matchedStudentRows = source.responses.filter(row => {
     if (String(row.studentNumber) === String(studentNumber)) return true;
     if (row.studentId && studentIdSet[String(row.studentId)]) return true;
     if (row.studentName && studentNameSet[String(row.studentName)]) return true;
@@ -1982,25 +2058,25 @@ function getStudentPortfolioData(studentNumber, unitId) {
   debug.matchedStudentCount = matchedStudentRows.length;
   const rows = matchedStudentRows
     .filter(row => {
-      const effectiveUnitId = String(row.unitId || lessonMap[String(row.lessonId)]?.[1] || '').trim();
+      const effectiveUnitId = String(row.unitId || source.lessonMap[String(row.lessonId || '')]?.unitId || '').trim();
       if (!unitId) return true;
       if (effectiveUnitId === String(unitId)) return true;
-      const rowUnit = unitMap[effectiveUnitId];
+      const rowUnit = source.unitMap[effectiveUnitId];
       if (!selectedUnit || !rowUnit) return false;
       return String(rowUnit.name || '') === String(selectedUnit.name || '')
         && String(rowUnit.subject || '') === String(selectedUnit.subject || '');
     })
     .map(row => {
-      const lesson = lessonMap[String(row.lessonId)];
-      const effectiveUnitId = String(row.unitId || lesson?.[1] || '').trim();
-      const unit = unitMap[effectiveUnitId];
+      const lesson = source.lessonMap[String(row.lessonId || '')] || null;
+      const effectiveUnitId = String(row.unitId || lesson?.unitId || '').trim();
+      const unit = source.unitMap[effectiveUnitId];
       return {
         unitName: unit?.name || '',
         subject: unit?.subject || '',
-        period: lesson?.[2] || '',
+        period: lesson?.period || '',
         num: row.studentNumber,
         name: row.studentName || rosterNameMap[String(row.studentNumber || '').trim()] || '',
-        date: lesson?.[3] || '',
+        date: lesson?.lessonDate || '',
         review: row.reviewText || '',
         score: Number(row.score || 0),
         rank: row.rank || '',
@@ -2008,9 +2084,10 @@ function getStudentPortfolioData(studentNumber, unitId) {
         comment: row.comment || '',
         unitId: effectiveUnitId,
         answersMap: row.answersMap || {},
-        fields: getLessonFields_(lesson ? buildLessonRecord_(lesson, unit) : null, unit),
+        fields: getLessonFields_(lesson, unit),
       };
     });
+  const portfolioMs = Date.now() - matchStartedAt;
   debug.matchedUnitCount = rows.length;
   debug.sampleMatchedRows = rows.slice(0, 5).map(row => ({
     subject: row.subject || '',
@@ -2026,19 +2103,52 @@ function getStudentPortfolioData(studentNumber, unitId) {
     if (unitCmp !== 0) return unitCmp;
     return Number(a.period || 0) - Number(b.period || 0);
   });
-  return putCachedJson_(cacheKey, {
+  const result = putCachedJson_(cacheKey, {
     studentNumber,
     studentName: student?.name || rosterNameMap[String(studentNumber || '').trim()] || '',
     rows,
     build: APP_BUILD,
-    responseReadMeta,
+    responseReadMeta: source.responseReadMeta,
+    performanceMeta: {
+      timing: {
+        ...source.timing,
+        portfolioMs,
+        totalMs: Date.now() - startedAt,
+      },
+      counts: {
+        ...source.counts,
+        resultCount: rows.length,
+      },
+    },
     debug,
   }, 20);
+  logTeacherPerf_('getStudentPortfolioData', {
+    studentNumber: String(studentNumber || ''),
+    unitFilter: String(unitId || ''),
+    ...result.performanceMeta.timing,
+    ...result.performanceMeta.counts,
+    matchedStudentCount: debug.matchedStudentCount,
+    matchedUnitCount: debug.matchedUnitCount,
+  });
+  return result;
 }
-
 function getStudentPortfolioDataJson(studentNumber, unitId) {
+  const startedAt = Date.now();
   try {
-    return JSON.stringify(getStudentPortfolioData(studentNumber, unitId));
+    const dataStartedAt = Date.now();
+    const result = getStudentPortfolioData(studentNumber, unitId);
+    const dataMs = Date.now() - dataStartedAt;
+    const jsonStartedAt = Date.now();
+    const payload = JSON.stringify(result);
+    logTeacherPerf_('getStudentPortfolioDataJson', {
+      studentNumber: String(studentNumber || ''),
+      unitFilter: String(unitId || ''),
+      dataMs,
+      jsonMs: Date.now() - jsonStartedAt,
+      totalMs: Date.now() - startedAt,
+      resultCount: Array.isArray(result && result.rows) ? result.rows.length : 0,
+    });
+    return payload;
   } catch (e) {
     return JSON.stringify({
       ok: false,
@@ -2047,7 +2157,6 @@ function getStudentPortfolioDataJson(studentNumber, unitId) {
     });
   }
 }
-
 function getAiLogSnapshot(scope, limit, unitId, period) {
   const normalizedScope = String(scope || 'current');
   const rowLimit = Math.max(20, Math.min(300, Number(limit || 60) || 60));
@@ -2617,6 +2726,9 @@ function saveGlobalSettings(medalTop, promptComment, promptScore, promptPortfoli
     },
   };
 }
+
+
+
 
 
 

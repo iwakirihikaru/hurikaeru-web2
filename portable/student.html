@@ -529,10 +529,24 @@ function forgetRememberedStudent_(){
 // =====================================
 //  番号ボタン生成
 // =====================================
-const bootstrapStudentOptions = window.__STUDENT_BOOTSTRAP__ || window.__portableGas.bootstrapStudent();
-applyStudentShellState_(bootstrapStudentOptions.shell||{});
-renderNumberButtons(bootstrapStudentOptions.students||[]);
-setupRememberedStudentResume_(bootstrapStudentOptions.students||[]);
+const bootstrapStudentOptions = window.__STUDENT_BOOTSTRAP__ || { students: [], shell: {} };
+let bootstrapStudentReadyPromise = Promise.resolve(bootstrapStudentOptions);
+if (!window.__STUDENT_BOOTSTRAP__) {
+  bootstrapStudentReadyPromise = window.__portableGas.bootstrapStudentAsync()
+    .then(data => { if (data && typeof data === 'object') Object.assign(bootstrapStudentOptions, data); return bootstrapStudentOptions; })
+    .catch(error => { console.error(error); return bootstrapStudentOptions; });
+}
+let studentAppBootStarted=false;
+
+function startStudentApp_(){
+  if(studentAppBootStarted) return;
+  studentAppBootStarted=true;
+  applyStudentShellState_(bootstrapStudentOptions.shell||{});
+  renderNumberButtons(bootstrapStudentOptions.students||[]);
+  setupRememberedStudentResume_(bootstrapStudentOptions.students||[]);
+}
+
+bootstrapStudentReadyPromise.then(() => startStudentApp_()).catch(error => { console.error(error); startStudentApp_(); });
 
 function getBootstrapClassSnapshot_(){
   const snapshot=bootstrapStudentOptions.classSnapshot;
