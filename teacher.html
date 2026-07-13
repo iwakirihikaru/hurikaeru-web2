@@ -1970,6 +1970,9 @@ function scheduleTeacherPreload() {
         ensureEditorPreload();
         ensurePromptPreload();
         preloadTeacherHelpInfo();
+        if (typeof scheduleAggregateBackgroundPreload === 'function') {
+            scheduleAggregateBackgroundPreload('teacher-preload');
+        }
     };
     if (typeof requestIdleCallback === 'function') {
         requestIdleCallback(runner, { timeout: 1500 });
@@ -5117,13 +5120,15 @@ var portfolioInitRequestSeq = 0;
 var portfolioDataRequestSeq = 0;
 var aggregateLoadRequestSeq = 0;
 var aggregateScopeFetchKey = '';
+var aggregateBackgroundPreloadScheduled = false;
+var aggregateBackgroundPreloadInFlight = false;
 var portfolioFetchKey = '';
 var reportTabInitInFlight = false;
 var reportTabInitWaiters = [];
 var PORTFOLIO_CACHE_LIMIT = 16;
 var AGGREGATE_PRELOAD_ROW_LIMIT = 800;
 var AGGREGATE_LIVE_FRESH_MS = 60 * 1000;
-function readAggregatePreloadCache_() {
+function readAggregatePreloadCacheEntry_() {
     var cached = preloadCache.aggregate;
     if (!cached || typeof cached !== 'object')
         return null;
@@ -5134,7 +5139,14 @@ function readAggregatePreloadCache_() {
     }
     if (!Array.isArray(cached.rows) || !cached.rows.length)
         return null;
-    return cached.rows.slice();
+    return {
+        rows: cached.rows.slice(),
+        savedAt: Number(cached.savedAt || 0) || Date.now(),
+    };
+}
+function readAggregatePreloadCache_() {
+    var entry = readAggregatePreloadCacheEntry_();
+    return entry ? entry.rows : null;
 }
 function writeAggregatePreloadCache_(rows) {
     if (!Array.isArray(rows) || !rows.length) {
@@ -5147,6 +5159,48 @@ function writeAggregatePreloadCache_(rows) {
         rows: rows.slice(0, AGGREGATE_PRELOAD_ROW_LIMIT),
     };
     persistTeacherPreloadCache_();
+}
+function shouldRenderAggregatePreloadResult_() {
+    return isAggregateRecordPaneActive_() || isGradingRecordPaneActive_();
+}
+function scheduleAggregateBackgroundPreload(reason) {
+    if (aggregateBackgroundPreloadScheduled)
+        return;
+    aggregateBackgroundPreloadScheduled = true;
+    var run = function () { return ensureAggregateBackgroundPreload_(reason || 'idle'); };
+    if (typeof requestIdleCallback === 'function') {
+        requestIdleCallback(run, { timeout: 7000 });
+    }
+    else {
+        setTimeout(run, 4500);
+    }
+}
+function ensureAggregateBackgroundPreload_(reason) {
+    if (readAggregatePreloadCacheEntry_())
+        return false;
+    if (aggregateBackgroundPreloadInFlight)
+        return false;
+    if (aggregateScopeFetchKey) {
+        aggregateBackgroundPreloadScheduled = false;
+        setTimeout(function () { return scheduleAggregateBackgroundPreload('retry-busy'); }, 8000);
+        return false;
+    }
+    aggregateBackgroundPreloadInFlight = true;
+    fetchAggregateDataSet_({
+        onParseError: function () { aggregateBackgroundPreloadInFlight = false; },
+        onError: function () { aggregateBackgroundPreloadInFlight = false; },
+        onFailure: function () { aggregateBackgroundPreloadInFlight = false; },
+        onSuccess: function (rows) {
+            aggregateBackgroundPreloadInFlight = false;
+            writeAggregatePreloadCache_(rows);
+            if (!Array.isArray(rows) || !rows.length)
+                return;
+            if (shouldRenderAggregatePreloadResult_() && !hasFreshAggregateData_()) {
+                renderAggregateDataSet_(rows, { scope: 'full', fetchedAt: Date.now() });
+            }
+        },
+    });
+    return true;
 }
 function isAggregateRecordPaneActive_() {
     var pane = document.getElementById('record-pane-aggregate');
@@ -5340,7 +5394,12 @@ function getAggregateScopeDebugText_(options) {
         subject: allAggMeta && allAggMeta.subject || '',
     });
     var viewKey = buildAggregateScopeKey_(opts);
-    var waiting = aggregateScopeFetchKey ? " / fetch\u4E2D ".concat(aggregateScopeFetchKey) : '';
+    var waitingParts = [];
+    if (aggregateScopeFetchKey)
+        waitingParts.push("fetch\u4E2D ".concat(aggregateScopeFetchKey));
+    if (aggregateBackgroundPreloadInFlight)
+        waitingParts.push('裏取得中 full');
+    var waiting = waitingParts.length ? " / ".concat(waitingParts.join(' / ')) : '';
     return "scope ".concat(scope, " (").concat(currentKey, ") / rows ").concat(rowCount, " / ").concat(freshness, " / ").concat(age, " / view ").concat(viewKey).concat(waiting);
 }
 function updateAggregateDebug_(options, rows) {
@@ -5763,11 +5822,11 @@ function loadAgg() {
         renderedImmediate = true;
     }
     else {
-        var immediateRows = readAggregatePreloadCache_();
-        if (Array.isArray(immediateRows) && immediateRows.length) {
-            renderAggregateDataSet_(immediateRows, {
-                scope: 'preload',
-                fetchedAt: Date.now(),
+        var immediateEntry = readAggregatePreloadCacheEntry_();
+        if (immediateEntry && Array.isArray(immediateEntry.rows) && immediateEntry.rows.length) {
+            renderAggregateDataSet_(immediateEntry.rows, {
+                scope: 'full',
+                fetchedAt: immediateEntry.savedAt || Date.now(),
             });
             renderedImmediate = true;
         }
@@ -5793,6 +5852,10 @@ function loadAgg() {
         return;
     }
     if (!initialFetch && hasFreshFullAggregateData_()) {
+        return;
+    }
+    if (aggregateBackgroundPreloadInFlight) {
+        filterAgg();
         return;
     }
     if (initialFetch) {
@@ -5826,7 +5889,7 @@ function filterAgg() {
     var subject = document.getElementById('aggSubject').value;
     var unitId = document.getElementById('aggUnit').value;
     var desiredScope = { subject: subject, unitId: unitId };
-    if (isAggregateRecordPaneActive_() && !hasFreshAggregateScopeFor_(desiredScope)) {
+    if (isAggregateRecordPaneActive_() && !aggregateBackgroundPreloadInFlight && !hasFreshAggregateScopeFor_(desiredScope)) {
         requestAggregateScope_(desiredScope, {
             onError: function () { },
             onParseError: function () { },
@@ -5866,8 +5929,10 @@ function filterAgg() {
     if (!rows.length) {
         renderAggSummary([]);
         var emptyCols = (5 + fieldMeta.fields.length + 1);
-        body.innerHTML = "<tr><td colspan=\"".concat(emptyCols, "\" style=\"text-align:center;color:#999;padding:14px;\">\u30C7\u30FC\u30BF\u304C\u3042\u308A\u307E\u305B\u3093</td></tr>");
-        cards.innerHTML = '<div class="portfolio-empty">データがありません</div>';
+        var loadingEmpty = Boolean(aggregateScopeFetchKey || aggregateBackgroundPreloadInFlight);
+        var emptyText = loadingEmpty ? '単元記録を取得中です。少し待つと表示されます。' : 'データがありません';
+        body.innerHTML = "<tr><td colspan=\"".concat(emptyCols, "\" style=\"text-align:center;color:#999;padding:14px;\">").concat(emptyText, "</td></tr>");
+        cards.innerHTML = "<div class=\"portfolio-empty\">".concat(emptyText, "</div>");
         return;
     }
     renderAggSummary(rows);
