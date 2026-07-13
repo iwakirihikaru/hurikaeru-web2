@@ -478,6 +478,9 @@ function scheduleTeacherPreload() {
         ensureEditorPreload();
         ensurePromptPreload();
         preloadTeacherHelpInfo();
+        if (typeof scheduleAggregateBackgroundPreload === 'function') {
+            scheduleAggregateBackgroundPreload('teacher-preload');
+        }
     };
     if (typeof requestIdleCallback === 'function') {
         requestIdleCallback(runner, { timeout: 1500 });
