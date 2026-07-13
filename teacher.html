@@ -1051,9 +1051,9 @@ textarea.inp{resize:vertical;min-height:70px;}
           <h3 id="helpStep2Title">2. 先生と児童の入り口</h3>
           <ol class="guide-list">
             <li id="helpStep2Item1">先生はふだん下の先生ページURLだけを開く</li>
-            <li id="helpStep2Item2">先生ページは開ける端末では自動でWEB版へ進み、開けない端末だけGAS画面に残る</li>
+            <li id="helpStep2Item2">先生はWEB版の先生ページを使う</li>
             <li id="helpStep2Item3">児童には下の児童ページURLだけを配布する</li>
-            <li id="helpStep2Item4">WEB版が開けない端末だけ予備の児童ページを使う</li>
+            <li id="helpStep2Item4">保存が消えた端末や接続先を入れ直すときだけ接続補助ページを使う</li>
             <li id="helpStep2Item5">単元と時間目は先生側の授業スタートに連動する</li>
           </ol>
         </div>
@@ -1086,19 +1086,6 @@ textarea.inp{resize:vertical;min-height:70px;}
             <img id="studentQrImage" class="qr-image" alt="児童ページQR">
           </div>
         </div>
-        <div class="guide-link-card" id="helpStudentFallbackCard">
-          <div class="guide-link-title" id="helpStudentFallbackCardTitle">予備の児童ページ</div>
-          <div class="guide-link-actions">
-            <button class="btn-update" type="button" onclick="openHelpLink('studentFallback')" id="helpStudentFallbackOpenBtn">開く</button>
-            <button class="btn-cancel" type="button" onclick="copyHelpLink('studentFallback')" id="helpStudentFallbackCopyBtn">URLをコピー</button>
-          </div>
-          <input class="inp" id="helpStudentFallbackUrl" readonly>
-          <div class="guide-note" id="helpStudentFallbackCardNote">pages.dev が開けない端末だけ、このURLを使います。</div>
-          <div class="qr-card">
-            <div class="qr-title" id="helpStudentFallbackQrTitle">予備の児童ページQR</div>
-            <img id="studentFallbackQrImage" class="qr-image" alt="予備の児童ページQR">
-          </div>
-        </div>
         <div class="guide-link-card" id="helpSetupCard">
           <div class="guide-link-title" id="helpSetupCardTitle">接続補助ページ</div>
           <div class="guide-link-actions">
@@ -1121,7 +1108,7 @@ textarea.inp{resize:vertical;min-height:70px;}
           </div>
         </div>
       </div>
-      <div class="guide-note" style="margin-top:10px;" id="helpDistributionNote">先生は登録ページで配布用スプレッドシートを作成したあと、まず先生ページURLから入ります。児童には児童ページURLだけを配布してください。先生ページと児童ページは、pages.dev が開ける端末では自動でWEB版へ進み、開けない端末だけGAS画面に残ります。予備の児童ページは障害時だけ使います。</div>
+      <div class="guide-note" style="margin-top:10px;" id="helpDistributionNote">先生は登録ページで配布用スプレッドシートを作成したあと、まず先生ページURLから入ります。児童には児童ページURLだけを配布してください。接続先を入れ直したい端末だけ接続補助ページを使います。</div>
 
       <div class="guide-grid" style="margin-top:14px;">
         <div class="guide-card">
@@ -1502,95 +1489,6 @@ textarea.inp{resize:vertical;min-height:70px;}
 
 <script>
 window.__TEACHER_BOOTSTRAP__ = window.__TEACHER_BOOTSTRAP__ || window.__portableGas.bootstrapTeacher();
-window.__TEACHER_REDIRECT_BOOTSTRAP__ = { enabled:false };
-(function(){
-  function readRedirectCache_(key, config){
-    if(!key) return null;
-    try{
-      const raw=localStorage.getItem(key);
-      if(!raw) return null;
-      const parsed=JSON.parse(raw);
-      if(!parsed || !parsed.status || !parsed.savedAt) return null;
-      const successTtlMs=Math.max(1000, Number(config && config.successTtlMs || 0) || 10*60*1000);
-      const failureTtlMs=Math.max(1000, Number(config && config.failureTtlMs || 0) || 2*60*1000);
-      const ttlMs=parsed.status==='ok' ? successTtlMs : failureTtlMs;
-      if(Date.now()-Number(parsed.savedAt)>ttlMs){
-        localStorage.removeItem(key);
-        return null;
-      }
-      return parsed.status;
-    }catch(_error){
-      return null;
-    }
-  }
-
-  function writeRedirectCache_(key,status){
-    if(!key || !status) return;
-    try{
-      localStorage.setItem(key, JSON.stringify({
-        status:String(status),
-        savedAt:Date.now()
-      }));
-    }catch(_error){}
-  }
-
-  function startTeacherGasFallback_(){
-    window.__TEACHER_PORTABLE_REDIRECT_ACTIVE__ = false;
-    window.__TEACHER_PORTABLE_REDIRECT_FALLBACK__ = true;
-    if(typeof window.loadStatusInit==='function'){
-      window.loadStatusInit({ startPolling:true });
-      return;
-    }
-    if(window.addEventListener){
-      window.addEventListener('load', function retryTeacherFallbackInit_(){
-        if(window.__TEACHER_PORTABLE_REDIRECT_FALLBACK__===true && typeof window.loadStatusInit==='function'){
-          window.loadStatusInit({ startPolling:true });
-        }
-      }, { once:true });
-    }
-  }
-
-  function beginPortableTeacherRedirectGate_(){
-    const config=window.__TEACHER_REDIRECT_BOOTSTRAP__ && typeof window.__TEACHER_REDIRECT_BOOTSTRAP__==='object'
-      ? window.__TEACHER_REDIRECT_BOOTSTRAP__
-      : null;
-    if(!config || !config.enabled || config.skipRedirect || !config.portableUrl || !config.probeUrl){
-      window.__TEACHER_PORTABLE_REDIRECT_ACTIVE__ = false;
-      return false;
-    }
-    const cacheKey=String(config.cacheKey||'').trim();
-    const cachedStatus=readRedirectCache_(cacheKey, config);
-    if(cachedStatus==='ok'){
-      window.__TEACHER_PORTABLE_REDIRECT_ACTIVE__ = true;
-      window.location.replace(String(config.portableUrl));
-      return true;
-    }
-    if(cachedStatus==='ng'){
-      window.__TEACHER_PORTABLE_REDIRECT_ACTIVE__ = false;
-      return false;
-    }
-    const timeoutMs=Math.max(250, Number(config.timeoutMs||0)||900);
-    const timeoutPromise=new Promise((_,reject)=>setTimeout(()=>reject(new Error('portable_probe_timeout')), timeoutMs));
-    window.__TEACHER_PORTABLE_REDIRECT_ACTIVE__ = true;
-    Promise.race([
-      fetch(String(config.probeUrl), { mode:'no-cors', cache:'no-store' }),
-      timeoutPromise
-    ])
-      .then(()=>{
-        writeRedirectCache_(cacheKey,'ok');
-        window.location.replace(String(config.portableUrl));
-      })
-      .catch(()=>{
-        writeRedirectCache_(cacheKey,'ng');
-        startTeacherGasFallback_();
-      });
-    return true;
-  }
-
-  if(!beginPortableTeacherRedirectGate_()){
-    window.__TEACHER_PORTABLE_REDIRECT_ACTIVE__ = false;
-  }
-})();
 </script>
 <script>
 var __assign = (this && this.__assign) || function () {
@@ -1620,6 +1518,8 @@ var allAggMeta = { scope: 'unknown', fetchedAt: 0, unitId: '', subject: '' };
 var rosterEntries = [];
 var portfolioRows = [];
 var teacherBuild = '';
+var teacherDeploymentVersion = 0;
+var teacherDeploymentCreatedAt = '';
 var teacherHelpData = null;
 var teacherHelpLoading = false;
 var teacherHelpAutoChecked = false;
@@ -2046,6 +1946,8 @@ function buildPortableTeacherBootstrapPayload_() {
         roster: Array.isArray(rosterSource) ? rosterSource : [],
         unitProgress: unitProgressByUnitId && typeof unitProgressByUnitId === 'object' ? unitProgressByUnitId : {},
         build: teacherBuild || '',
+        deploymentVersion: Number(teacherDeploymentVersion || 0),
+        deploymentCreatedAt: String(teacherDeploymentCreatedAt || ''),
     };
 }
 function persistPortableTeacherBootstrap_() {
@@ -2333,11 +2235,44 @@ function ensurePromptPreload(force) {
     })
         .teacherPromptInit();
 }
+function formatTeacherDeploymentCreatedAt_(value) {
+    var text = String(value || '').trim();
+    if (!text)
+        return '';
+    var date = new Date(text);
+    if (Number.isNaN(date.getTime())) {
+        return text.replace('T', ' ').replace(/\.\d+Z?$/, '').replace(/Z$/, '').trim();
+    }
+    try {
+        return date.toLocaleString('ja-JP', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+        }).replace(/\//g, '-');
+    }
+    catch (_err) {
+        return text;
+    }
+}
 function renderBuildBar() {
     var el = document.getElementById('buildBar');
     if (!el)
         return;
-    el.textContent = "build: ".concat(teacherBuild || 'unknown', " / ").concat(TEACHER_CLIENT_BUILD);
+    var parts = [];
+    if (Number(teacherDeploymentVersion || 0) > 0) {
+        parts.push("GAS v".concat(Number(teacherDeploymentVersion || 0)));
+    }
+    else {
+        parts.push("build ".concat(teacherBuild || 'unknown'));
+    }
+    var deployedAt = formatTeacherDeploymentCreatedAt_(teacherDeploymentCreatedAt);
+    if (deployedAt)
+        parts.push("deployed ".concat(deployedAt));
+    parts.push(TEACHER_CLIENT_BUILD);
+    el.textContent = parts.join(' / ');
 }
 function populateUnitSelects() {
     populateStatusSubjectFilter();
@@ -2456,7 +2391,6 @@ function applyTeacherHelpData(data) {
     var teacherUrl = String(links.teacherUrl || '').trim();
     var registrationUrl = resolveRegistrationHelpUrl_(links);
     var studentUrl = String(links.studentUrl || '').trim();
-    var studentFallbackUrl = String(links.studentFallbackUrl || '').trim();
     var setupUrl = String(links.setupUrl || '').trim();
     var idsToValues = [
         ['statusTeacherUrl', teacherUrl],
@@ -2466,7 +2400,6 @@ function applyTeacherHelpData(data) {
         ['statusStudentUrl', studentUrl],
         ['studentPageUrl', studentUrl],
         ['helpStudentUrl', studentUrl],
-        ['helpStudentFallbackUrl', studentFallbackUrl],
         ['helpSetupUrl', setupUrl],
     ];
     idsToValues.forEach(function (_a) {
@@ -2478,7 +2411,6 @@ function applyTeacherHelpData(data) {
     applyQrImage('teacherQrImage', teacherUrl);
     applyQrImage('registrationQrImage', registrationUrl);
     applyQrImage('studentQrImage', studentUrl);
-    applyQrImage('studentFallbackQrImage', studentFallbackUrl);
     applyTeacherHelpShellContent_(shell);
     renderTeacherHelpUpdateInfo(teacherHelpData.app || {});
     var app = teacherHelpData.app || {};
@@ -2534,7 +2466,6 @@ function applyTeacherHelpShellContent_(shell) {
         ['helpTeacherCardNote', labels.helpTeacherCardNote],
         ['helpStudentCardTitle', labels.helpStudentCardTitle],
         ['helpStudentCardNote', labels.helpStudentCardNote],
-        ['helpStudentFallbackCardNote', labels.helpStudentFallbackCardNote],
         ['helpSetupCardTitle', labels.helpSetupCardTitle],
         ['helpSetupCardNote', labels.helpSetupCardNote],
         ['helpRegistrationCardTitle', labels.helpRegistrationCardTitle],
@@ -2640,7 +2571,6 @@ function openHelpLink(kind) {
         var urlMap = {
             registration: resolveRegistrationHelpUrl_(links),
             student: links.studentUrl || '',
-            studentFallback: links.studentFallbackUrl || '',
             setup: links.setupUrl || '',
             teacher: links.teacherUrl || '',
             apiKey: links.apiKeyGuideUrl || '',
@@ -2659,7 +2589,6 @@ function copyHelpLink(kind) {
         var urlMap = {
             registration: resolveRegistrationHelpUrl_(links),
             student: links.studentUrl || '',
-            studentFallback: links.studentFallbackUrl || '',
             setup: links.setupUrl || '',
             teacher: links.teacherUrl || '',
             apiKey: links.apiKeyGuideUrl || '',
@@ -3274,8 +3203,6 @@ function formatResponseReadMetaLine_(meta) {
     if (!mode)
         return '';
     var parts = ["response ".concat(mode)];
-    if (Number.isFinite(Number(meta.legacyCount)))
-        parts.push("legacy ".concat(Number(meta.legacyCount || 0)));
     if (Number.isFinite(Number(meta.masterCount)))
         parts.push("master ".concat(Number(meta.masterCount || 0)));
     if (Number.isFinite(Number(meta.mergedCount)))
@@ -3292,8 +3219,6 @@ function formatUnitsReadMetaLine_(meta) {
     var masterReadPath = String(meta.masterReadPath || '').trim();
     if (masterReadPath)
         parts.push(masterReadPath);
-    if (Number.isFinite(Number(meta.legacyCount)))
-        parts.push("legacy ".concat(Number(meta.legacyCount || 0)));
     if (Number.isFinite(Number(meta.masterCount)))
         parts.push("master ".concat(Number(meta.masterCount || 0)));
     if (Number.isFinite(Number(meta.mergedCount)))
@@ -4993,10 +4918,6 @@ function renderAiQueue(queue) {
             parts.push("AI\u51E6\u7406\u4E2D ".concat(data.processing, "\u4EF6"));
         if (Number(data.error || 0) > 0)
             parts.push("AI\u5931\u6557 ".concat(data.error, "\u4EF6"));
-        if (Number(data.aggregatePending || 0) > 0)
-            parts.push("\u96C6\u7D04\u5F85\u3061 ".concat(data.aggregatePending, "\u4EF6"));
-        if (Number(data.aggregateMissing || 0) > 0)
-            parts.push("\u672A\u53CD\u6620 ".concat(data.aggregateMissing, "\u4EF6"));
         if (Number(data.persistRetryItems || 0) > 0)
             parts.push("\u4FDD\u5B58\u518D\u8A66\u884C ".concat(data.persistRetryItems, "\u4EF6"));
         queueMeta.textContent = parts.length ? parts.join(' / ') : 'AI保守の滞留はありません。';
@@ -5067,24 +4988,6 @@ function retryAiErrors() {
         alert("\u518D\u5B9F\u884C\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat((err && err.message) || err || 'unknown'));
     })
         .retryFailedAiResponses();
-}
-function repairAggregate() {
-    var btn = document.getElementById('repairAggregateBtn');
-    if (btn)
-        btn.disabled = true;
-    google.script.run
-        .withSuccessHandler(function (res) {
-        if (btn)
-            btn.disabled = false;
-        renderAiQueue(res && res.queue || null);
-        alert("\u96C6\u7D04\u4FEE\u5FA9\u3092\u5B9F\u884C\u3057\u307E\u3057\u305F\u3002\u8FFD\u52A0 ".concat(res && res.enqueued || 0, " \u4EF6 / \u53CD\u6620 ").concat(res && res.flushed || 0, " \u4EF6 / \u6B8B\u308A ").concat(res && res.remaining || 0, " \u4EF6"));
-    })
-        .withFailureHandler(function (err) {
-        if (btn)
-            btn.disabled = false;
-        alert("\u96C6\u7D04\u4FEE\u5FA9\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat((err && err.message) || err || 'unknown'));
-    })
-        .repairMissingAggregateEntries();
 }
 function seedAiLoadTestFromTeacher() {
     if (!activeUnitId || !activePeriod) {
@@ -5210,6 +5113,9 @@ var portfolioInitRequestSeq = 0;
 var portfolioDataRequestSeq = 0;
 var aggregateLoadRequestSeq = 0;
 var aggregateScopeFetchKey = '';
+var portfolioFetchKey = '';
+var reportTabInitInFlight = false;
+var reportTabInitWaiters = [];
 var PORTFOLIO_CACHE_LIMIT = 16;
 var AGGREGATE_PRELOAD_ROW_LIMIT = 800;
 var AGGREGATE_LIVE_FRESH_MS = 60 * 1000;
@@ -5440,6 +5346,36 @@ function updateAggregateDebug_(options, rows) {
     var count = Array.isArray(rows) ? rows.length : 0;
     box.textContent = "\u5358\u5143\u8A18\u9332 ".concat(count, " \u4EF6\u3092\u8868\u793A\u4E2D\u3002").concat(getAggregateScopeDebugText_(options));
 }
+function normalizeRecordLoadErrorMessage_(error, fallback) {
+    if (error && error.message)
+        return String(error.message);
+    if (typeof error === 'string' && error.trim())
+        return error.trim();
+    return String(fallback || '読み込みに失敗しました');
+}
+function handleAggregateLoadFailure_(error, renderedImmediate) {
+    var message = normalizeRecordLoadErrorMessage_(error, '単元記録の読み込みに失敗しました');
+    showToast("\u5358\u5143\u8A18\u9332\u306E\u8AAD\u307F\u8FBC\u307F\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat(message), { tone: 'error', duration: 4200 });
+    var gradeDebug = document.getElementById('gradeDebug');
+    if (gradeDebug)
+        gradeDebug.textContent = "\u8A55\u5B9A\u30C7\u30FC\u30BF\u306E\u8AAD\u307F\u8FBC\u307F\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat(message);
+    if (!renderedImmediate)
+        renderAggregateDataSet_([]);
+}
+function handlePortfolioLoadFailure_(body, cards, debugBox, error, renderedImmediate) {
+    var message = normalizeRecordLoadErrorMessage_(error, 'ポートフォリオデータの読み込みに失敗しました');
+    if (renderedImmediate) {
+        if (debugBox)
+            debugBox.textContent = "\u6700\u65B0\u53D6\u5F97\u306B\u5931\u6557\u3057\u305F\u305F\u3081\u3001\u5148\u306B\u8868\u793A\u3057\u305F\u5185\u5BB9\u3092\u305D\u306E\u307E\u307E\u4F7F\u3063\u3066\u3044\u307E\u3059: ".concat(message);
+        return;
+    }
+    if (debugBox)
+        debugBox.textContent = 'デバッグ情報の取得に失敗しました。';
+    if (body)
+        body.innerHTML = "<tr><td colspan=\"6\" style=\"text-align:center;padding:14px;color:#C62828;\">".concat(esc(message), "</td></tr>");
+    if (cards)
+        cards.innerHTML = '<div class="portfolio-empty">ポートフォリオデータの読み込みに失敗しました</div>';
+}
 function ensurePortfolioPreloadCache_() {
     if (!preloadCache.portfolio || typeof preloadCache.portfolio !== 'object') {
         preloadCache.portfolio = { items: {} };
@@ -5550,17 +5486,39 @@ function ensureReportTabInitData_(options) {
     }
     if (hasImmediateRoster && hasImmediateUnits)
         return false;
+    if (reportTabInitInFlight) {
+        reportTabInitWaiters.push(opts);
+        return true;
+    }
+    reportTabInitInFlight = true;
+    reportTabInitWaiters = [opts];
     google.script.run
         .withSuccessHandler(function (d) {
-        allUnits = d.units || [];
-        rosterEntries = (d.roster || []).filter(function (row) { return row.active !== false; });
+        if (Array.isArray(d && d.units)) {
+            allUnits = d.units;
+        }
+        if (Array.isArray(d && d.roster)) {
+            rosterEntries = d.roster.filter(function (row) { return row.active !== false; });
+            preloadCache.roster = { roster: d.roster };
+            persistTeacherPreloadCache_();
+        }
         teacherBuild = d.build || teacherBuild || '';
-        if (typeof opts.onSuccess === 'function')
-            opts.onSuccess(d || {});
+        var waiters = reportTabInitWaiters.slice();
+        reportTabInitWaiters = [];
+        reportTabInitInFlight = false;
+        waiters.forEach(function (waiter) {
+            if (typeof waiter.onSuccess === 'function')
+                waiter.onSuccess(d || {});
+        });
     })
         .withFailureHandler(function (err) {
-        if (typeof opts.onFailure === 'function')
-            opts.onFailure(err);
+        var waiters = reportTabInitWaiters.slice();
+        reportTabInitWaiters = [];
+        reportTabInitInFlight = false;
+        waiters.forEach(function (waiter) {
+            if (typeof waiter.onFailure === 'function')
+                waiter.onFailure(err);
+        });
     })
         .teacherInit();
     return true;
@@ -5572,23 +5530,32 @@ function loadPortfolioTab() {
     var requestSeq = ++portfolioInitRequestSeq;
     var hasImmediateRoster = Array.isArray(rosterEntries) && rosterEntries.length > 0;
     var hasImmediateUnits = Array.isArray(allUnits) && allUnits.length > 0;
-    if (hasImmediateRoster || hasImmediateUnits) {
+    var renderedInit = false;
+    function renderPortfolioInit_() {
         renderPortfolioSelectors();
         loadPortfolioData();
+        renderedInit = true;
+    }
+    if (hasImmediateRoster || hasImmediateUnits) {
+        renderPortfolioInit_();
     }
     else {
         body.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:14px;"><span class="spinner"></span></td></tr>';
     }
     ensureReportTabInitData_({
         onImmediate: function (state) {
+            if (requestSeq !== portfolioInitRequestSeq)
+                return;
             hasImmediateRoster = Boolean(state && state.hasImmediateRoster);
             hasImmediateUnits = Boolean(state && state.hasImmediateUnits);
+            if (!renderedInit && (hasImmediateRoster || hasImmediateUnits)) {
+                renderPortfolioInit_();
+            }
         },
         onSuccess: function (d) {
             if (requestSeq !== portfolioInitRequestSeq)
                 return;
-            renderPortfolioSelectors();
-            loadPortfolioData();
+            renderPortfolioInit_();
         },
         onFailure: function (err) {
             if (requestSeq !== portfolioInitRequestSeq)
@@ -5624,7 +5591,7 @@ function loadPortfolioData() {
     var body = document.getElementById('portfolioBody');
     var cards = document.getElementById('portfolioCards');
     var debugBox = document.getElementById('portfolioDebug');
-    var requestSeq = ++portfolioDataRequestSeq;
+    var requestKey = buildPortfolioCacheKey_(studentNumber, unitId);
     var immediate = readPortfolioCache_(studentNumber, unitId);
     var renderedImmediate = false;
     if (debugBox && !String(debugBox.dataset.baseText || '').trim()) {
@@ -5632,6 +5599,7 @@ function loadPortfolioData() {
     }
     document.getElementById('portfolioReport').style.display = 'none';
     if (!studentNumber) {
+        portfolioFetchKey = '';
         portfolioRows = [];
         body.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:14px;color:#999;">児童を選択してください</td></tr>';
         cards.innerHTML = '<div class="portfolio-empty">児童を選択してください</div>';
@@ -5647,8 +5615,7 @@ function loadPortfolioData() {
             : '前回表示キャッシュを先に表示しています。最新状態を確認中…';
         if (immediate.source === 'aggregate-live') {
             writePortfolioCache_(studentNumber, unitId, portfolioRows);
-            debugBox.textContent = '今の集約データをそのまま表示しています。';
-            return;
+            debugBox.textContent = '集約済みデータを先に表示しています。最新状態を確認中…';
         }
     }
     else {
@@ -5656,8 +5623,15 @@ function loadPortfolioData() {
         cards.innerHTML = '<div class="portfolio-empty"><span class="spinner"></span></div>';
         debugBox.textContent = '取得状況を確認中…';
     }
+    if (portfolioFetchKey === requestKey) {
+        return;
+    }
+    var requestSeq = ++portfolioDataRequestSeq;
+    portfolioFetchKey = requestKey;
     google.script.run
         .withSuccessHandler(function (raw) {
+        if (portfolioFetchKey === requestKey)
+            portfolioFetchKey = '';
         if (requestSeq !== portfolioDataRequestSeq)
             return;
         var res = null;
@@ -5697,21 +5671,16 @@ function loadPortfolioData() {
         renderPortfolioRows();
     })
         .withFailureHandler(function (err) {
+        if (portfolioFetchKey === requestKey)
+            portfolioFetchKey = '';
         if (requestSeq !== portfolioDataRequestSeq)
             return;
-        var message = (err && err.message) || err || 'ポートフォリオデータの読み込みに失敗しました';
-        if (renderedImmediate) {
-            debugBox.textContent = "\u6700\u65B0\u53D6\u5F97\u306B\u5931\u6557\u3057\u305F\u305F\u3081\u3001\u5148\u306B\u8868\u793A\u3057\u305F\u5185\u5BB9\u3092\u305D\u306E\u307E\u307E\u4F7F\u3063\u3066\u3044\u307E\u3059: ".concat(message);
-            return;
-        }
-        debugBox.textContent = 'デバッグ情報の取得に失敗しました。';
-        body.innerHTML = "<tr><td colspan=\"6\" style=\"text-align:center;padding:14px;color:#C62828;\">".concat(esc(message), "</td></tr>");
-        cards.innerHTML = '<div class="portfolio-empty">ポートフォリオデータの読み込みに失敗しました</div>';
+        handlePortfolioLoadFailure_(body, cards, debugBox, err, renderedImmediate);
     })
         .getStudentPortfolioDataJson(studentNumber, unitId || null);
 }
 function renderPortfolioDebug(debug) {
-    var _a, _b, _c, _d;
+    var _a, _b;
     var box = document.getElementById('portfolioDebug');
     if (!debug) {
         box.innerHTML = "<div class=\"debug-summary\">\u53D6\u5F97\u4EF6\u6570\u3092\u8868\u793A\u3067\u304D\u307E\u305B\u3093\u3067\u3057\u305F\u3002</div><details><summary>\u8A73\u7D30\u3092\u898B\u308B</summary><code>teacherInit build=".concat(esc(teacherBuild || 'unknown'), "</code></details>");
@@ -5721,7 +5690,7 @@ function renderPortfolioDebug(debug) {
         .map(function (row, idx) { return "".concat(idx + 1, ". ").concat(row.subject, "/").concat(row.unitName, "/").concat(row.period, "\u6642\u9593\u76EE\n   ").concat(row.date, "\n   ").concat(row.preview); })
         .join('\n\n');
     var readMeta = debug.responseReadMeta && typeof debug.responseReadMeta === 'object'
-        ? " / source ".concat(String(debug.responseReadMeta.mode || 'legacy_only'), " / legacy ").concat(Number((_b = (_a = debug.responseReadMeta.estimatedLegacyCount) !== null && _a !== void 0 ? _a : debug.responseReadMeta.legacyCount) !== null && _b !== void 0 ? _b : 0), " / master ").concat(Number((_d = (_c = debug.responseReadMeta.estimatedMasterOnlyCount) !== null && _c !== void 0 ? _c : debug.responseReadMeta.masterCount) !== null && _d !== void 0 ? _d : 0))
+        ? " / source ".concat(String(debug.responseReadMeta.mode || 'master_only'), " / master ").concat(Number((_b = (_a = debug.responseReadMeta.estimatedMasterOnlyCount) !== null && _a !== void 0 ? _a : debug.responseReadMeta.masterCount) !== null && _b !== void 0 ? _b : 0))
         : '';
     var summary = "\u8A18\u9332 ".concat(debug.responseCount || 0, "\u4EF6 / \u5150\u7AE5\u4E00\u81F4 ").concat(debug.matchedStudentCount || 0, "\u4EF6 / \u5358\u5143\u4E00\u81F4 ").concat(debug.matchedUnitCount || 0, "\u4EF6").concat(readMeta);
     var buildLine = "teacher=".concat(teacherBuild || 'unknown', " / portfolio=").concat(debug.build || 'unknown');
@@ -5824,36 +5793,27 @@ function loadAgg() {
     }
     if (initialFetch) {
         requestAggregateScope_(initialFetch, {
-            onParseError: function () {
-                showToast('単元記録の読み込みに失敗しました', { tone: 'error' });
+            onParseError: function (error) {
+                handleAggregateLoadFailure_(error, renderedImmediate);
             },
             onError: function (error) {
-                showToast("\u5358\u5143\u8A18\u9332\u306E\u8AAD\u307F\u8FBC\u307F\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat(error), { tone: 'error', duration: 4200 });
+                handleAggregateLoadFailure_(error, renderedImmediate);
             },
             onFailure: function (err) {
-                showToast("\u5358\u5143\u8A18\u9332\u306E\u8AAD\u307F\u8FBC\u307F\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat((err && err.message) || err || 'unknown'), { tone: 'error', duration: 4200 });
+                handleAggregateLoadFailure_(err, renderedImmediate);
             },
         });
         return;
     }
     requestAggregateScope_(null, {
-        onParseError: function () {
-            showToast('単元記録の読み込みに失敗しました', { tone: 'error' });
-            if (!renderedImmediate)
-                renderAggregateDataSet_([]);
+        onParseError: function (error) {
+            handleAggregateLoadFailure_(error, renderedImmediate);
         },
         onError: function (error) {
-            showToast("\u5358\u5143\u8A18\u9332\u306E\u8AAD\u307F\u8FBC\u307F\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat(error), { tone: 'error', duration: 4200 });
-            if (!renderedImmediate)
-                renderAggregateDataSet_([]);
+            handleAggregateLoadFailure_(error, renderedImmediate);
         },
         onFailure: function (err) {
-            showToast("\u5358\u5143\u8A18\u9332\u306E\u8AAD\u307F\u8FBC\u307F\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat((err && err.message) || err || 'unknown'), { tone: 'error', duration: 4200 });
-            var gradeDebug = document.getElementById('gradeDebug');
-            if (gradeDebug)
-                gradeDebug.textContent = "\u8A55\u5B9A\u30C7\u30FC\u30BF\u306E\u8AAD\u307F\u8FBC\u307F\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat((err && err.message) || err || 'unknown');
-            if (!renderedImmediate)
-                renderAggregateDataSet_([]);
+            handleAggregateLoadFailure_(err, renderedImmediate);
         },
     });
 }
@@ -6883,9 +6843,7 @@ function escTextArea(s) {
     return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
 }
 // 初期ロード
-if (window.__TEACHER_PORTABLE_REDIRECT_ACTIVE__ !== true) {
-    loadStatusInit({ startPolling: true });
-}
+loadStatusInit({ startPolling: true });
 </script>
 
 </body>
