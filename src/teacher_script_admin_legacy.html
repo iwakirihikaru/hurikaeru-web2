@@ -250,10 +250,6 @@ function renderAiQueue(queue) {
             parts.push("AI\u51E6\u7406\u4E2D ".concat(data.processing, "\u4EF6"));
         if (Number(data.error || 0) > 0)
             parts.push("AI\u5931\u6557 ".concat(data.error, "\u4EF6"));
-        if (Number(data.aggregatePending || 0) > 0)
-            parts.push("\u96C6\u7D04\u5F85\u3061 ".concat(data.aggregatePending, "\u4EF6"));
-        if (Number(data.aggregateMissing || 0) > 0)
-            parts.push("\u672A\u53CD\u6620 ".concat(data.aggregateMissing, "\u4EF6"));
         if (Number(data.persistRetryItems || 0) > 0)
             parts.push("\u4FDD\u5B58\u518D\u8A66\u884C ".concat(data.persistRetryItems, "\u4EF6"));
         queueMeta.textContent = parts.length ? parts.join(' / ') : 'AI保守の滞留はありません。';
@@ -324,24 +320,6 @@ function retryAiErrors() {
         alert("\u518D\u5B9F\u884C\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat((err && err.message) || err || 'unknown'));
     })
         .retryFailedAiResponses();
-}
-function repairAggregate() {
-    var btn = document.getElementById('repairAggregateBtn');
-    if (btn)
-        btn.disabled = true;
-    google.script.run
-        .withSuccessHandler(function (res) {
-        if (btn)
-            btn.disabled = false;
-        renderAiQueue(res && res.queue || null);
-        alert("\u96C6\u7D04\u4FEE\u5FA9\u3092\u5B9F\u884C\u3057\u307E\u3057\u305F\u3002\u8FFD\u52A0 ".concat(res && res.enqueued || 0, " \u4EF6 / \u53CD\u6620 ").concat(res && res.flushed || 0, " \u4EF6 / \u6B8B\u308A ").concat(res && res.remaining || 0, " \u4EF6"));
-    })
-        .withFailureHandler(function (err) {
-        if (btn)
-            btn.disabled = false;
-        alert("\u96C6\u7D04\u4FEE\u5FA9\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat((err && err.message) || err || 'unknown'));
-    })
-        .repairMissingAggregateEntries();
 }
 function seedAiLoadTestFromTeacher() {
     if (!activeUnitId || !activePeriod) {

@@ -1,0 +1,38 @@
+name: Portable PR Check
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'portable-src/**'
+      - 'scripts/build-static-port.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/portable-pr-check.yml'
+
+jobs:
+  build-portable:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build portable
+        run: node ./scripts/build-static-port.mjs
+
+      - name: Upload portable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: portable
+          path: portable/
+          if-no-files-found: error

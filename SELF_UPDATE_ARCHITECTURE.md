@@ -17,7 +17,7 @@
   - 自分の script project を上書き
   - 新 version 作成
   - 既存 deploymentId を再デプロイ
-  - tenant 設定を再反映
+  - tenant 設定を内部関数で再反映
 
 ## 実装の本命構成
 
@@ -46,7 +46,7 @@
 4. Apps Script API で **自分自身のプロジェクト内容** を更新
 5. Apps Script API で version 作成
 6. 既存 `DEPLOYMENT_ID` をその version に差し替え
-7. `tenantSetup` を再実行
+7. tenant 内部の設定再反映関数を再実行
 8. `lastSelfUpdatedAt` と `lastSelfUpdatedBuild` を保存
 
 ## 重要な前提

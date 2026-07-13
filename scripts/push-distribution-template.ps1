@@ -56,6 +56,8 @@ $description = "distribution-template $timestamp"
 
 try {
   Set-Content -LiteralPath $claspConfigPath -Value $targetClaspConfig -Encoding UTF8
+  $templateRefreshOk = $true
+  $versionNumber = ''
 
   Write-Host "[template] [1/3] push --force"
   & $clasp push --force
@@ -63,23 +65,14 @@ try {
     throw 'clasp push --force failed for the distribution template.'
   }
 
-  Write-Host "[template] [2/3] refresh distribution template master"
-  $refreshOutput = & node $refreshScriptPath 2>&1
-  if ($LASTEXITCODE -ne 0) {
-    throw "distribution template refresh failed.`n$refreshOutput"
-  }
-  $refreshText = ($refreshOutput | Out-String).Trim()
-  Write-Host "[template] refreshed via Sheets/Drive API"
-  if ($refreshText) {
-    Write-Host $refreshText
-  }
-
   if ($SkipDeploy) {
     Write-Host "[template] skipped deployment update"
-  } elseif ([string]::IsNullOrWhiteSpace($deploymentId)) {
+  }
+  elseif ([string]::IsNullOrWhiteSpace($deploymentId)) {
     Write-Host "[template] deploymentId not configured, source push only"
-  } else {
-    Write-Host "[template] [3/3] create version and redeploy $deploymentId"
+  }
+  else {
+    Write-Host "[template] [2/3] create version and redeploy $deploymentId"
     $versionOutput = & $clasp version $description 2>&1
     if ($LASTEXITCODE -ne 0) {
       throw "clasp version failed.`n$versionOutput"
@@ -89,7 +82,7 @@ try {
     if ($versionText -notmatch 'Created version (\d+)') {
       throw "Could not read the created version number.`n$versionText"
     }
-    $versionNumber = $Matches[1]
+    $versionNumber = [string]$Matches[1]
 
     & $clasp deploy -i $deploymentId -V $versionNumber -d $description
     if ($LASTEXITCODE -ne 0) {
@@ -98,6 +91,24 @@ try {
 
     Write-Host "  version:       $versionNumber"
     Write-Host "  description:   $description"
+  }
+
+  Write-Host "[template] [3/3] refresh distribution template master"
+  try {
+    $refreshOutput = & node $refreshScriptPath 2>&1
+    if ($LASTEXITCODE -ne 0) {
+      throw "distribution template refresh failed.`n$refreshOutput"
+    }
+    $refreshText = ($refreshOutput | Out-String).Trim()
+    Write-Host "[template] refreshed via Sheets/Drive API or WebApp"
+    if ($refreshText) {
+      Write-Host $refreshText
+    }
+  }
+  catch {
+    $templateRefreshOk = $false
+    Write-Warning ($_.Exception.Message)
+    Write-Warning "[template] refresh failed. continue with deployed source."
   }
 
   Write-Host ""

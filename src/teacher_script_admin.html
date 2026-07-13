@@ -276,8 +276,6 @@ function renderAiQueue(queue){
     if(Number(data.pending||0) > 0) parts.push(`AI待ち ${data.pending}件`);
     if(Number(data.processing||0) > 0) parts.push(`AI処理中 ${data.processing}件`);
     if(Number(data.error||0) > 0) parts.push(`AI失敗 ${data.error}件`);
-    if(Number(data.aggregatePending||0) > 0) parts.push(`集約待ち ${data.aggregatePending}件`);
-    if(Number(data.aggregateMissing||0) > 0) parts.push(`未反映 ${data.aggregateMissing}件`);
     if(Number(data.persistRetryItems||0) > 0) parts.push(`保存再試行 ${data.persistRetryItems}件`);
     queueMeta.textContent=parts.length ? parts.join(' / ') : 'AI保守の滞留はありません。';
   }
@@ -349,22 +347,6 @@ function retryAiErrors(){
       alert(`再実行に失敗しました: ${(err && err.message)||err||'unknown'}`);
     })
     .retryFailedAiResponses();
-}
-
-function repairAggregate(){
-  const btn=document.getElementById('repairAggregateBtn');
-  if(btn) btn.disabled=true;
-  google.script.run
-    .withSuccessHandler(res=>{
-      if(btn) btn.disabled=false;
-      renderAiQueue(res && res.queue || null);
-      alert(`集約修復を実行しました。追加 ${res && res.enqueued || 0} 件 / 反映 ${res && res.flushed || 0} 件 / 残り ${res && res.remaining || 0} 件`);
-    })
-    .withFailureHandler(err=>{
-      if(btn) btn.disabled=false;
-      alert(`集約修復に失敗しました: ${(err && err.message)||err||'unknown'}`);
-    })
-    .repairMissingAggregateEntries();
 }
 
 function seedAiLoadTestFromTeacher(){

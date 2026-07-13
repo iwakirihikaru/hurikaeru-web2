@@ -1,6 +1,119 @@
 // ============================================================
 //  AI フィードバック
 // ============================================================
+function getAiQueueSnapshotCacheKey_() {
+  return `ai_queue_snapshot_v1:${readDomainCacheVersion_('responses')}`;
+}
+
+function buildAiQueueSnapshotFromRows_(rows) {
+  const snapshot = {
+    total: 0,
+    pending: 0,
+    processing: 0,
+    staleProcessing: 0,
+    error: 0,
+    done: 0,
+    queuedEligible: 0,
+    retrying: 0,
+    lastQueuedAt: '',
+    lastProcessedAt: '',
+    lastSuccessAt: '',
+    lastLatencyMs: 0,
+    lastModelLatencyMs: 0,
+    maxRetryCount: 0,
+    sampleErrors: [],
+    claimableResponseIds: [],
+    orphanResponseIds: [],
+  };
+  let latestDoneRow = null;
+  (rows || []).forEach(row => {
+    if (!row) return;
+    snapshot.total += 1;
+    const submitted = row[8] === true;
+    const reviewText = String(row[7] || '').trim();
+    const aiStatus = String(row[16] || '').trim();
+    const isOrphan = isOrphanedAiResponseRow_(row);
+    const isStaleProcessing = isStaleAiProcessing_(aiStatus, row[18] || '', row[22] || '');
+    const claimable = submitted && reviewText && (aiStatus === 'pending' || isStaleProcessing || isOrphan);
+    if (claimable) {
+      snapshot.claimableResponseIds.push(String(row[0] || '').trim());
+    }
+    if (isOrphan) {
+      snapshot.orphanResponseIds.push(String(row[0] || '').trim());
+    }
+    if (!submitted || !reviewText) return;
+    if (claimable) snapshot.queuedEligible += 1;
+    if (aiStatus === 'pending') snapshot.pending += 1;
+    if (aiStatus === 'processing') {
+      snapshot.processing += 1;
+      if (isStaleProcessing) snapshot.staleProcessing += 1;
+    }
+    if (aiStatus === 'error') snapshot.error += 1;
+    if (aiStatus === 'done') snapshot.done += 1;
+    if (Number(row[21] || 0) > 0 && aiStatus !== 'done') snapshot.retrying += 1;
+    if (String(row[17] || '') > String(snapshot.lastQueuedAt || '')) snapshot.lastQueuedAt = row[17] || '';
+    if (String(row[18] || '') > String(snapshot.lastProcessedAt || '')) snapshot.lastProcessedAt = row[18] || '';
+    if (Number(row[21] || 0) > snapshot.maxRetryCount) snapshot.maxRetryCount = Number(row[21] || 0);
+    if (aiStatus === 'error' && snapshot.sampleErrors.length < 5) {
+      snapshot.sampleErrors.push({
+        responseId: row[0] || '',
+        studentNumber: row[4] || '',
+        error: String(row[19] || '').slice(0, 120),
+      });
+    }
+    if (aiStatus === 'done' && (!latestDoneRow || String(row[18] || '') > String(latestDoneRow[18] || ''))) {
+      latestDoneRow = row;
+    }
+  });
+  if (latestDoneRow) {
+    snapshot.lastSuccessAt = latestDoneRow[18] || '';
+    snapshot.lastLatencyMs = Number(latestDoneRow[23] || 0);
+    snapshot.lastModelLatencyMs = Number(latestDoneRow[24] || 0);
+  }
+  return snapshot;
+}
+
+function buildAiQueueRowsFromResponses_(responses) {
+  return (Array.isArray(responses) ? responses : [])
+    .filter(Boolean)
+    .map(response => buildResponseSheetRowValues_(response));
+}
+
+function getAiQueueSnapshot_(forceRefresh) {
+  if (forceRefresh !== true) {
+    const cached = getCachedJson_(getAiQueueSnapshotCacheKey_());
+    if (cached && typeof cached === 'object') return cached;
+  }
+  const snapshot = buildAiQueueSnapshotFromRows_(buildAiQueueRowsFromResponses_(listAllResponses_()));
+  return putCachedJson_(getAiQueueSnapshotCacheKey_(), snapshot, 15);
+}
+
+function getAggregateQueueHealthCacheKey_() {
+  return `ai_aggregate_health_v1:${readDomainCacheVersion_('responses')}:${readDomainCacheVersion_('lessons')}`;
+}
+
+function buildAggregateQueueHealthFromResponses_(responseRows) {
+  const persistRetryEntries = loadAiPersistRetryEntries_();
+  const persistRetryItems = persistRetryEntries.reduce((sum, entry) => sum + ((entry?.updates || []).length), 0);
+  return {
+    queued: 0,
+    missing: 0,
+    missingEntries: [],
+    persistRetryBatches: persistRetryEntries.length,
+    persistRetryItems,
+  };
+}
+
+function getAggregateQueueHealthSnapshot_(forceRefresh) {
+  if (forceRefresh !== true) {
+    const cached = getCachedJson_(getAggregateQueueHealthCacheKey_());
+    if (cached && typeof cached === 'object') return cached;
+  }
+  const responseRows = listAllResponses_();
+  const snapshot = buildAggregateQueueHealthFromResponses_(responseRows);
+  return putCachedJson_(getAggregateQueueHealthCacheKey_(), snapshot, 15);
+}
+
 function tryProcessPendingAiInline_(source) {
   const persistRetryResult = flushAiPersistRetryQueue_(String(source || 'inline'));
   if (persistRetryResult.remaining > 0) {
@@ -196,12 +309,8 @@ function getAiBatchDelayForSubmission_() {
 }
 
 function getPendingAiSubmissionCount_() {
-  return getResponseSheetData_().rows.filter(row => {
-    const submitted = row[8] === true;
-    const reviewText = String(row[7] || '').trim();
-    const aiStatus = String(row[16] || '');
-    return submitted && reviewText && (aiStatus === 'pending' || isOrphanedAiResponseRow_(row));
-  }).length;
+  const snapshot = getAiQueueSnapshot_();
+  return Number(snapshot.pending || 0) + Number(snapshot.orphanResponseIds?.length || 0);
 }
 
 function processPendingAiBatch() {
@@ -224,7 +333,7 @@ function processPendingAiBatch() {
   if (!hasPendingAiResponses_()) {
     const aggregateResult = maybeFlushAiAggregateQueue_('time_trigger');
     if ((aggregateResult.processed || 0) > 0 || (aggregateResult.remaining || 0) > 0) {
-      return { ok: true, processed: aggregateResult.processed || 0, aggregatePending: aggregateResult.remaining > 0 };
+      return { ok: true, processed: aggregateResult.processed || 0 };
     }
   }
   const claimed = claimPendingResponsesForBatch_(AI_BATCH_MAX_ITEMS);
@@ -485,52 +594,70 @@ function claimPendingResponsesForBatch_(limit) {
   }
   let claimed = [];
   try {
-    const sheet = getResponsesDbSheet_();
-    const lastRow = sheet.getLastRow();
-    if (lastRow <= 1) return [];
-    const rows = sheet.getRange(2, 1, lastRow - 1, RESPONSE_HEADERS.length).getValues();
+    const snapshot = getAiQueueSnapshot_();
+    const candidateIds = Array.isArray(snapshot.claimableResponseIds) ? snapshot.claimableResponseIds.slice().reverse() : [];
+    if (!candidateIds.length) return [];
     const queuedAt = nowIso_();
     let dirty = false;
-    for (let i = rows.length - 1; i >= 0 && claimed.length < limit; i--) {
-      const row = rows[i];
-      const submitted = row[8] === true;
-      const aiStatus = String(row[16] || '');
-      const reviewText = String(row[7] || '').trim();
-      const aiProcessedAt = row[18] || '';
-      const aiStartedAt = row[22] || '';
+    const masterRows = [];
+    const rowUpdates = [];
+    for (let i = 0; i < candidateIds.length && claimed.length < limit; i++) {
+      const response = getResponseRecordByResponseId_(candidateIds[i]);
+      if (!response) continue;
+      const submitted = response.submitted === true;
+      const aiStatus = String(response.aiStatus || '');
+      const reviewText = String(response.reviewText || '').trim();
+      const aiProcessedAt = response.aiProcessedAt || '';
+      const aiStartedAt = response.aiStartedAt || '';
+      const row = buildResponseSheetRowValues_(response);
       const claimable = isAiQueueClaimableStatus_(aiStatus, aiProcessedAt, aiStartedAt) || isOrphanedAiResponseRow_(row);
       if (!submitted || !reviewText || !claimable) continue;
 
-      const lesson = lessonMap[String(row[1] || '')] || { lessonId: row[1] || '', unitId: row[2] || '', period: '' };
-      row[16] = 'processing';
-      row[17] = row[17] || queuedAt;
-      row[18] = queuedAt;
-      row[19] = '';
-      row[20] = '';
-      row[21] = Number(row[21] || 0);
-      row[22] = queuedAt;
-      row[23] = 0;
-      row[24] = 0;
-      dirty = true;
-      claimed.push({
-        rowNumber: i + 2,
-        responseId: row[0] || '',
-        lessonId: row[1] || '',
-        unitId: row[2] || lesson.unitId || '',
-        period: lesson.period || '',
-        studentId: row[3] || '',
-        studentNumber: row[4] || '',
-        studentName: row[5] || '',
-        reviewText,
-        isRewrite: row[14] === true,
-        aiRetryCount: Number(row[21] || 0),
+      const lesson = lessonMap[String(response.lessonId || '')] || { lessonId: response.lessonId || '', unitId: response.unitId || '', period: '' };
+      const next = Object.assign({}, response, {
+        aiStatus: 'processing',
+        aiQueuedAt: response.aiQueuedAt || queuedAt,
+        aiProcessedAt: queuedAt,
+        aiError: '',
+        aiBatchId: '',
+        aiRetryCount: Number(response.aiRetryCount || 0),
         aiStartedAt: queuedAt,
-        answersJson: row[6] || '',
+        aiLatencyMs: 0,
+        aiModelLatencyMs: 0,
+        updatedAt: queuedAt,
+      });
+      const nextRow = buildResponseSheetRowValues_(next);
+      dirty = true;
+      masterRows.push(nextRow);
+      const existingRow = findResponseSheetRowEntryByResponseId_(next.responseId);
+      if (existingRow) {
+        rowUpdates.push({ rowNumber: existingRow.rowNumber, values: nextRow });
+      }
+      claimed.push({
+        rowNumber: existingRow ? existingRow.rowNumber : 0,
+        responseId: next.responseId || '',
+        lessonId: next.lessonId || '',
+        unitId: next.unitId || lesson.unitId || '',
+        period: lesson.period || '',
+        studentId: next.studentId || '',
+        studentNumber: next.studentNumber || '',
+        studentName: next.studentName || '',
+        reviewText,
+        isRewrite: next.isRewrite === true,
+        aiRetryCount: Number(next.aiRetryCount || 0),
+        aiStartedAt: queuedAt,
+        answersJson: JSON.stringify(next.answersMap || {}),
       });
     }
 
     if (dirty) {
-      sheet.getRange(2, 1, rows.length, RESPONSE_HEADERS.length).setValues(rows);
+      mirrorResponseRowsWithAudit_(
+        masterRows,
+        'legacy_ai_claim_processing',
+        'master_mirror_failed_ai_claim',
+        'system'
+      );
+      if (rowUpdates.length) writeResponseRowUpdates_(rowUpdates, null);
       writeAiEventLogs_(buildAiItemEvents_(claimed, 'processing_started', {
         aiStatus: 'processing',
         detail: `claimed ${claimed.length} item(s)`,
@@ -556,13 +683,8 @@ function claimPendingResponsesForBatch_(limit) {
 }
 
 function hasPendingAiResponses_() {
-  const rows = getResponseSheetData_().rows;
-  return rows.some(row => {
-    const aiStatus = String(row[16] || '');
-    return row[8] === true
-      && String(row[7] || '').trim()
-      && (isAiQueueClaimableStatus_(aiStatus, row[18] || '', row[22] || '') || isOrphanedAiResponseRow_(row));
-  });
+  const snapshot = getAiQueueSnapshot_();
+  return Array.isArray(snapshot.claimableResponseIds) && snapshot.claimableResponseIds.length > 0;
 }
 
 function getLessonClaimMetaMap_() {
@@ -599,7 +721,7 @@ function getLessonClaimMetaMap_() {
 }
 
 function getAiQueueHealth_() {
-  const rows = getResponseSheetData_().rows;
+  const rows = buildAiQueueRowsFromResponses_(listAllResponses_());
   let oldestQueuedAtMs = Infinity;
   let pendingCount = 0;
   let staleCount = 0;
@@ -658,28 +780,46 @@ function rescueOrphanedAiResponses_() {
   const lock = LockService.getDocumentLock();
   if (!lock.tryLock(500)) return 0;
   try {
-    const sheet = getResponsesDbSheet_();
-    const lastRow = sheet.getLastRow();
-    if (lastRow <= 1) return 0;
-    const rows = sheet.getRange(2, 1, lastRow - 1, RESPONSE_HEADERS.length).getValues();
+    const snapshot = getAiQueueSnapshot_();
+    const orphanIds = Array.isArray(snapshot.orphanResponseIds) ? snapshot.orphanResponseIds : [];
+    if (!orphanIds.length) return 0;
     const queuedAt = nowIso_();
     let changed = 0;
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i];
+    const masterRows = [];
+    const rowUpdates = [];
+    for (let i = 0; i < orphanIds.length; i++) {
+      const response = getResponseRecordByResponseId_(orphanIds[i]);
+      if (!response) continue;
+      const row = buildResponseSheetRowValues_(response);
       if (!isOrphanedAiResponseRow_(row)) continue;
-      row[16] = 'pending';
-      row[17] = row[17] || queuedAt;
-      row[18] = '';
-      row[19] = '';
-      row[20] = '';
-      row[21] = 0;
-      row[22] = '';
-      row[23] = 0;
-      row[24] = 0;
+      const next = Object.assign({}, response, {
+        aiStatus: 'pending',
+        aiQueuedAt: response.aiQueuedAt || queuedAt,
+        aiProcessedAt: '',
+        aiError: '',
+        aiBatchId: '',
+        aiRetryCount: 0,
+        aiStartedAt: '',
+        aiLatencyMs: 0,
+        aiModelLatencyMs: 0,
+        updatedAt: queuedAt,
+      });
+      const nextRow = buildResponseSheetRowValues_(next);
       changed++;
+      masterRows.push(nextRow);
+      const existingRow = findResponseSheetRowEntryByResponseId_(next.responseId);
+      if (existingRow) {
+        rowUpdates.push({ rowNumber: existingRow.rowNumber, values: nextRow });
+      }
     }
     if (changed) {
-      sheet.getRange(2, 1, rows.length, RESPONSE_HEADERS.length).setValues(rows);
+      mirrorResponseRowsWithAudit_(
+        masterRows,
+        'legacy_ai_rescue_pending',
+        'master_mirror_failed_ai_rescue',
+        'system'
+      );
+      if (rowUpdates.length) writeResponseRowUpdates_(rowUpdates, null);
     }
     return changed;
   } finally {
@@ -1086,137 +1226,89 @@ function applyAiUpdatesBatch_(updates) {
   const lock = LockService.getDocumentLock();
   lock.waitLock(LOCK_AI_RESULT_MS);
   try {
-    const sheet = getResponsesDbSheet_();
-    const lastRow = sheet.getLastRow();
-    if (lastRow <= 1) return;
-    const rows = sheet.getRange(2, 1, lastRow - 1, RESPONSE_HEADERS.length).getValues();
     const byResponseId = {};
-    updates.forEach(update => { byResponseId[String(update.responseId)] = update; });
+    updates.forEach(update => { byResponseId[String(update.responseId || '').trim()] = update; });
     let dirty = false;
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i];
-      const update = byResponseId[String(row[0] || '')];
-      if (!update) continue;
-      row[10] = update.score ?? row[10];
-      row[11] = update.rank ?? row[11];
-      row[13] = update.comment ?? row[13];
-      row[15] = nowIso_();
-      row[16] = update.aiStatus || row[16];
-      row[17] = update.aiQueuedAt || '';
-      row[18] = update.aiProcessedAt || '';
-      row[19] = update.aiError || '';
-      row[20] = update.aiBatchId || '';
-      row[21] = Number(update.aiRetryCount ?? row[21] ?? 0);
-      row[22] = update.aiStartedAt ?? row[22] ?? '';
-      row[23] = Number(update.aiLatencyMs ?? row[23] ?? 0);
-      row[24] = Number(update.aiModelLatencyMs ?? row[24] ?? 0);
+    const masterRows = [];
+    const rowUpdates = [];
+    Object.keys(byResponseId).forEach(responseId => {
+      const existing = getResponseRecordByResponseId_(responseId);
+      if (!existing) return;
+      const update = byResponseId[responseId];
+      const next = Object.assign({}, existing, {
+        score: update.score ?? existing.score,
+        rank: update.rank ?? existing.rank,
+        comment: update.comment ?? existing.comment,
+        updatedAt: nowIso_(),
+        aiStatus: update.aiStatus || existing.aiStatus,
+        aiQueuedAt: update.aiQueuedAt || '',
+        aiProcessedAt: update.aiProcessedAt || '',
+        aiError: update.aiError || '',
+        aiBatchId: update.aiBatchId || '',
+        aiRetryCount: Number(update.aiRetryCount ?? existing.aiRetryCount ?? 0),
+        aiStartedAt: update.aiStartedAt ?? existing.aiStartedAt ?? '',
+        aiLatencyMs: Number(update.aiLatencyMs ?? existing.aiLatencyMs ?? 0),
+        aiModelLatencyMs: Number(update.aiModelLatencyMs ?? existing.aiModelLatencyMs ?? 0),
+      });
+      const row = buildResponseSheetRowValues_(next);
       dirty = true;
+      masterRows.push(row);
+      const existingRow = findResponseSheetRowEntryByResponseId_(responseId);
+      if (existingRow) {
+        rowUpdates.push({ rowNumber: existingRow.rowNumber, values: row });
+      }
+    });
+    if (dirty) {
+      mirrorResponseRowsWithAudit_(
+        masterRows,
+        'legacy_ai_batch_update',
+        'master_mirror_failed_ai_batch_update',
+        'system'
+      );
+      if (rowUpdates.length) writeResponseRowUpdates_(rowUpdates, null);
     }
-    if (dirty) sheet.getRange(2, 1, rows.length, RESPONSE_HEADERS.length).setValues(rows);
   } finally {
     lock.releaseLock();
   }
 }
 
 function appendAggregateForAiUpdates_(updates) {
-  if (!updates.length) return;
-  upsertAggregateEntries_((updates || [])
-    .filter(update => update.aiStatus === 'done' && update.lessonId)
-    .map(update => ({
-      studentNumber: update.studentNumber || '',
-      studentName: update.studentName || '',
-      reviewText: update.reviewText || '',
-      comment: update.comment || '',
-      rank: update.rank || '',
-      unitId: update.unitId || '',
-      period: update.period || '',
-      responseId: update.responseId || '',
-      unitName: update.unitName || '',
-    })));
+  return { processed: 0, skipped: 'aggregate_write_disabled', count: Array.isArray(updates) ? updates.length : 0 };
 }
 
 function enqueueAggregateForAiUpdates_(updates) {
-  const entries = (updates || [])
-    .filter(update => update && update.aiStatus === 'done' && update.lessonId)
-    .map(update => ({
-      studentNumber: update.studentNumber || '',
-      studentName: update.studentName || '',
-      reviewText: update.reviewText || '',
-      comment: update.comment || '',
-      rank: update.rank || '',
-      unitId: update.unitId || '',
-      period: update.period || '',
-      responseId: update.responseId || '',
-      unitName: update.unitName || '',
-    }));
-  if (!entries.length) return;
-  enqueueAggregateEntries_(entries);
+  return 0;
 }
 
 function loadAiAggregateQueue_() {
-  try {
-    const raw = PropertiesService.getScriptProperties().getProperty(AI_AGGREGATE_QUEUE_KEY) || '[]';
-    const entries = JSON.parse(raw);
-    return Array.isArray(entries) ? entries.filter(Boolean) : [];
-  } catch (err) {
-    return [];
-  }
+  return [];
 }
 
 function maybeFlushAiAggregateQueue_(source) {
-  const sourceText = String(source || '');
-  if (sourceText !== 'teacher_queue' && sourceText !== 'time_trigger') {
-    return { processed: 0, remaining: loadAiAggregateQueue_().length };
-  }
-  const entries = loadAiAggregateQueue_();
-  if (!entries.length) return { processed: 0, remaining: 0 };
-  const lock = LockService.getScriptLock();
-  if (!lock.tryLock(0)) return { processed: 0, remaining: entries.length, skipped: 'lock_busy' };
-  try {
-    return flushAiAggregateQueueUnsafe_(entries, sourceText);
-  } finally {
-    lock.releaseLock();
-  }
+  return { processed: 0, remaining: 0, skipped: 'aggregate_write_disabled', source: String(source || '') };
 }
 
 function flushAiAggregateQueueUnsafe_(entries, source) {
-  const props = PropertiesService.getScriptProperties();
-  let processed = 0;
-  let remainingEntries = [];
-  try {
-    const result = upsertAggregateEntries_(entries || []);
-    processed = Number(result.processed || 0);
-  } catch (err) {
-    remainingEntries = Array.isArray(entries) ? entries.slice() : [];
-  }
-  props.setProperty(AI_AGGREGATE_QUEUE_KEY, JSON.stringify(remainingEntries));
-  if (processed > 0) {
-    writeAiBatchLevelEvent_('aggregate_queue_flushed', 'done', String(source || 'aggregate_queue'), {});
-  }
-  if (remainingEntries.length > 0) {
-    safeEnsureAiBatchTrigger_(AI_TRIGGER_SHORT_RESCUE_DELAY_MS, 'flushAiAggregateQueue');
-  }
-  return { processed, remaining: remainingEntries.length };
+  return {
+    processed: 0,
+    remaining: 0,
+    skipped: 'aggregate_write_disabled',
+    source: String(source || ''),
+    count: Array.isArray(entries) ? entries.length : 0,
+  };
 }
 
 function recalcLessonMedalsFromDb_(lessonId) {
   const cfg = readGlobalConfig();
   const top = Math.min(parseInt(cfg.medal_top)||5, 5);
-  const sheet = getResponsesDbSheet_();
-  const lastRow = sheet.getLastRow();
-  if (lastRow <= 1) return;
-
-  const rows = sheet.getRange(2, 1, lastRow - 1, RESPONSE_HEADERS.length).getValues();
-  const lessonRows = [];
-  for (let i = 0; i < rows.length; i++) {
-    if (String(rows[i][1] || '') !== String(lessonId)) continue;
-    lessonRows.push({
-      index: i,
-      responseId: rows[i][0] || '',
-      reviewText: rows[i][7] || '',
-      score: Number(rows[i][10] || 0),
-    });
-  }
+  const responses = listResponsesForLesson_(lessonId);
+  if (!responses.length) return;
+  const lessonRows = responses.map(response => ({
+    responseId: response.responseId || '',
+    reviewText: response.reviewText || '',
+    score: Number(response.score || 0),
+    response,
+  }));
 
   const medalMap = {};
   lessonRows
@@ -1228,12 +1320,31 @@ function recalcLessonMedalsFromDb_(lessonId) {
     });
 
   const updatedAt = nowIso_();
+  const masterRows = [];
+  const rowUpdates = [];
   lessonRows.forEach(row => {
-    rows[row.index][12] = medalMap[row.responseId] || '';
-    rows[row.index][15] = updatedAt;
+    const next = Object.assign({}, row.response, {
+      medal: medalMap[row.responseId] || '',
+      updatedAt,
+    });
+    const nextRow = buildResponseSheetRowValues_(next);
+    masterRows.push(nextRow);
+    const existingRow = findResponseSheetRowEntryByResponseId_(next.responseId);
+    if (existingRow) {
+      rowUpdates.push({
+        rowNumber: existingRow.rowNumber,
+        values: nextRow,
+      });
+    }
   });
 
-  sheet.getRange(2, 1, rows.length, RESPONSE_HEADERS.length).setValues(rows);
+  mirrorResponseRowsWithAudit_(
+    masterRows,
+    'response_medal_recalc',
+    'master_mirror_failed_medal_recalc',
+    'system'
+  );
+  if (rowUpdates.length) writeResponseRowUpdates_(rowUpdates, null);
 }
 
 function buildCustomTextFromAnswers_(fields, answersMap) {
@@ -1244,79 +1355,21 @@ function buildCustomTextFromAnswers_(fields, answersMap) {
 }
 
 function appendToAggregate_(studentNumber, studentName, review, comment, rank, unitId, period, responseId) {
-  upsertAggregateEntries_([{
-    studentNumber,
-    studentName,
-    reviewText: review,
-    comment,
-    rank,
-    unitId,
-    period,
-    responseId,
-  }]);
+  return {
+    processed: 0,
+    skipped: 'aggregate_write_disabled',
+    studentNumber: String(studentNumber || ''),
+    responseId: String(responseId || ''),
+  };
 }
 
 function upsertAggregateEntries_(entries) {
-  const safeEntries = Array.isArray(entries) ? entries.filter(Boolean) : [];
-  if (!safeEntries.length) return { processed: 0, updated: 0, appended: 0 };
-  const ss = getTenantSpreadsheet_();
-  const agg = ss.getSheetByName(SHEET_AGG);
-  if (!agg) return { processed: 0, updated: 0, appended: 0 };
-  ensureAggregateSchema_(agg);
-  const units = getAllUnits();
-  const unitMap = {};
-  units.forEach(unit => {
-    unitMap[String(unit.id || '')] = unit;
-  });
-  const date = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd');
-  const deduped = {};
-  safeEntries.forEach(entry => {
-    const key = getAggregateEntryKey_(entry);
-    if (key) deduped[key] = entry;
-  });
-  const normalizedEntries = Object.keys(deduped).map(key => deduped[key]);
-  if (!normalizedEntries.length) return { processed: 0, updated: 0, appended: 0 };
-  const rowIndex = buildAggregateRowIndex_(agg);
-  const updates = [];
-  const appends = [];
-  normalizedEntries.forEach(entry => {
-    const unitId = String(entry.unitId || '').trim();
-    const unit = unitMap[unitId] || null;
-    const record = [
-      unit?.name || String(entry.unitName || ''),
-      unit?.subject || '',
-      entry.period || '',
-      entry.studentNumber || '',
-      entry.studentName || '',
-      date,
-      entry.reviewText || '',
-      entry.rank || '',
-      entry.comment || '',
-      unitId,
-      String(entry.responseId || ''),
-    ];
-    const responseId = String(entry.responseId || '').trim();
-    const legacyKey = makeAggregateLegacyKey_(unitId, entry.period || '', entry.studentNumber || '', unit?.name || String(entry.unitName || ''));
-    const existingRow = (responseId && rowIndex.responseIds[responseId]) || rowIndex.legacyKeys[legacyKey] || 0;
-    if (existingRow > 1) {
-      updates.push({ rowNumber: existingRow, values: [record] });
-      rowIndex.responseIds[responseId] = existingRow;
-      rowIndex.legacyKeys[legacyKey] = existingRow;
-      return;
-    }
-    appends.push(record);
-    const nextRowNumber = agg.getLastRow() + appends.length;
-    if (responseId) rowIndex.responseIds[responseId] = nextRowNumber;
-    rowIndex.legacyKeys[legacyKey] = nextRowNumber;
-  });
-  writeSheetRowBatches_(agg, updates, AGG_HEADERS.length);
-  if (appends.length) {
-    agg.getRange(agg.getLastRow() + 1, 1, appends.length, AGG_HEADERS.length).setValues(appends);
-  }
   return {
-    processed: normalizedEntries.length,
-    updated: updates.length,
-    appended: appends.length,
+    processed: 0,
+    updated: 0,
+    appended: 0,
+    skipped: 'aggregate_write_disabled',
+    requested: Array.isArray(entries) ? entries.filter(Boolean).length : 0,
   };
 }
 
@@ -1379,18 +1432,7 @@ function buildAggregateRowIndex_(sheet) {
 }
 
 function enqueueAggregateEntries_(entries) {
-  const safeEntries = Array.isArray(entries) ? entries.filter(Boolean) : [];
-  if (!safeEntries.length) return 0;
-  const props = PropertiesService.getScriptProperties();
-  const current = loadAiAggregateQueue_();
-  const deduped = {};
-  current.concat(safeEntries).forEach(entry => {
-    const key = getAggregateEntryKey_(entry);
-    if (key) deduped[key] = entry;
-  });
-  props.setProperty(AI_AGGREGATE_QUEUE_KEY, JSON.stringify(Object.values(deduped)));
-  safeEnsureAiBatchTrigger_(AI_TRIGGER_DRAIN_DELAY_MS, 'enqueueAggregateEntries');
-  return safeEntries.length;
+  return 0;
 }
 
 function getAggregateEntryKey_(entry) {
@@ -1406,87 +1448,22 @@ function makeAggregateLegacyKey_(unitId, period, studentNumber, unitName) {
 }
 
 function buildAggregateIndex_(sheet) {
-  const safeSheet = sheet || getTenantSpreadsheet_().getSheetByName(SHEET_AGG);
-  if (!safeSheet) {
-    return { responseIds: {}, legacyKeys: {} };
-  }
-  ensureAggregateSchema_(safeSheet);
-  const lastRow = safeSheet.getLastRow();
-  if (lastRow <= 1) {
-    return { responseIds: {}, legacyKeys: {} };
-  }
-  const rows = safeSheet.getRange(2, 1, lastRow - 1, Math.max(safeSheet.getLastColumn(), AGG_HEADERS.length)).getValues();
-  const responseIds = {};
-  const legacyKeys = {};
-  rows.forEach(row => {
-    const responseId = String(row[10] || '').trim();
-    if (responseId) responseIds[responseId] = true;
-    const legacyKey = makeAggregateLegacyKey_(row[9] || '', row[2] || '', row[3] || '', row[0] || '');
-    if (legacyKey) legacyKeys[legacyKey] = true;
-  });
-  return { responseIds, legacyKeys };
+  return { responseIds: {}, legacyKeys: {} };
 }
 
 function hasAggregateEntry_(index, entry, unitName) {
-  if (!entry) return false;
-  const responseId = String(entry.responseId || '').trim();
-  if (responseId && index?.responseIds?.[responseId]) return true;
-  const legacyKey = makeAggregateLegacyKey_(entry.unitId, entry.period, entry.studentNumber, unitName || entry.unitName || '');
-  return Boolean(legacyKey && index?.legacyKeys?.[legacyKey]);
+  return false;
 }
 
 function shouldTrackAggregateDoneResponse_(response) {
-  return Boolean(
-    response
-    && response.submitted === true
-    && String(response.reviewText || '').trim()
-    && String(response.aiStatus || '') === 'done'
-    && !isAiLoadTestResponse_(response)
-  );
+  return false;
 }
 
 function getAggregateQueueHealth_(responses) {
-  const responseRows = Array.isArray(responses) ? responses : getResponseSheetData_().rows.map(mapResponseRow_);
-  const queuedEntries = loadAiAggregateQueue_();
-  const persistRetryEntries = loadAiPersistRetryEntries_();
-  const aggregateIndex = buildAggregateIndex_();
-  const lessonRows = getLessonsDbSheet_().getDataRange().getValues().slice(1);
-  const lessonPeriodMap = {};
-  lessonRows.forEach(row => {
-    lessonPeriodMap[String(row[0] || '')] = row[2] || '';
-  });
-  const units = getAllUnits();
-  const unitNameMap = {};
-  units.forEach(unit => {
-    unitNameMap[String(unit.id || '')] = unit.name || '';
-  });
-  const missingEntries = [];
-  responseRows.forEach(response => {
-    if (!shouldTrackAggregateDoneResponse_(response)) return;
-    const period = response.lessonId ? (lessonPeriodMap[String(response.lessonId)] || '') : '';
-    const unitName = unitNameMap[String(response.unitId || '')] || '';
-    const entry = {
-      responseId: response.responseId || '',
-      unitId: response.unitId || '',
-      period,
-      studentNumber: response.studentNumber || '',
-      studentName: response.studentName || '',
-      reviewText: response.reviewText || '',
-      comment: response.comment || '',
-      rank: response.rank || '',
-      unitName,
-    };
-    if (!hasAggregateEntry_(aggregateIndex, entry, unitName)) {
-      missingEntries.push(entry);
-    }
-  });
-  const persistRetryItems = persistRetryEntries.reduce((sum, entry) => sum + ((entry?.updates || []).length), 0);
-  return {
-    queued: queuedEntries.length,
-    missing: missingEntries.length,
-    missingEntries,
-    persistRetryBatches: persistRetryEntries.length,
-    persistRetryItems,
-  };
+  if (!Array.isArray(responses)) return getAggregateQueueHealthSnapshot_();
+  return buildAggregateQueueHealthFromResponses_(responses);
 }
+
+
+
 

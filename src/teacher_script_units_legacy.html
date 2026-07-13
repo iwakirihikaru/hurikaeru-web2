@@ -21,6 +21,77 @@ var lastUnitListSignature = '';
 var UNIT_LIST_PAGE_SIZE = 10;
 var TEACHER_FEEDBACK_PREFS_KEY = 'teacher_feedback_prefs_v1';
 var teacherFeedbackPrefsLoaded = false;
+function formatStatusTimingLine_(label, timing, keys) {
+    if (!timing || typeof timing !== 'object' || !Array.isArray(keys) || !keys.length)
+        return '';
+    var parts = keys
+        .map(function (key) {
+        var value = Number(timing[key] || 0);
+        if (!Number.isFinite(value) || value <= 0)
+            return '';
+        var name = String(key || '').replace(/Ms$/, '');
+        return "".concat(name, " ").concat(value, "ms");
+    })
+        .filter(Boolean);
+    if (!parts.length)
+        return '';
+    return "".concat(label, ": ").concat(parts.join(' / '));
+}
+function formatResponseReadMetaLine_(meta) {
+    if (!meta || typeof meta !== 'object')
+        return '';
+    var mode = String(meta.mode || '').trim();
+    if (!mode)
+        return '';
+    var parts = ["response ".concat(mode)];
+    if (Number.isFinite(Number(meta.masterCount)))
+        parts.push("master ".concat(Number(meta.masterCount || 0)));
+    if (Number.isFinite(Number(meta.mergedCount)))
+        parts.push("merged ".concat(Number(meta.mergedCount || 0)));
+    return parts.join(' / ');
+}
+function formatUnitsReadMetaLine_(meta) {
+    if (!meta || typeof meta !== 'object')
+        return '';
+    var mode = String(meta.mode || '').trim();
+    if (!mode)
+        return '';
+    var parts = ["units ".concat(mode)];
+    var masterReadPath = String(meta.masterReadPath || '').trim();
+    if (masterReadPath)
+        parts.push(masterReadPath);
+    if (Number.isFinite(Number(meta.masterCount)))
+        parts.push("master ".concat(Number(meta.masterCount || 0)));
+    if (Number.isFinite(Number(meta.mergedCount)))
+        parts.push("merged ".concat(Number(meta.mergedCount || 0)));
+    if (meta.cached === true)
+        parts.push('cached');
+    return parts.join(' / ');
+}
+function renderStatusPerfDebug_() {
+    var el = document.getElementById('statusPerfDebug');
+    if (!el)
+        return;
+    var lessonTiming = latestStatusMeta && latestStatusMeta.timing || null;
+    var requestTiming = latestStatusMeta && latestStatusMeta.serverRequestTiming || null;
+    var responseReadMeta = latestStatusMeta && latestStatusMeta.responseReadMeta || null;
+    var unitsReadMeta = (latestStatusMeta && latestStatusMeta.unitsReadMeta)
+        || window.__teacherUnitsReadMeta
+        || null;
+    var lines = [
+        formatStatusTimingLine_('表示データ', lessonTiming, ['totalMs', 'responsesMs', 'draftsMs', 'rosterMs', 'studentBuildMs']),
+        formatStatusTimingLine_('初回読込', requestTiming, ['totalMs', 'unitsMs', 'activeMs', 'unitProgressMs', 'lessonStatusMs']),
+        formatUnitsReadMetaLine_(unitsReadMeta),
+        formatResponseReadMetaLine_(responseReadMeta),
+    ].filter(Boolean);
+    if (!lines.length) {
+        el.style.display = 'none';
+        el.textContent = '';
+        return;
+    }
+    el.style.display = 'block';
+    el.textContent = lines.join(' | ');
+}
 function loadTeacherFeedbackPrefs_() {
     try {
         var raw = localStorage.getItem(TEACHER_FEEDBACK_PREFS_KEY);
@@ -75,6 +146,11 @@ function loadStatus() {
 function renderStatus(d) {
     latestStatusRows = Array.isArray(d && d.students) ? d.students : [];
     latestStatusMeta = d && d.meta || {};
+    writeTeacherStatusPreloadCache_({
+        meta: latestStatusMeta,
+        students: latestStatusRows,
+    });
+    renderStatusPerfDebug_();
     var st = latestStatusRows;
     var aiReturnedCount = st.filter(function (s) { return String(s.comment || '').trim(); }).length;
     var draftCount = st.filter(function (s) { return hasTeacherDraft(s); }).length;

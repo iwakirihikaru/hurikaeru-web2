@@ -8,6 +8,7 @@ $claspConfigPath = Join-Path $workspace '.clasp.json'
 $templatePushScript = Join-Path $PSScriptRoot 'push-distribution-template.ps1'
 $adminDeployScript = Join-Path $PSScriptRoot 'deploy-admin-webapp.ps1'
 $provisionDeployScript = Join-Path $PSScriptRoot 'deploy-provision-webapp.ps1'
+$linkedDeployScript = Join-Path $PSScriptRoot 'deploy-script.ps1'
 $adminAppSourcePath = Join-Path $workspace 'onboarding\admin-app.js'
 
 if (-not (Test-Path -LiteralPath $clasp)) {
@@ -42,6 +43,7 @@ $scriptId = [string]$config.scriptId
 $rootDir = [string]$config.rootDir
 $deploymentId = [string]$config.webappDeploymentId
 $debugDeploymentIds = @($config.debugDeploymentIds) | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | ForEach-Object { [string]$_ }
+$linkedDeployments = @($config.linkedDeployments)
 $descriptionPrefix = [string]$config.descriptionPrefix
 
 if ([string]::IsNullOrWhiteSpace($scriptId)) {
@@ -134,6 +136,35 @@ try {
   }
   Write-Host "  version:       $versionNumber"
   Write-Host "  description:   $description"
+
+  foreach ($linkedDeployment in $linkedDeployments) {
+    $linkedScriptId = [string]$linkedDeployment.scriptId
+    $linkedDeploymentId = [string]$linkedDeployment.deploymentId
+    $linkedRootDir = [string]$linkedDeployment.rootDir
+    $linkedDescriptionPrefix = [string]$linkedDeployment.descriptionPrefix
+    $linkedLabel = [string]$linkedDeployment.label
+    if ([string]::IsNullOrWhiteSpace($linkedScriptId) -or [string]::IsNullOrWhiteSpace($linkedDeploymentId)) {
+      continue
+    }
+    if ([string]::IsNullOrWhiteSpace($linkedRootDir)) {
+      $linkedRootDir = $rootDir
+    }
+    if ([string]::IsNullOrWhiteSpace($linkedDescriptionPrefix)) {
+      $linkedDescriptionPrefix = if ([string]::IsNullOrWhiteSpace($descriptionPrefix)) { 'linked' } else { "$descriptionPrefix linked" }
+    }
+    $linkedDisplay = if ([string]::IsNullOrWhiteSpace($linkedLabel)) { $linkedDeploymentId } else { "$linkedLabel ($linkedDeploymentId)" }
+    Write-Host ""
+    Write-Host "[3.5/6] redeploy linked $linkedDisplay"
+    & $linkedDeployScript `
+      -ScriptId $linkedScriptId `
+      -DeploymentId $linkedDeploymentId `
+      -RootDir $linkedRootDir `
+      -DescriptionPrefix $linkedDescriptionPrefix `
+      -SkipBuild
+    if ($LASTEXITCODE -ne 0) {
+      Write-Warning "linked deployment update failed for $linkedDisplay. main deployment was updated, so continuing."
+    }
+  }
 
   if ((Test-Path -LiteralPath $adminConfigPath) -and (Test-Path -LiteralPath $templatePushScript)) {
     Write-Host ""

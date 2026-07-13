@@ -3,6 +3,7 @@
 ## 最初に読む範囲
 
 - 新スレでは `FILEMAP.md` とこの `HANDOFF.md` だけ読む。
+- 作業ルールは `AGENTS.md`、長期前提は `memory.md`、作業モード別の手順は `skills/` を見る。
 - 基本運用は `編集 -> 確認 -> ビルド/デプロイ`。
 - この環境では相対パスや `workdir` が不安定なことがあるので、読込・検索は絶対パス優先。
 
@@ -16,7 +17,7 @@
   - 先生:
     `https://hurikaeru-web2.pages.dev/teacher`
 - GAS は廃止ではなく、保存本体・API・導入管理の母体として残している。
-- `src/index.html` / `src/teacher.html` は現場の主入口というより、
+- `src/index.html` / `src/teacher.html` は
   - GAS互換UI
   - portable 生成元
   - 開発時の基準UI
@@ -24,12 +25,14 @@
 
 ## 現在の正
 
-- 本体 Webアプリ URL
-  `https://script.google.com/macros/s/AKfycbxNEShjIPMsE8s7xXTMYByNI-DGxgQJyMH-Tp1FvKw2/exec`
-- 本体 deploymentId
-  `AKfycbxNEShjIPMsE8s7xXTMYByNI-DGxgQJyMH-Tp1FvKw2`
-- 個人検証用 deploymentId
-  `AKfycbyEzVppHpjODvOPi7Ko3FfZwVxMI1LKdO3UInQz8Gyy0tbBJZFP--5x_QBw5KV1fRytIQ`
+- 本番 Webアプリ URL
+  `https://script.google.com/macros/s/AKfycbwo3TBXAkqLSx6XYcXxTI5m34DerRMHaB6X13dymilmU_wmc-Fn5F-2jkNofErLevVo7Q/exec`
+- 本番 deploymentId
+  `AKfycbwo3TBXAkqLSx6XYcXxTI5m34DerRMHaB6X13dymilmU_wmc-Fn5F-2jkNofErLevVo7Q`
+- 本番 scriptId
+  `1mo4HVj9GHW9YDBJ76IfJepk6SpIiJcNs-xdRIyGqCUgEy3bg6WWlkVqM`
+- デバッグ昇格版 deploymentId
+  `AKfycbwaLBC6GW0y6NwKM04tFop7vddDX1uMfz3x4KJ4juT4Sn07dBDIvMnARCm8wBI-DAxA`
 - 導入管理 URL
   `https://script.google.com/macros/s/AKfycbyIxBewjHHF2JLlGbI6yuDfdMM7l_AkvY1QRlclIM0uR_nOGa_NXNcAZXY9Jl_g973G/exec`
 - provision URL
@@ -41,74 +44,129 @@
 
 ## 現在の最新版
 
-- 2026-07-08 時点
-  - 本体 version `311`
-  - 配布テンプレート version `41`
-  - 導入管理 version `135`
-  - provision version `71`
+- 2026-07-11 時点
+  - 本番 version `354`
+  - repo管理 debug deployment version `354`
+  - デバッグ昇格版 version `10`
+  - 配布テンプレート version `64`
+  - 導入管理 version `173`
+  - provision version `104`
   - shell build `shell-config-phase2-2026-07-05-1730`
+  - Pages production latest commit
+    `c5f3a0a8 Update portable web app flow and student bootstrap`
 
 ## Web 配布の現在地
 
-- 静的配布版は `portable/` を正とし、公開反映用のコピーを `portable-publish/` に置いている。
-- 個人配布向け GAS API の作業元は `portable-tenant/`。
+- 静的配布版の本線は `portable/`。長期運用では `main` へ取り込み、`main` から本番公開する。
+- `portable-publish/` は互換運用のため残している公開反映用コピー。長期本線にはしない。
 - 静的版の接続先は `setup` で `localStorage.GAS_API_URL` に保存する。
-- 使い方タブの案内は Web 版前提へ変更済み。
-  - `WEB児童ページ`
-  - `WEB接続ページ`
-- 児童番号タップは、授業中なら `bootstrapStudentOptions.classSnapshot` で即表示し、その後に正本同期する。
+- 新規端末の既定接続先は空。
+- 先生ごとに `?api=...` 付きURLまたは setup で保存先を入れる運用を正とする。
+- `portable/teacher.html` や `portable/student.html` を直接編集しない。
+- `main` へ merge/push すると GitHub Actions が `node ./scripts/build-static-port.mjs` で `portable/` を再生成し、GitHub Pages へ自動公開する想定。
+- PR では同ビルドを実行し、`portable/` を artifact として確認できる想定。
+- `portable-publish/` は互換確認や一時運用だけに使い、最終的な本番反映は `main` へ取り込んで行う。
 
-## Web 配布の運用ルール
+## 現場運用メモ
 
-- `portable/teacher.html` や `portable/student.html` を直接いじると、`npm run build:portable` で上書きされる。
-- 画面ロジックの修正は、原則 `src/teacher_script_*_legacy.html` / `src/index.html` 側へ戻す。
-- Web配布の反映手順は
-  `src を修正 -> npm run build:portable -> portable-publish へコピー`
-- `portable-publish/` は公開前の最終確認先として扱う。
-- Cloudflare Pages 側の自動公開設定は、この repo からは見えない。
-  - 少なくともローカル情報だけでは `GitHub に push したら自動更新` は保証できない
-  - 運用上は `portable-publish/` を公開元に固定するのが分かりやすい
-  - ただし repo 側は、Cloudflare Pages の Linux build でそのまま動くように `npm run build:portable` を Node 化済み
-  - Pages で自動化するなら
-    - Build command: `npm run build:portable`
-    - Build output directory: `portable`
+- 現場確認で反映が見えないときは、まず `pages.dev/teacher` の `localStorage.GAS_API_URL` を確認する。
+- その GAS deployment がこの repo の scriptId 配下かも確認する。
+- 本番 `api` を使うシートは、本番コード更新に自動追随する。
+- `AKfycbwa...` は補助確認用で、常用前提ではない。
 
-## 直近の重要修正
+## 重要仕様
 
-- 使い方タブの `児童ページ` / `登録ページ` を Web 版導線へ変更した。
-  - `studentUrl` は `pages.dev/student.html?api=...`
-  - `registrationUrl` は `pages.dev/setup.html?api=...`
-- `portable/setup.html` を初回接続用の日本語UIへ作り直した。
-- 児童ページは、同一児童の local cache 先出しに加えて、
-  - 授業中クラスの snapshot を bootstrap に先読み
-  - 番号タップ時は通信なし即描画
-  - その後に `studentLoadState()` / `getTimeline()` で同期
-  する形にした。
-- 返却済みコメントが児童画面に出ない不具合を修正した。
-- 設定タブの項目順が児童画面で先頭固定される不具合を修正した。
-- 単元一覧の表示件数は全並び順でページ送り化し、1ページ 10 件にした。
-- 更新タブは版情報中心へ簡略化した。
+- 保存本線は `Responses`。旧 `授業_x_y` は互換レベル。
+- 提出保存と AI 処理は分離済み。提出時はまず保存し、AI はキュー処理。
+- 単元設定を後から変えても、その時間の授業は `Lessons.fieldsJson` により当時の項目を保持する。
+- 教師画面の `この時間だけ項目を編集` は、その授業だけ上書きする。
+- 教師AI未設定でも、手入力下書き保存・返却・手動メダルは使える。
+- AI未設定時は AI生成系ボタンだけ無効化する。
+- メダルは自動確定ではなく、教師操作時に反映する。
+
+## フェーズ状況
+
+- Phase D
+  - 実質完了。
+  - `doGet()` は接続確認寄りへ整理済み。
+  - teacher / student の主導線は portable relay 前提。
+- Phase E
+  - 実質完了。
+  - 旧 route helper、旧 redirect gate、未使用 helper、`legacy_*` 文言の大半を整理済み。
+  - 生成フロー名として残る `legacy` と、現役 fallback / 互換資産は別テーマに切り出した。
+- Phase F
+  - 進行中。
+  - `legacy` を一括削除候補にせず、次の3分類で扱う。
+    - `legacy` 命名
+    - 現役 fallback
+    - 互換資産
+  - 現時点の切り分け
+    - `scripts/build-teacher-legacy.js` / `src/teacher_script_*_legacy.html`
+      - 旧 fallback ではなく、生成フロー名として現役。
+    - `src/07_portable_rpc.js` の `action: "rpc"` + `payload.method`
+      - 現役 fallback。
+    - `scripts/build-static-port.ps1`
+      - Node 版と並存する互換資産。
+  - 2026-07-12 追加前進
+    - `scripts/build-static-port.mjs`
+      - `portable/setup.html` の接続確認を `postAction('rpc', { method: 'teacherInit' })` から `postAction('teacherInit', {})` へ変更。
+      - `node scripts/build-static-port.mjs` を実行し、`portable/setup.html` へ反映済み。
+    - `src/02_setup.js`
+      - `legacy_writeGlobalConfig` / `legacy_writeGlobalConfigBatch` 由来の audit source 名を
+        `config_writeGlobalConfig` / `config_writeGlobalConfigBatch` へ変更。
+  - まだ残る主な検討点
+    - `src/07_portable_rpc.js` の `rpc` 互換受理をどこまで縮められるか。
+    - `scripts/build-static-port.ps1` を残置するか、運用上 retire できるか。
+    - `teacher_script_*_legacy.html` / `build-teacher-legacy.js` を改名テーマに切るか現状維持にするか。
+
+## Master GAS API v1
+
+- `src/10_master_gas_api_v1.js` を追加済み。
+- 固定4シート:
+  - `Records`
+  - `Config`
+  - `Master`
+  - `Logs`
+- 実装済み action:
+  - `PING`
+  - `APPEND_RECORD`
+  - `GET_RECORDS`
+  - `UPSERT_CONFIG`
+  - `GET_CONFIG`
+  - `UPSERT_MASTER`
+  - `GET_MASTER`
+  - `APPEND_LOG`
+- response / aggregate / unit の主読取は master 側へ寄せ済み。
+- 残しているのは主に互換書き込みと一部の互換受け口。
 
 ## 今の優先順位
 
-- 1位:
-  Web版の体感速度と安定性
-- 2位:
-  先生画面の授業中導線、ポートフォリオ、単元一覧
-- 3位:
-  Cloudflare Pages 側の公開手順整理
-- 4位:
-  旧 GAS UI の整理
+- 1位: Web版の体感速度と安定性
+- 2位: 先生画面の授業中導線、ポートフォリオ、単元一覧
+- 3位: Cloudflare Pages 側の公開手順整理
+- 4位: 旧 GAS UI の整理
 
-## デプロイ
+## デプロイとビルド
 
+- 基本は個別反映ではなく、`deploy:webapp` で本体・関連配布物まで一気に更新する。
 - 本体反映
   `C:\Program Files\nodejs\npm.cmd run deploy:webapp`
-- これで本体、配布テンプレート、導入管理、provision までまとめて更新する。
-- `deploy:webapp` の中で
+- portable 再生成
+  `npm run build:portable`
+- PR build 確認
+  `.github/workflows/portable-pr-check.yml`
+- main merge 後の Pages 自動公開
+  `.github/workflows/portable-pages-deploy.yml`
+- portable 公開コピー同期
+  `npm run sync:portable-publish`
+- portable 再生成から公開コピー同期まで
+  `npm run build:portable-publish`
+- GitHub Pages / 本番公開の考え方は `portable/` 本線、`main` 公開、`portable-publish/` は互換残置。
+- `deploy:webapp` では
   - teacher legacy 再生成
   - update bundle 再生成
   - version 作成
+  - 本番 deployment 再デプロイ
   - admin / template / provision 更新
   まで流れる。
 - まれに `src/99_update_bundle.js` の書き込みで一時失敗することがある。
@@ -118,51 +176,39 @@
 
 - GAS本体
   `src/00_bootstrap.js` から `src/07_portable_rpc.js`
-- 児童画面の主な修正点
+- Master API
+  `src/10_master_gas_api_v1.js`
+- 児童画面
   `src/index.html`, `src/04_student.js`, `src/03_domain.js`
-- 教師画面の主な修正点
+- 教師画面
   `src/06_teacher.js`, `src/teacher_section_*.html`, `src/teacher_script_*.html`
 - Web配布
-  `portable/`, `portable-publish/`, `scripts/build-static-port.ps1`
+  `portable/`, `portable-publish/`, `portable-src/runtime-shim.js`, `scripts/build-static-port.mjs`
 - 導入管理の元
   `onboarding/admin-app.js`, `onboarding/admin-register.html`, `onboarding/admin-guide.html`
-  - `admin-src` は生成物なので直接編集しない
-
-## 重要仕様
-
-- 保存本線は `Responses`。旧 `授業_x_y` は互換レベル。
-- 提出保存と AI 処理は分離済み。提出時はまず保存、AI はキュー処理。
-- 単元設定を後から変えても、その時間の授業は `Lessons.fieldsJson` により当時の項目を保持する。
-- 教師画面の `この時間だけ項目を編集` は、その授業だけ上書きする。
-- 教師AI未設定でも、手入力下書き保存・返却・手動メダルは使える。
-- AI未設定時は AI生成系ボタンだけ無効化する方針。
-- メダルは自動確定ではなく、教師操作時に反映する。
+- `admin-src` は生成物なので直接編集しない。
 
 ## 今の注意点
 
-- 教師画面修正後は、`teacher_script_*_legacy.html` を手で触らず、デプロイ時の自動生成に任せる。
+- `teacher_script_*_legacy.html` は手編集せず、生成フローで再作成する。
 - `portable/` は生成物。直接編集しない。
-- `portable-publish/` は公開用コピー。公開前に差分確認する。
+- `portable-publish/` は互換用コピー。使う場合だけ公開前に差分確認する。
+- `portable-publish/` の中に `.git` がある場合、親 repo へ submodule として誤追加しない。
 - 互換性不具合を疑うときは、まず `teacher_preflight.html` の表示を見る。
-- 長いログ全文は会話に貼らず、代表行だけ貼る。
-- deploymentId、URL、version は会話に繰り返さず、このファイルを見る前提で進める。
+- deploymentId、URL、version はこのファイルを正とする。
 
 ## 今の未整理ポイント
 
-- `hurikaeru-web2.pages.dev` の自動公開経路は未整理。
-- `portable/` と `portable-publish/` のどちらを Pages の正式公開元にするか、まだ運用を一本化していない。
-- ポートフォリオや授業状況にも snapshot 発想を広げる余地がある。
-- 旧 `webapp/` 試作群は現行主線ではない。必要になるまで前面には出さない。
+- `portable-publish/` をどの互換用途まで残すかは未整理。
+- Cloudflare Pages の production branch は `main` を正とし、preview branch 直pushを本番運用にしない。
+- Phase F で残る fallback / 互換資産の扱いをどこまで狭めるか未決定。
 
-## スレ切り替えの目安
+## 次にやる候補
 
-- 基本は同じ開発スレを続ける。
-- ただし、次のどれかが増えてきたら新スレ推奨。
-  - 長いログ貼り付けが続く
-  - 同じ不具合経緯の説明を何度も参照する
-  - URL、deploymentId、version の再確認が増える
-  - 反応が鈍くなり、過去文脈の整理コストが高くなる
-- 切り替えるときは `FILEMAP.md` とこの `HANDOFF.md` だけ渡せばよい。
+- `src/07_portable_rpc.js` の `rpc` 互換受理を、実参照を見ながらさらに縮める。
+- `scripts/build-static-port.ps1` の retire 可否を運用面から判断する。
+- `main` 一本化後に preview branch 運用をどこまで減らせるか確認する。
+- 実行テストは未実施なので、必要になった段階で別途行う。
 
 ## 次スレで十分な依頼文
 
@@ -171,3 +217,13 @@
 `現象:`
 `期待動作:`
 `触らない範囲:`
+
+
+
+## ユーザーへ依頼するとき
+
+- ユーザーに操作を頼むときは、短く済ませず、画面名・押す場所・確認する値を順に書く。
+- 「何したら？」で返させないよう、1. 2. 3. の手順で書く。
+- branch や URL を確認してもらうときは、返してほしい値をそのまま書く。
+  - 例: `Production branch: main`
+  - 例: `最新 Production commit: 11132e7`

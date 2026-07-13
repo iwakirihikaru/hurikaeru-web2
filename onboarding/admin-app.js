@@ -8,7 +8,7 @@
   primaryMaintenanceUrl: '',
   guideModePath: '?mode=guide',
   latestTenantAppBuild: 'shell-config-phase2-2026-07-05-1730',
-  latestTenantAppVersion: '311',
+  latestTenantAppVersion: '356',
   latestTenantAppNote: 'Config のマルチオリジン配信とフォールバック対応',
   latestTenantBundleVersion: '1',
   minimumUpdaterVersion: '1',
@@ -36,6 +36,11 @@ function doGet(e) {
   }
   if (mode === 'maintenanceStatus') {
     return jsonOutput_(getMaintenanceStatusResponse_());
+  }
+  if (mode === 'copyChooser') {
+    return HtmlService.createHtmlOutput(buildCopyChooserHtml_(e))
+      .setTitle('コピー先アカウントを選ぶ')
+      .addMetaTag('viewport', 'width=device-width,initial-scale=1');
   }
   return jsonOutput_({ ok: false, error: 'not_found' });
 }
@@ -65,7 +70,7 @@ function getReleaseInfo_() {
 }
 
 function getReleaseManifest_() {
-  const bundleBase = String(CONFIG.templateCopyChooserUrlBase || '').trim();
+  const sourceBundleUrl = buildLatestTenantBundleUrl_();
   return {
     ok: true,
     latestBuild: String(CONFIG.latestTenantAppBuild || '').trim(),
@@ -73,10 +78,37 @@ function getReleaseManifest_() {
     latestNote: String(CONFIG.latestTenantAppNote || '').trim(),
     bundleVersion: String(CONFIG.latestTenantBundleVersion || '').trim(),
     minimumUpdaterVersion: String(CONFIG.minimumUpdaterVersion || '').trim(),
-    sourceBundleUrl: bundleBase ? buildUrlWithParams_(bundleBase, { mode: 'updateBundle' }) : '',
+    sourceBundleUrl,
+    sourceSnapshot: null,
     updateAvailableMessage: '新しい版があります。URLはそのままで、更新タイミングを案内します。',
     releasedAt: new Date().toISOString(),
   };
+}
+
+function buildLatestTenantBundleUrl_() {
+  const rawPath = String(CONFIG.latestTenantBundlePath || '').trim();
+  if (!rawPath) return '';
+  if (/^https?:\/\//i.test(rawPath)) return rawPath;
+  const baseUrl = resolveReleaseAssetBaseUrl_();
+  return baseUrl ? resolveAbsoluteUrl_(baseUrl, rawPath) : '';
+}
+
+function resolveReleaseAssetBaseUrl_() {
+  const shellConfigUrl = String(CONFIG.primaryShellConfigUrl || '').trim();
+  if (shellConfigUrl) return shellConfigUrl;
+  const maintenanceUrl = String(CONFIG.primaryMaintenanceUrl || '').trim();
+  if (maintenanceUrl) return maintenanceUrl;
+  return '';
+}
+
+function resolveAbsoluteUrl_(baseUrl, relativePath) {
+  const base = String(baseUrl || '').trim();
+  const relative = String(relativePath || '').trim();
+  if (!base || !relative) return '';
+  if (/^https?:\/\//i.test(relative)) return relative;
+  const normalizedBase = base.replace(/[^/]+$/, '');
+  const trimmedRelative = relative.replace(/^\.\/+/, '');
+  return `${normalizedBase}${trimmedRelative}`;
 }
 
 function getShellConfigResponse_() {
@@ -664,8 +696,9 @@ function buildChooserTemplateUrl_() {
     throw new Error('CONFIG.templateCopyUrlBase is not set.');
   }
   const templateSpreadsheetId = extractSpreadsheetId_(base);
-  if (chooserBase && templateSpreadsheetId) {
-    return buildUrlWithParams_(chooserBase, {
+  const effectiveChooserBase = chooserBase || resolveLocalChooserBaseUrl_();
+  if (effectiveChooserBase && templateSpreadsheetId) {
+    return buildUrlWithParams_(effectiveChooserBase, {
       mode: 'copyChooser',
       spreadsheetId: templateSpreadsheetId,
       title: 'ふりかえりアプリ 配布テンプレート',
@@ -691,6 +724,14 @@ function buildUrlWithParams_(base, params) {
   return base.indexOf('?') >= 0 ? `${base}&${query}` : `${base}?${query}`;
 }
 
+function resolveLocalChooserBaseUrl_() {
+  try {
+    return String(ScriptApp.getService().getUrl() || '').trim();
+  } catch (_err) {
+    return '';
+  }
+}
+
 function extractSpreadsheetId_(url) {
   const match = String(url || '').match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
   return match ? match[1] : '';
@@ -699,6 +740,67 @@ function extractSpreadsheetId_(url) {
 function buildGuideUrl_() {
   const path = String(CONFIG.guideModePath || '?mode=guide').trim();
   return ScriptApp.getService().getUrl() + path;
+}
+
+function buildCopyChooserHtml_(e) {
+  const params = (e && e.parameter) || {};
+  const spreadsheetId = String(params.spreadsheetId || '').trim();
+  const title = String(params.title || '').trim() || '配布テンプレート';
+  const copyUrl = spreadsheetId
+    ? `https://docs.google.com/spreadsheets/d/${encodeURIComponent(spreadsheetId)}/copy`
+    : buildDirectTemplateUrl_();
+  const authuserLinks = [0, 1, 2, 3].map(index => {
+    const url = `${copyUrl}${copyUrl.indexOf('?') >= 0 ? '&' : '?'}authuser=${index}`;
+    return {
+      label: `${index + 1}番目のアカウントでコピー`,
+      note: `Chrome 右上のアカウント一覧で ${index + 1} 番目に見えている Google アカウント向け`,
+      url,
+    };
+  });
+  const safeTitle = escapeHtmlForAdmin_(title);
+  const cardsHtml = authuserLinks.map(link => `
+    <a href="${escapeAttributeForAdmin_(link.url)}" target="_blank" rel="noopener noreferrer" style="display:block;text-decoration:none;border:1px solid #d8cbb7;border-radius:14px;padding:16px;background:#fffdf8;color:#1f2a30;">
+      <div style="font-weight:700;font-size:16px;margin-bottom:6px;">${escapeHtmlForAdmin_(link.label)}</div>
+      <div style="font-size:13px;line-height:1.7;color:#5f6b72;">${escapeHtmlForAdmin_(link.note)}</div>
+    </a>
+  `).join('');
+  return `
+    <!DOCTYPE html>
+    <html lang="ja">
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      <base target="_blank">
+    </head>
+    <body style="margin:0;font-family:'Yu Gothic UI','Hiragino Sans',sans-serif;background:linear-gradient(180deg,#efe6d7 0%,#f6f1e8 100%);color:#1f2a30;">
+      <div style="max-width:760px;margin:0 auto;padding:32px 20px 56px;">
+        <div style="background:#fffdf8;border:1px solid #d8cbb7;border-radius:18px;padding:24px;box-shadow:0 18px 40px rgba(44,37,24,0.08);">
+          <h1 style="margin:0 0 10px;font-size:28px;">どの Google アカウントでコピーするか選ぶ</h1>
+          <p style="margin:0 0 18px;line-height:1.8;color:#5f6b72;">${safeTitle} をどの Google アカウントの Drive にコピーするか選びます。</p>
+          <div style="display:grid;gap:12px;">
+            ${cardsHtml}
+          </div>
+          <div style="margin-top:18px;padding:14px 16px;border-radius:14px;background:#f7fbfa;border:1px solid #c9e5dd;line-height:1.8;">
+            <div style="font-weight:700;margin-bottom:6px;">分からないとき</div>
+            <div style="color:#5f6b72;font-size:13px;">まず 1番目 で試し、違う Drive に入ったら戻って 2番目 / 3番目 を試してください。コピー先が違ったら、そのコピーでは初期設定を押さずに閉じます。</div>
+          </div>
+          <p style="margin:18px 0 0;font-size:12px;color:#5f6b72;word-break:break-all;">通常リンク: ${escapeHtmlForAdmin_(copyUrl)}</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+}
+
+function escapeHtmlForAdmin_(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function escapeAttributeForAdmin_(value) {
+  return escapeHtmlForAdmin_(value).replace(/"/g, '&quot;');
 }
 
 function mapRegistrationRow_(row) {
@@ -749,6 +851,45 @@ function buildTenantUpdateRequestNote_(body, requestedAt) {
   if (currentWebAppUrl) parts.push(`webAppUrl=${currentWebAppUrl}`);
   return parts.join(' | ');
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

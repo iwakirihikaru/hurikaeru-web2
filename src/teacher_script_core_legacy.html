@@ -22,9 +22,12 @@ var activePeriod = 0;
 var statusTimer = null;
 var delTargetId = null;
 var allAggData = [];
+var allAggMeta = { scope: 'unknown', fetchedAt: 0, unitId: '', subject: '' };
 var rosterEntries = [];
 var portfolioRows = [];
 var teacherBuild = '';
+var teacherDeploymentVersion = 0;
+var teacherDeploymentCreatedAt = '';
 var teacherHelpData = null;
 var teacherHelpLoading = false;
 var teacherHelpAutoChecked = false;
@@ -34,6 +37,7 @@ var teacherDataEpoch = 0;
 var lastTeacherStartAtMs = 0;
 var teacherEndingLesson = false;
 var teacherActiveDebug = '';
+var teacherUnitsReadMeta = null;
 var TEACHER_CLIENT_BUILD = 'client-20260704-1035';
 var teacherBootstrapApplied = false;
 var UI_STATE_KEY = 'jibun-matome-teacher-ui';
@@ -165,6 +169,9 @@ var preloadCache = {
     roster: null,
     editor: null,
     prompts: null,
+    portfolio: null,
+    status: null,
+    aggregate: null,
     rosterLoading: false,
     editorLoading: false,
     promptsLoading: false,
@@ -240,6 +247,10 @@ function loadStatusInit(options) {
     var opts = options || {};
     var requestEpoch = teacherDataEpoch;
     applyEmbeddedTeacherBootstrap_();
+    var cachedStatus = readTeacherStatusPreloadCache_();
+    if (cachedStatus) {
+        renderStatus(cachedStatus);
+    }
     var runner = google.script.run
         .withSuccessHandler(function (d) {
         if (requestEpoch !== teacherDataEpoch)
@@ -257,6 +268,7 @@ function loadStatusInit(options) {
         if (opts.startPolling) {
             startStatusPoll(Boolean(d && d.status));
         }
+        scheduleTeacherUnitProgressRefresh_(d);
     })
         .withFailureHandler(function (err) {
         if (requestEpoch !== teacherDataEpoch)
@@ -266,11 +278,41 @@ function loadStatusInit(options) {
             startStatusPoll(false);
         }
     });
-    if (opts.lightweight !== false && Array.isArray(allUnits) && allUnits.length) {
+    var hasUnitsReadMeta = Boolean(teacherUnitsReadMeta && typeof teacherUnitsReadMeta === 'object');
+    if (opts.lightweight !== false && hasUnitsReadMeta && Array.isArray(allUnits) && allUnits.length) {
         runner.teacherStatusSnapshot();
         return;
     }
     runner.teacherStatusInit();
+}
+function scheduleTeacherUnitProgressRefresh_(data) {
+    if (!(data && data.progressNeedsRefresh))
+        return;
+    if (scheduleTeacherUnitProgressRefresh_._started)
+        return;
+    scheduleTeacherUnitProgressRefresh_._started = true;
+    var run = function () {
+        google.script.run
+            .withSuccessHandler(function (res) {
+            var map = res && res.unitProgress;
+            if (!map || typeof map !== 'object')
+                return;
+            unitProgressByUnitId = map;
+            populateUnitSelects();
+            var unitListSection = document.getElementById('unitListWrap');
+            if (unitListSection && unitListSection.offsetParent !== null) {
+                renderUnitList();
+            }
+        })
+            .withFailureHandler(function () { })
+            .teacherUnitProgressRefresh();
+    };
+    if (typeof requestIdleCallback === 'function') {
+        requestIdleCallback(run, { timeout: 4000 });
+    }
+    else {
+        setTimeout(run, 2500);
+    }
 }
 function invalidateTeacherDataRequests_() {
     teacherDataEpoch += 1;
@@ -327,6 +369,10 @@ function applyTeacherInitData(d, options) {
     var previousPeriod = activePeriod;
     if (Array.isArray(d.units))
         allUnits = d.units;
+    if (d.unitsReadMeta && typeof d.unitsReadMeta === 'object') {
+        teacherUnitsReadMeta = d.unitsReadMeta;
+        window.__teacherUnitsReadMeta = d.unitsReadMeta;
+    }
     if (d.active !== undefined) {
         var rawActive = d.active || {};
         d.active = buildResolvedActiveState_(d.active);
@@ -344,6 +390,10 @@ function applyTeacherInitData(d, options) {
         unitProgressByUnitId = d.unitProgress;
     if (d.build)
         teacherBuild = d.build;
+    if (d.deploymentVersion !== undefined)
+        teacherDeploymentVersion = Number(d.deploymentVersion || 0);
+    if (d.deploymentCreatedAt !== undefined)
+        teacherDeploymentCreatedAt = String(d.deploymentCreatedAt || '').trim();
     if (opts.includeRoster) {
         if (Array.isArray(d.roster)) {
             rosterEntries = d.roster.filter(function (row) { return row.active !== false; });
@@ -351,6 +401,10 @@ function applyTeacherInitData(d, options) {
             persistTeacherPreloadCache_();
         }
     }
+    if (!activeUnitId || !activePeriod) {
+        clearTeacherStatusPreloadCache_();
+    }
+    persistPortableTeacherBootstrap_();
     applySavedUiState();
     renderBuildBar();
     renderActiveBanner(d.active);
@@ -391,6 +445,30 @@ function handleTeacherInitFailure_(err, source) {
     renderBuildBar();
     showTeacherLoadWarning_("".concat(source, ": ").concat(message));
 }
+function buildPortableTeacherBootstrapPayload_() {
+    var rosterSource = Array.isArray(rosterEntries) && rosterEntries.length
+        ? rosterEntries
+        : (preloadCache.roster && Array.isArray(preloadCache.roster.roster) ? preloadCache.roster.roster : []);
+    var activePayload = (activeUnitId != null && activePeriod > 0)
+        ? buildResolvedActiveState_({ unitId: activeUnitId, period: activePeriod })
+        : null;
+    return {
+        units: Array.isArray(allUnits) ? allUnits : [],
+        active: activePayload && activePayload.unitId ? activePayload : null,
+        roster: Array.isArray(rosterSource) ? rosterSource : [],
+        unitProgress: unitProgressByUnitId && typeof unitProgressByUnitId === 'object' ? unitProgressByUnitId : {},
+        build: teacherBuild || '',
+        deploymentVersion: Number(teacherDeploymentVersion || 0),
+        deploymentCreatedAt: String(teacherDeploymentCreatedAt || ''),
+    };
+}
+function persistPortableTeacherBootstrap_() {
+    if (!(window.__portableGas && typeof window.__portableGas.cacheTeacherBootstrap === 'function'))
+        return;
+    var payload = buildPortableTeacherBootstrapPayload_();
+    window.__TEACHER_BOOTSTRAP__ = payload;
+    window.__portableGas.cacheTeacherBootstrap(payload);
+}
 function scheduleTeacherPreload() {
     if (preloadCache.started)
         return;
@@ -424,6 +502,12 @@ function hydrateTeacherPreloadCache_() {
             preloadCache.editor = parsed.editor;
         if (parsed.prompts)
             preloadCache.prompts = parsed.prompts;
+        if (parsed.portfolio)
+            preloadCache.portfolio = parsed.portfolio;
+        if (parsed.status)
+            preloadCache.status = parsed.status;
+        if (parsed.aggregate)
+            preloadCache.aggregate = parsed.aggregate;
     }
     catch (_err) { }
 }
@@ -434,9 +518,54 @@ function persistTeacherPreloadCache_() {
             roster: preloadCache.roster || null,
             editor: preloadCache.editor || null,
             prompts: preloadCache.prompts || null,
+            portfolio: preloadCache.portfolio || null,
+            status: preloadCache.status || null,
+            aggregate: preloadCache.aggregate || null,
         }));
     }
     catch (_err) { }
+}
+function clearTeacherStatusPreloadCache_(skipPersist) {
+    preloadCache.status = null;
+    if (skipPersist)
+        return;
+    persistTeacherPreloadCache_();
+}
+function readTeacherStatusPreloadCache_() {
+    var cached = preloadCache.status;
+    if (!cached || typeof cached !== 'object')
+        return null;
+    if ((Date.now() - Number(cached.savedAt || 0)) > TEACHER_PRELOAD_TTL_MS) {
+        clearTeacherStatusPreloadCache_();
+        return null;
+    }
+    if (String(cached.unitId || '') !== String(activeUnitId || ''))
+        return null;
+    if (Number(cached.period || 0) !== Number(activePeriod || 0))
+        return null;
+    var status = cached.status;
+    if (!status || typeof status !== 'object' || !Array.isArray(status.students))
+        return null;
+    return {
+        meta: status.meta || {},
+        students: status.students,
+    };
+}
+function writeTeacherStatusPreloadCache_(status) {
+    if (!activeUnitId || !activePeriod || !status || typeof status !== 'object' || !Array.isArray(status.students)) {
+        clearTeacherStatusPreloadCache_();
+        return;
+    }
+    preloadCache.status = {
+        savedAt: Date.now(),
+        unitId: String(activeUnitId || ''),
+        period: Number(activePeriod || 0),
+        status: {
+            meta: status.meta || {},
+            students: status.students,
+        },
+    };
+    persistTeacherPreloadCache_();
 }
 function readUiState() {
     try {
@@ -618,11 +747,44 @@ function ensurePromptPreload(force) {
     })
         .teacherPromptInit();
 }
+function formatTeacherDeploymentCreatedAt_(value) {
+    var text = String(value || '').trim();
+    if (!text)
+        return '';
+    var date = new Date(text);
+    if (Number.isNaN(date.getTime())) {
+        return text.replace('T', ' ').replace(/\.\d+Z?$/, '').replace(/Z$/, '').trim();
+    }
+    try {
+        return date.toLocaleString('ja-JP', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+        }).replace(/\//g, '-');
+    }
+    catch (_err) {
+        return text;
+    }
+}
 function renderBuildBar() {
     var el = document.getElementById('buildBar');
     if (!el)
         return;
-    el.textContent = "build: ".concat(teacherBuild || 'unknown', " / ").concat(TEACHER_CLIENT_BUILD);
+    var parts = [];
+    if (Number(teacherDeploymentVersion || 0) > 0) {
+        parts.push("GAS v".concat(Number(teacherDeploymentVersion || 0)));
+    }
+    else {
+        parts.push("build ".concat(teacherBuild || 'unknown'));
+    }
+    var deployedAt = formatTeacherDeploymentCreatedAt_(teacherDeploymentCreatedAt);
+    if (deployedAt)
+        parts.push("deployed ".concat(deployedAt));
+    parts.push(TEACHER_CLIENT_BUILD);
+    el.textContent = parts.join(' / ');
 }
 function populateUnitSelects() {
     populateStatusSubjectFilter();
@@ -739,8 +901,9 @@ function applyTeacherHelpData(data) {
     var links = teacherHelpData.links || {};
     var shell = teacherHelpData.shell || {};
     var teacherUrl = String(links.teacherUrl || '').trim();
-    var registrationUrl = String(links.registrationUrl || '').trim();
+    var registrationUrl = resolveRegistrationHelpUrl_(links);
     var studentUrl = String(links.studentUrl || '').trim();
+    var setupUrl = String(links.setupUrl || '').trim();
     var idsToValues = [
         ['statusTeacherUrl', teacherUrl],
         ['teacherPageUrl', teacherUrl],
@@ -749,6 +912,7 @@ function applyTeacherHelpData(data) {
         ['statusStudentUrl', studentUrl],
         ['studentPageUrl', studentUrl],
         ['helpStudentUrl', studentUrl],
+        ['helpSetupUrl', setupUrl],
     ];
     idsToValues.forEach(function (_a) {
         var id = _a[0], value = _a[1];
@@ -756,6 +920,7 @@ function applyTeacherHelpData(data) {
         if (el)
             el.value = value;
     });
+    applyQrImage('teacherQrImage', teacherUrl);
     applyQrImage('registrationQrImage', registrationUrl);
     applyQrImage('studentQrImage', studentUrl);
     applyTeacherHelpShellContent_(shell);
@@ -771,6 +936,23 @@ function applyTeacherHelpData(data) {
             });
         }, 10);
     }
+}
+function resolveRegistrationHelpUrl_(links) {
+    var direct = String(links && links.registrationUrl || '').trim();
+    var guide = String(links && links.guideUrl || '').trim();
+    if (guide) {
+        try {
+            var parsed = new URL(guide);
+            parsed.searchParams.set('mode', 'form');
+            return parsed.toString();
+        }
+        catch (_error) {
+            if (/mode=guide/.test(guide))
+                return guide.replace(/mode=guide/, 'mode=form');
+            return guide;
+        }
+    }
+    return direct;
 }
 function setTextIfPresent_(id, value) {
     var el = document.getElementById(id);
@@ -793,7 +975,11 @@ function applyTeacherHelpShellContent_(shell) {
         ['helpStep2Item3', labels.helpStep2Item3],
         ['helpStep2Item4', labels.helpStep2Item4],
         ['helpStep2Item5', labels.helpStep2Item5],
+        ['helpTeacherCardNote', labels.helpTeacherCardNote],
         ['helpStudentCardTitle', labels.helpStudentCardTitle],
+        ['helpStudentCardNote', labels.helpStudentCardNote],
+        ['helpSetupCardTitle', labels.helpSetupCardTitle],
+        ['helpSetupCardNote', labels.helpSetupCardNote],
         ['helpRegistrationCardTitle', labels.helpRegistrationCardTitle],
         ['helpStudentQrTitle', labels.helpStudentQrTitle],
         ['helpRegistrationQrTitle', labels.helpRegistrationQrTitle],
@@ -811,8 +997,10 @@ function applyTeacherHelpShellContent_(shell) {
     });
     setTextIfPresent_('helpStudentOpenBtn', labels.helpOpenLabel);
     setTextIfPresent_('helpRegistrationOpenBtn', labels.helpOpenLabel);
+    setTextIfPresent_('helpSetupOpenBtn', labels.helpOpenLabel);
     setTextIfPresent_('helpStudentCopyBtn', labels.helpCopyLabel);
     setTextIfPresent_('helpRegistrationCopyBtn', labels.helpCopyLabel);
+    setTextIfPresent_('helpSetupCopyBtn', labels.helpCopyLabel);
     setTextIfPresent_('helpApiStudioBtn', labels.helpApiStudioLabel);
     setTextIfPresent_('helpOpenUpdateBtn', labels.helpOpenUpdateLabel);
     var registrationCard = document.getElementById('helpRegistrationCard');
@@ -893,8 +1081,9 @@ function openHelpLink(kind) {
     ensureTeacherHelpLoaded(function (data) {
         var links = (data && data.links) || {};
         var urlMap = {
-            registration: links.registrationUrl || '',
+            registration: resolveRegistrationHelpUrl_(links),
             student: links.studentUrl || '',
+            setup: links.setupUrl || '',
             teacher: links.teacherUrl || '',
             apiKey: links.apiKeyGuideUrl || '',
         };
@@ -910,8 +1099,9 @@ function copyHelpLink(kind) {
     ensureTeacherHelpLoaded(function (data) {
         var links = (data && data.links) || {};
         var urlMap = {
-            registration: links.registrationUrl || '',
+            registration: resolveRegistrationHelpUrl_(links),
             student: links.studentUrl || '',
+            setup: links.setupUrl || '',
             teacher: links.teacherUrl || '',
             apiKey: links.apiKeyGuideUrl || '',
         };

@@ -49,6 +49,14 @@ function buildStudentEntryClassSnapshot_(students, featureFlags, shell) {
   const enabledFields = getEnabledFields_({ fields: active.fields || unit.fields || [] });
   const lesson = getLessonRecordByUnitPeriod_(unit.id, period);
   const responses = lesson ? listResponsesForLesson_(lesson.lessonId) : [];
+  const responseReadMeta = lesson ? summarizeResponseReadForLesson_(lesson.lessonId, responses) : {
+    scope: 'lesson',
+    lessonId: '',
+    masterCount: 0,
+    mergedCount: 0,
+    preferMaster: true,
+    mode: 'master_only',
+  };
   const responseMap = {};
   responses.forEach(response => {
     responseMap[String(response.studentNumber || '')] = response;
@@ -76,6 +84,7 @@ function buildStudentEntryClassSnapshot_(students, featureFlags, shell) {
     studentAiAutoSubmitEnabled: Boolean(featureFlags && featureFlags.studentAiAutoSubmitEnabled),
     shell: shell || getLiveTenantMaintenanceState(),
     fetchedAt: nowIso_(),
+    responseReadMeta,
     statesByNumber,
     timeline: {
       rows,
@@ -83,6 +92,7 @@ function buildStudentEntryClassSnapshot_(students, featureFlags, shell) {
       studentAiEnabled: Boolean(featureFlags && featureFlags.studentAiEnabled),
       studentAiAutoSubmitEnabled: Boolean(featureFlags && featureFlags.studentAiAutoSubmitEnabled),
       shell: shell || getLiveTenantMaintenanceState(),
+      responseReadMeta,
       serverNow: nowIso_(),
     },
   };
@@ -304,12 +314,29 @@ function stripStudentPastRecordHintLines_(text, field) {
   return stripped.replace(/\n{3,}/g, '\n\n').trim();
 }
 
+function findRosterStudentName_(num) {
+  const roster = getRosterEntries_();
+  return ((roster.find(student => String(student.number) === String(num)) || {}).name || '');
+}
+
+function resolveStudentForWrite_(lessonId, num, studentName) {
+  const response = getResponseRecordByStudentNumber_(lessonId, num);
+  if (response?.studentId) {
+    return {
+      studentId: response.studentId,
+      number: String(num || ''),
+      name: response.studentName || studentName || '',
+    };
+  }
+  return getOrCreateStudent_(num, studentName);
+}
+
 function buildStudentState_(unit, period, num, studentName, enabledFields, options) {
   const opts = options || {};
   const unitId = unit?.id || '';
   const lesson = getOrCreateLesson_(unitId, period);
-  const student = getOrCreateStudent_(num, studentName);
-  const response = getResponseRecord_(lesson.lessonId, student.studentId);
+  const response = getResponseRecordByStudentNumber_(lesson.lessonId, num);
+  const responseReadMeta = summarizeResponseReadForLesson_(lesson.lessonId, response ? [response] : []);
   const customs = response
     ? mapAnswersToCustoms_(enabledFields, response.answersMap)
     : Array(enabledFields.length).fill('');
@@ -325,6 +352,7 @@ function buildStudentState_(unit, period, num, studentName, enabledFields, optio
     submitted: response ? response.submitted : false,
     aiStatus: response?.aiStatus || '',
     prevReview: opts.includePrevReview === true ? getPreviousReviewFromDb_(unitId, period, num, unit) : '',
+    responseReadMeta,
     studentAiEnabled: opts.featureFlags ? opts.featureFlags.studentAiEnabled : isStudentAiEnabled_(),
     studentAiAutoSubmitEnabled: opts.featureFlags ? opts.featureFlags.studentAiAutoSubmitEnabled : isStudentAiAutoSubmitEnabled_(),
     shell: opts.shell || getLiveTenantMaintenanceState(),
@@ -334,6 +362,7 @@ function buildStudentState_(unit, period, num, studentName, enabledFields, optio
 function buildTimelinePayload_(unitId, period, unit, fields, teacherTimelineFieldKey, studentAiEnabled) {
   const lesson = getOrCreateLesson_(unitId, period);
   const responses = listResponsesForLesson_(lesson.lessonId);
+  const responseReadMeta = summarizeResponseReadForLesson_(lesson.lessonId, responses);
   const responseMap = {};
   responses.forEach(row => {
     responseMap[String(row.studentNumber)] = row;
@@ -358,6 +387,7 @@ function buildTimelinePayload_(unitId, period, unit, fields, teacherTimelineFiel
   return {
     rows,
     serverNow: nowIso_(),
+    responseReadMeta,
     teacherTimelineFieldKey: teacherTimelineFieldKey || '',
     fields: fields.map(field => ({ key: field.key || '', label: field.label || '' })),
     studentAiEnabled: studentAiEnabled === true,
@@ -375,14 +405,14 @@ function autoSave(unitId, period, num, customs) {
   const unit   = units.find(u => u.id == unitId);
   const lesson = getOrCreateLesson_(unitId, period);
   const fields = getEnabledFields_({ fields: getLessonFields_(lesson, unit) });
-  const roster = getRosterEntries_();
-  const studentName = (roster.find(student => String(student.number) === String(num)) || {}).name || '';
+  const studentName = findRosterStudentName_(num);
   const lock = LockService.getDocumentLock();
   if (!lock.tryLock(LOCK_AUTOSAVE_MS)) {
     return { ok: true, skipped: true, reason: 'busy' };
   }
   try {
-    saveResponseSnapshotToDb_(unitId, period, num, studentName, fields, customs || [], { submitted: false, lesson });
+    const student = resolveStudentForWrite_(lesson.lessonId, num, studentName);
+    saveResponseSnapshotToDb_(unitId, period, num, studentName, fields, customs || [], { submitted: false, lesson, student });
     return { ok: true };
   } finally {
     lock.releaseLock();
@@ -396,8 +426,7 @@ function submitReview(unitId, period, num, customs) {
   const fields = getEnabledFields_({ fields: getLessonFields_(lesson, unit) });
   const answersMap = buildAnswersMap_(fields, customs || []);
   const review = extractReviewText_(fields, answersMap);
-  const roster = getRosterEntries_();
-  const studentName = (roster.find(student => String(student.number) === String(num)) || {}).name || '';
+  const studentName = findRosterStudentName_(num);
 
   if (!review || review.length < 5) {
     return { ok: false, error: 'ふりかえりをもっとくわしくかいてね！' };
@@ -412,7 +441,7 @@ function submitReview(unitId, period, num, customs) {
   const studentAiEnabled = isStudentAiEnabled_();
   const studentAiAutoSubmitEnabled = studentAiEnabled && isStudentAiAutoSubmitEnabled_();
   try {
-    const student = getOrCreateStudent_(num, studentName);
+    const student = resolveStudentForWrite_(lesson.lessonId, num, studentName);
     saved = saveResponseSnapshotToDb_(unitId, period, num, studentName, fields, customs || [], {
       submitted: true,
       queueStudentAi: studentAiAutoSubmitEnabled,
@@ -490,8 +519,8 @@ function processReviewAi(unitId, period, num, customs) {
   if (!isStudentAiEnabled_()) {
     return { ok: true, queued: false, skipped: true, reason: 'student_ai_disabled' };
   }
-  safeEnsureAiBatchTrigger_(AI_TRIGGER_SHORT_RESCUE_DELAY_MS, 'legacy_processReviewAi');
-  return { ok: true, queued: true, legacy: true };
+  safeEnsureAiBatchTrigger_(AI_TRIGGER_SHORT_RESCUE_DELAY_MS, 'student_processReviewAi');
+  return { ok: true, queued: true };
 }
 
 function seedAiLoadTest(unitId, period, count) {
@@ -557,21 +586,24 @@ function seedAiLoadTest(unitId, period, count) {
 
 function clearAiLoadTest(unitId, period) {
   const lesson = getOrCreateLesson_(unitId, period);
-  const removedResponses = deleteRowsFromSheet_(getResponsesDbSheet_(), RESPONSE_HEADERS.length, row => {
-    return String(row[1] || '').startsWith(getAiLoadTestLessonPrefix_(lesson.lessonId)) && isAiLoadTestRow_(row);
+  const lessonPrefix = getAiLoadTestLessonPrefix_(lesson.lessonId);
+  const loadTestResponses = listAllResponses_().filter(response => {
+    return String(response?.lessonId || '').startsWith(lessonPrefix)
+      && isAiLoadTestResponse_(response);
+  });
+  const removedResponses = deleteResponseRowsFromMaster_(
+    loadTestResponses,
+    'response_load_test_clear',
+    'master_response_delete_failed_load_test_clear',
+    'system'
+  ).deleted;
+  deleteRowsFromSheet_(getResponsesDbSheet_(), RESPONSE_HEADERS.length, row => {
+    return String(row[1] || '').startsWith(lessonPrefix) && isAiLoadTestRow_(row);
   });
   const removedHistory = deleteRowsFromSheet_(getResponseHistoryDbSheet_(), HISTORY_HEADERS.length, row => {
-    return String(row[2] || '').startsWith(getAiLoadTestLessonPrefix_(lesson.lessonId)) && String(row[5] || '').includes(AI_LOAD_TEST_PREFIX);
+    return String(row[2] || '').startsWith(lessonPrefix) && String(row[5] || '').includes(AI_LOAD_TEST_PREFIX);
   });
-  const removedAggregate = deleteRowsFromSheet_(getTenantSpreadsheet_().getSheetByName(SHEET_AGG), AGG_HEADERS.length, row => {
-    return String(row[9] || '') === String(unitId || '')
-      && String(row[2] || '') === String(period || '')
-      && (
-        String(row[4] || '').includes(AI_LOAD_TEST_PREFIX)
-        || String(row[6] || '').includes(AI_LOAD_TEST_PREFIX)
-        || String(row[8] || '').includes(AI_LOAD_TEST_PREFIX)
-      );
-  });
+  const removedAggregate = 0;
   const removedAssessments = deleteRowsFromSheet_(getTeacherAssessmentsDbSheet_(), ASSESS_HEADERS.length, row => {
     return String(row[1] || '') === String(unitId || '')
       && /^T\d+$/i.test(String(row[2] || '').trim());
@@ -694,4 +726,10 @@ function kickAiNow() {
   }
   return tryProcessPendingAiInline_('submit_kick');
 }
+
+
+
+
+
+
 

@@ -24,7 +24,7 @@ function normalizeBundleFileName(name) {
 }
 
 function extractAppBuild(files) {
-  const bootstrap = files.find(file => file.name === '00_bootstrap.js');
+  const bootstrap = files.find(file => file.name === '00_bootstrap');
   if (!bootstrap) return '';
   const match = String(bootstrap.source || '').match(/const APP_BUILD = '([^']+)'/);
   return match ? String(match[1] || '').trim() : '';
@@ -52,13 +52,18 @@ function main() {
     files,
   };
 
-  fs.writeFileSync(outPath, JSON.stringify(bundle, null, 2) + '\n', 'utf8');
+  try {
+    fs.writeFileSync(outPath, JSON.stringify(bundle, null, 2) + '\n', 'utf8');
+    process.stdout.write(`Wrote ${outPath}\n`);
+  } catch (error) {
+    const message = error && error.message ? error.message : String(error);
+    process.stderr.write(`Warning: could not write ${outPath}: ${message}\n`);
+  }
   fs.writeFileSync(
     generatedJsPath,
     `const SELF_UPDATE_BUNDLE = ${JSON.stringify(bundle, null, 2)};\n`,
     'utf8'
   );
-  process.stdout.write(`Wrote ${outPath}\n`);
   process.stdout.write(`Wrote ${generatedJsPath}\n`);
 }
 

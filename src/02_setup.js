@@ -3,8 +3,7 @@
 // ============================================================
 function initSheets() {
   const ss = getTenantSpreadsheet_();
-  ensureIntroSheet_(ss);
-  ensureNextSheet_(ss);
+  cleanupGuideSheets_(ss);
 
   // 設定シート
   if (!ss.getSheetByName(SHEET_CFG)) {
@@ -54,8 +53,6 @@ function initSheets() {
   ensureDbSheets_();
   ensureSubjectDefaultRows_();
   ensureFieldPresetSheet_();
-  refreshIntroSheet_(ss);
-  refreshNextSheet_(ss);
 
   Logger.log('初期化完了！');
 }
@@ -63,6 +60,7 @@ function initSheets() {
 function startTeacherSetup() {
   const ui = SpreadsheetApp.getUi();
   const ss = SpreadsheetApp.getActiveSpreadsheet();
+  cleanupGuideSheets_(ss);
   const initialState = getSetupRunnerState_();
   if (!initialState.setupCompleted) {
     const registrationResult = registerTeacherSetup_({ ui, ss });
@@ -70,9 +68,7 @@ function startTeacherSetup() {
   }
   const deployResult = ensureTeacherWebAppDeployment_({ silent: true });
   tryMarkCurrentSheetDeployed_();
-  refreshNextSheet_(ss, { setupCompleted: true });
   const currentState = getSetupRunnerState_();
-  ss.setActiveSheet(ensureNextSheet_(ss));
   if (currentState.deployPending) {
     const deployError = deployResult && deployResult.error ? `\n\n自動デプロイ: ${deployResult.error}` : '';
     ui.alert(`登録は完了しました。次は Webアプリ化 です。まず自動デプロイを試しましたが、ここでは完了しませんでした。開いたガイドからデプロイし、終わったら同じメニューの「デプロイURL反映と更新認可」を押してください。${deployError}`);
@@ -81,7 +77,6 @@ function startTeacherSetup() {
   }
   if (!currentState.updateAuthReady) {
     const authResult = checkTeacherUpdateAuthorization_();
-    refreshNextSheet_(ss, { setupCompleted: true });
     if (authResult && authResult.ok) {
       ui.alert('セットアップが完了しました。先生ページと更新機能が使えます。');
       return { ok: true, step: 'completed' };
@@ -138,7 +133,6 @@ function registerTeacherSetup_(options) {
     lastWebAppUrl: '',
   }, targetSs);
   tryMarkCurrentSheetDeployed_();
-  refreshNextSheet_(targetSs, { setupCompleted: true });
   return {
     ok: true,
     registrationId: String(json.registrationId || '').trim(),
@@ -234,11 +228,11 @@ function createDistributionTemplate() {
   }, false);
 
   try {
-    SpreadsheetApp.getActiveSpreadsheet().toast('テンプレートをコピーしています...', '初期設定', 5);
+    SpreadsheetApp.getActiveSpreadsheet().toast('テンプレートをコピーしています...', '導入・配布', 5);
     const copyFile = createSpreadsheetCopyInSameFolder_(source);
     const templateSpreadsheet = SpreadsheetApp.openById(copyFile.getId());
     resetSpreadsheetForDistributionTemplate_(templateSpreadsheet);
-    SpreadsheetApp.getActiveSpreadsheet().toast('テンプレートを作成しました。', '初期設定', 5);
+    SpreadsheetApp.getActiveSpreadsheet().toast('テンプレートを作成しました。', '導入・配布', 5);
     showTemplateCreatedDialog_(templateSpreadsheet.getUrl());
   } finally {
     props.deleteProperty(runningKey);
@@ -324,8 +318,7 @@ function trySyncDistributionTemplateMasterName_(spreadsheet) {
 }
 
 function resetSpreadsheetForDistributionTemplate_(ss) {
-  ensureIntroSheet_(ss);
-  ensureNextSheet_(ss);
+  cleanupGuideSheets_(ss);
   resetRowsSheet_(ss, SHEET_CFG, buildTemplateConfigRows_());
   resetRowsSheet_(ss, SHEET_SUBJECT, buildTemplateSubjectRows_());
   resetRowsSheet_(ss, SHEET_UNITS, [[
@@ -343,8 +336,17 @@ function resetSpreadsheetForDistributionTemplate_(ss) {
   resetRowsSheet_(ss, '名簿', buildTemplateRosterRows_());
   resetTemplateSetupConfigForDistribution_(ss);
   deleteGeneratedLessonSheets_(ss);
-  refreshIntroSheet_(ss);
-  refreshNextSheet_(ss);
+  prepareDistributionTemplateLandingSheet_(ss);
+}
+
+function cleanupGuideSheets_(ss) {
+  const targetSpreadsheet = ss || SpreadsheetApp.getActiveSpreadsheet();
+  [SHEET_INTRO, SHEET_NEXT].forEach(name => {
+    const sheet = targetSpreadsheet.getSheetByName(name);
+    if (!sheet) return;
+    if (targetSpreadsheet.getSheets().length <= 1) return;
+    targetSpreadsheet.deleteSheet(sheet);
+  });
 }
 
 function buildTemplateConfigRows_() {
@@ -386,6 +388,60 @@ function resetRowsSheet_(ss, name, rows) {
     sheet.insertColumnsAfter(sheet.getMaxColumns(), maxColumns - sheet.getMaxColumns());
   }
   sheet.getRange(1, 1, rows.length, maxColumns).setValues(rows);
+}
+
+function prepareDistributionTemplateLandingSheet_(ss) {
+  const sheet = ss.getSheetByName(SHEET_CFG) || ss.insertSheet(SHEET_CFG);
+  if (sheet.getIndex() !== 1) {
+    ss.setActiveSheet(sheet);
+    ss.moveActiveSheet(1);
+  }
+  if (sheet.getMaxColumns() < 11) {
+    sheet.insertColumnsAfter(sheet.getMaxColumns(), 11 - sheet.getMaxColumns());
+  }
+  if (sheet.getMaxRows() < 12) {
+    sheet.insertRowsAfter(sheet.getMaxRows(), 12 - sheet.getMaxRows());
+  }
+  if (typeof sheet.setHiddenGridlines === 'function') {
+    sheet.setHiddenGridlines(true);
+  }
+  try { sheet.hideColumns(1, 4); } catch (_err) {}
+  try { sheet.showColumns(5, 7); } catch (_err) {}
+  sheet.setColumnWidths(5, 7, 120);
+  sheet.setRowHeights(1, 12, 30);
+  sheet.getRange('E1:K12').clearFormat().clearContent();
+
+  sheet.getRange('E2:K3')
+    .merge()
+    .setValue('最初は「導入・配布」→「導入パネルを開く」')
+    .setBackground('#eef6f3')
+    .setFontSize(18)
+    .setFontWeight('bold')
+    .setHorizontalAlignment('center')
+    .setVerticalAlignment('middle')
+    .setBorder(true, true, true, true, true, true, '#c9e5dd', SpreadsheetApp.BorderStyle.SOLID_THICK);
+
+  sheet.getRange('E4:K6')
+    .merge()
+    .setValue('このシートを開いた直後は、上のメニューやボタンが押せるようになるまで数秒かかることがあります。少し待ってから、右上の「導入・配布」メニューを開いてください。')
+    .setBackground('#fffdf8')
+    .setWrap(true)
+    .setFontSize(12)
+    .setHorizontalAlignment('left')
+    .setVerticalAlignment('middle')
+    .setBorder(true, true, true, true, true, true, '#d8cbb7', SpreadsheetApp.BorderStyle.SOLID);
+
+  sheet.getRange('E8:K9')
+    .merge()
+    .setValue('通常は 1. 先生情報を登録して導入を進める から始めます。うまく進まなかったときだけ、同じメニューのガイドやURL反映を使います。')
+    .setBackground('#fff7f0')
+    .setWrap(true)
+    .setFontSize(12)
+    .setHorizontalAlignment('left')
+    .setVerticalAlignment('middle')
+    .setBorder(true, true, true, true, true, true, '#efc7b8', SpreadsheetApp.BorderStyle.SOLID);
+
+  sheet.setActiveRange(sheet.getRange('E2'));
 }
 
 function resetTemplateSetupConfigForDistribution_(ss) {
@@ -547,17 +603,18 @@ function refreshIntroSheet_(ss) {
 
 function buildIntroSheetContent_() {
   return {
-    header: '右上メニューの「初期設定」または自動で開くセットアップパネルから進めます。',
+    header: '右上メニューの「導入・配布」から進めます。',
     copyBody: '',
-    setupBody: '1. セットアップパネルの「セットアップ開始」を押します。\n2. 未登録なら先生名と学校名を登録します。\n3. その場で自動デプロイを試し、通らないときだけ手動ガイドへ進みます。',
+    setupBody: '1. 導入パネルの「先生情報を登録して導入を進める」を押します。\n2. 未登録なら先生名と学校名を登録します。\n3. その場で自動デプロイを試し、通らないときだけ手動ガイドへ進みます。',
     authBody: '',
-    noteBody: '初期設定が終わると「つぎへ」シートが開きます。セットアップパネルを使うと、次に何を押すかがその場で分かります。',
+    noteBody: '導入後は、先生ページを主入口として使います。導入パネルでは必要な作業だけ続けて進められます。',
     troubleTitle: 'コピー先が違ったとき',
-    troubleBody: '思っていた Drive と違う場所に保存されたら、そのコピーでは初期設定せず閉じてください。戻って別のアカウントでやり直します。',
+    troubleBody: '思っていた Drive と違う場所に保存されたら、そのコピーでは導入を進めず閉じてください。戻って別のアカウントでやり直します。',
   };
 }
 
-function getSetupRunnerState_() {
+function getSetupRunnerState_(options) {
+  const opts = options || {};
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const config = loadTemplateSetupConfig_(ss);
   const setupCompleted = Boolean(String(config.setupCompletedAt || '').trim());
@@ -580,12 +637,14 @@ function getSetupRunnerState_() {
     ? 'Webアプリ化とURL反映のあとで有効化します。'
     : 'まだ更新用認可が済んでいません。';
   try {
-    if (!deployPending) {
+    if (!deployPending && !opts.lightweight) {
       const versionControl = getTeacherVersionControlInfo_();
       updateAuthReady = Boolean(versionControl && versionControl.ok);
       updateAuthReason = updateAuthReady
         ? '更新機能の認可は済んでいます。'
         : String(versionControl && (versionControl.reason || versionControl.error) || updateAuthReason);
+    } else if (!deployPending && opts.lightweight) {
+      updateAuthReason = '起動直後は認可状態を簡易表示しています。必要なら手動で更新してください。';
     }
   } catch (err) {
     updateAuthReason = String(err && err.message ? err.message : err || updateAuthReason);
@@ -605,13 +664,7 @@ function getSetupRunnerState_() {
 }
 
 function shouldAutoOpenSetupRunner_() {
-  const activeSheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-  const activeName = String(activeSheet && activeSheet.getName ? activeSheet.getName() : '').trim();
-  if (activeName === SHEET_INTRO || activeName === SHEET_NEXT) {
-    return true;
-  }
-  const state = getSetupRunnerState_();
-  return !state.setupCompleted || state.deployPending || !state.updateAuthReady;
+  return false;
 }
 
 function refreshNextSheet_(ss, options) {
@@ -660,14 +713,14 @@ function refreshNextSheet_(ss, options) {
   sheet.getRange('B2:E2').merge().setValue('つぎへ').setFontSize(20).setFontWeight('bold').setBackground('#f6f1e8');
   sheet.getRange('B3:E3').merge().setValue(
     setupCompleted
-      ? (deployPending ? '初期設定は完了しています。次は Webアプリ化 をしてください。反映は自動ですが、うまく出ないときだけ URL を手動反映します。' : '初期設定は完了しています。下のURLから先生ページと児童ページを開けます。')
-      : '初期設定が終わると、このシートに先生ページと児童ページの案内が出ます。'
+      ? (deployPending ? '登録は完了しています。次は Webアプリ化 をしてください。反映は自動ですが、うまく出ないときだけ URL を手動反映します。' : '導入は完了しています。下のURLから先生ページと児童ページを開けます。')
+      : '導入が終わると、このシートに先生ページと児童ページの案内が出ます。'
     ).setFontColor('#5f6b72');
 
   sheet.getRange('B5:E5').merge().setValue('1. Webアプリ化をする').setFontWeight('bold').setBackground('#eef8f6');
   sheet.getRange('B6:D10').merge().setValue(
     '1. 右のボタンからこのスプレッドシートを開きます。\n' +
-    '2. 上のメニューの「初期設定」→「Webアプリ化ガイドを開く」または「拡張機能」→「Apps Script」を押します。\n' +
+    '2. 上のメニューの「導入・配布」→「Webアプリ化ガイドを開く」または「拡張機能」→「Apps Script」を押します。\n' +
     '3. Apps Script 画面で「デプロイ」→「新しいデプロイ」を押します。\n' +
     '4. 種類の選択で「ウェブアプリ」を選び、アクセスできるユーザーを「全員」にしてデプロイします。\n' +
     '5. 最後に表示された Web アプリ URL をコピーします。'
@@ -691,8 +744,8 @@ function refreshNextSheet_(ss, options) {
   sheet.getRange('B12:E12').merge().setValue('2. デプロイURL反映と更新認可').setFontWeight('bold').setBackground('#eef5fb');
   sheet.getRange('B13:D16').merge().setValue(
     deployPending
-      ? 'Webアプリ化が終わると、通常はこのシートを開き直したタイミングで自動反映されます。もし下のリンクが出ないときだけ、上のメニューの「初期設定」→「デプロイURL反映と更新認可」を押してください。\n\nURLでも deploymentId だけでも受け付け、その場で更新機能の認可までまとめて進めます。'
-      : '反映済みです。Web アプリ URL がこのシートに保存されています。URL を作り直したときだけ、もう一度「初期設定」→「デプロイURL反映と更新認可」を押してください。\n\nこの操作では、URL反映と更新機能の認可確認をまとめて行えます。'
+      ? 'Webアプリ化が終わると、通常はこのシートを開き直したタイミングで自動反映されます。もし下のリンクが出ないときだけ、上のメニューの「導入・配布」→「デプロイURL反映と更新認可」を押してください。\n\nURLでも deploymentId だけでも受け付け、その場で更新機能の認可までまとめて進めます。'
+      : '反映済みです。Web アプリ URL がこのシートに保存されています。URL を作り直したときだけ、もう一度「導入・配布」→「デプロイURL反映と更新認可」を押してください。\n\nこの操作では、URL反映と更新機能の認可確認をまとめて行えます。'
   ).setWrap(true).setVerticalAlignment('top');
   sheet.getRange('E13:E16').merge();
   if (deployPending) {
@@ -738,11 +791,11 @@ function refreshNextSheet_(ss, options) {
   sheet.getRange('B29:E29').merge().setValue('困ったとき').setFontWeight('bold').setBackground('#fff7f0');
   sheet.getRange('B30:E32').merge().setValue(
     (!setupCompleted
-      ? 'まだ初期設定が終わっていません。先に「はじめに」シートへ戻ってください。\n\n'
+      ? 'まだ導入が終わっていません。先に導入パネルから登録を進めてください。\n\n'
       : '') +
     (deployPending
-      ? 'リンクが開かないときは、デプロイ後に一度このシートを開き直してください。それでも出ない場合だけ「初期設定 → デプロイURL反映と更新認可」を押してください。'
-      : 'URLが出ないときは、もう一度「デプロイURL反映と更新認可」を実行するか、Webアプリを再デプロイして新しいURLを貼り直してください。更新ボタンや版戻しが使えないときは「初期設定 → 更新認可だけやり直す」を一度押してください。')
+      ? 'リンクが開かないときは、デプロイ後に一度このシートを開き直してください。それでも出ない場合だけ「導入・配布 → デプロイURL反映と更新認可」を押してください。'
+      : 'URLが出ないときは、もう一度「デプロイURL反映と更新認可」を実行するか、Webアプリを再デプロイして新しいURLを貼り直してください。更新ボタンや版戻しが使えないときは「導入・配布 → 更新認可だけやり直す」を一度押してください。')
   ).setWrap(true).setVerticalAlignment('top');
   sheet.getRange('B29:E32').setBorder(true, true, true, true, true, true, '#d8cbb7', SpreadsheetApp.BorderStyle.SOLID);
 
@@ -756,15 +809,31 @@ function refreshNextSheet_(ss, options) {
     .setFontColor('#0e7c66');
 }
 
-function refreshDistributionTemplateSelf() {
-  const spreadsheetId = String(DISTRIBUTION_TEMPLATE_MASTER_SPREADSHEET_ID || '').trim();
-  if (!spreadsheetId) {
-    throw new Error('DISTRIBUTION_TEMPLATE_MASTER_SPREADSHEET_ID is empty.');
+function refreshDistributionTemplateSelf(spreadsheetId) {
+  const targetSpreadsheetId = String(
+    spreadsheetId || DISTRIBUTION_TEMPLATE_MASTER_SPREADSHEET_ID || ''
+  ).trim();
+  return refreshDistributionTemplateMaster_(targetSpreadsheetId);
+}
+
+function refreshTemplateMaster(spreadsheetId) {
+  const targetSpreadsheetId = String(
+    spreadsheetId || DISTRIBUTION_TEMPLATE_MASTER_SPREADSHEET_ID || ''
+  ).trim();
+  return refreshDistributionTemplateMaster_(targetSpreadsheetId);
+}
+
+function refreshDistributionTemplateMaster_(spreadsheetId) {
+  const targetSpreadsheetId = String(spreadsheetId || '').trim();
+  if (!targetSpreadsheetId) {
+    throw new Error('template spreadsheet id is empty.');
   }
-  const ss = SpreadsheetApp.openById(spreadsheetId);
+  if (!isKnownDistributionTemplateMasterSpreadsheetId_(targetSpreadsheetId)) {
+    throw new Error('template spreadsheet id is not allowed.');
+  }
+  const ss = SpreadsheetApp.openById(targetSpreadsheetId);
   ensureDistributionTemplateMasterSetup_(ss);
-  refreshIntroSheet_(ss);
-  refreshNextSheet_(ss);
+  resetSpreadsheetForDistributionTemplate_(ss);
   trySyncDistributionTemplateMasterName_(ss);
   return {
     ok: true,
@@ -787,44 +856,13 @@ function inferDeploymentIdFromWebAppUrl_(url) {
 }
 
 function buildWebAppUrlFromBase_(baseUrl, params) {
-  const normalizedBaseUrl = String(baseUrl || '').trim();
-  if (!normalizedBaseUrl) return '';
-  const normalizedParams = normalizeWebAppRouteParamsFromBase_(params);
-  const query = Object.keys(normalizedParams)
-    .filter(key => normalizedParams[key] !== '' && normalizedParams[key] !== null && normalizedParams[key] !== undefined)
-    .map(key => `${encodeURIComponent(key)}=${encodeURIComponent(normalizedParams[key])}`)
-    .join('&');
-  return query ? `${normalizedBaseUrl}?${query}` : normalizedBaseUrl;
-}
-
-function normalizeWebAppRouteParamsFromBase_(params) {
-  const source = { ...(params || {}) };
-  const rawPage = String(source.page || source.p || '').trim().toLowerCase();
-  delete source.page;
-  delete source.p;
+  const normalizedApiUrl = normalizeWebAppUrl_(String(baseUrl || '').trim());
+  if (!normalizedApiUrl) return '';
+  const rawPage = String(params && (params.page || params.p) || '').trim().toLowerCase();
   if (rawPage === 'student' || rawPage === 's') {
-    source.p = 's';
-  } else if (rawPage === 'teacher' || rawPage === 't' || rawPage === '') {
-    // teacher is the default route, so the base URL itself is the teacher page.
-  } else if (rawPage) {
-    source.page = rawPage;
+    return buildPortableStudentRelayUrl_(normalizedApiUrl);
   }
-  return source;
-}
-
-function buildSpreadsheetCopyUrl_(spreadsheetId) {
-  const normalizedSpreadsheetId = String(spreadsheetId || '').trim();
-  if (!normalizedSpreadsheetId) return '';
-  return `https://docs.google.com/spreadsheets/d/${normalizedSpreadsheetId}/copy`;
-}
-
-function buildCopyChooserUrl_(ss) {
-  const spreadsheet = ss || SpreadsheetApp.getActiveSpreadsheet();
-  return buildWebAppUrl_({
-    mode: 'copyChooser',
-    spreadsheetId: spreadsheet.getId(),
-    title: spreadsheet.getName(),
-  });
+  return buildPortableTeacherRelayUrl_(normalizedApiUrl);
 }
 
 function buildScriptEditorUrl_(scriptId) {
@@ -1192,7 +1230,7 @@ function showWebAppUrlCaptureSidebar() {
               } else if (result.updateAuth && result.updateAuth.error) {
                 message += '\\n更新機能の認可は未完了です。\\n' + result.updateAuth.error;
               }
-              message += '\\nつぎへ シートを確認してください。';
+              message += '\\n先生ページのURLが使える状態になりました。';
               alert(message);
               google.script.host.close();
             })
@@ -1238,8 +1276,7 @@ function saveConfirmedWebAppUrl(url) {
       });
     }
   } catch (_err) {}
-  refreshNextSheet_(ss, { setupCompleted: true });
-  ss.setActiveSheet(ensureNextSheet_(ss));
+  cleanupGuideSheets_(ss);
   const updateAuth = checkTeacherUpdateAuthorization_({ silent: true });
   return {
     ok: true,
@@ -1363,9 +1400,9 @@ function showSetupRunnerSidebar() {
 }
 
 function showSetupRunnerSidebar_(options) {
-  const state = getSetupRunnerState_();
   const opts = options || {};
-  const title = opts.auto ? 'セットアップ案内' : 'セットアップパネル';
+  const state = getSetupRunnerState_(opts);
+  const title = opts.auto ? '導入案内' : '導入パネル';
   const statusRows = [
     {
       label: '登録',
@@ -1432,8 +1469,8 @@ function showSetupRunnerSidebar_(options) {
     </head>
     <body>
       <div class="hero">
-        <h2>セットアップパネル</h2>
-        <p>まずは上から1つ目を押します。登録済みなら次の未完了ステップへ進み、完了済みの作業は自動で飛ばします。</p>
+        <h2>導入パネル</h2>
+        <p>日常運用では先生ページが主入口です。ここでは登録、Webアプリ化、更新認可だけを必要なときに進めます。</p>
       </div>
       <div class="panel">
         <h3>進行状況</h3>
@@ -1441,9 +1478,9 @@ function showSetupRunnerSidebar_(options) {
       </div>
       <div class="panel">
         <h3>やること</h3>
-        <p class="mini">基本は 1 だけで進めます。下のボタンは途中で止まったときの個別実行です。</p>
+        <p class="mini">基本は 1 を押せば進みます。2 〜 4 は、自動で進まなかったところだけ使う補助ボタンです。</p>
         <div class="actions">
-          <button class="primary" onclick="runServer('startTeacherSetup')">1. セットアップ開始して次へ進む</button>
+          <button class="primary" onclick="runServer('startTeacherSetup')">1. 先生情報を登録して導入を進める</button>
           <button class="secondary" onclick="runServer('showSetupGuideDialog')">2. 詳しいガイドを開く</button>
           <button class="secondary" onclick="runServer('showWebAppUrlCaptureSidebar')">3. デプロイURL反映と更新認可</button>
           <button class="secondary" onclick="runServer('enableTeacherUpdateAuthorization')">4. 更新認可だけやり直す</button>
@@ -1454,7 +1491,7 @@ function showSetupRunnerSidebar_(options) {
           ${studentLinkHtml || '<span></span>'}
         </div>
         <div id="busy">処理中です。ダイアログや認可画面が出たら許可してください。</div>
-        <div class="note">サイドバーは狭いので、画像や動画つきの説明は「詳しいガイド」を押すと大きい画面で開きます。</div>
+        <div class="note">コピー直後や開き直した直後は、メニューやボタンが押せるようになるまで数秒かかることがあります。反応しないときは少し待ってから押してください。サイドバーは狭いので、画像や動画つきの説明は「詳しいガイド」を押すと大きい画面で開きます。</div>
       </div>
       <script>
         function runServer(fn){
@@ -1497,14 +1534,14 @@ function showSetupGuideDialog() {
       </style>
     </head>
     <body>
-      <h1>セットアップガイド</h1>
+      <h1>導入ガイド</h1>
       <p class="lead">この画面は大きく表示されるので、画像や動画を載せる場所として使えます。今は手順を整理し、あとから実際の動画URLや画像を差し替えやすい構成にしてあります。</p>
       <div class="grid">
         <div class="card">
           <h2>進め方</h2>
           <ol class="steps">
-            <li>スプレッドシートで「初期設定 → セットアップパネルを開く」を押します。</li>
-            <li>「セットアップ開始」で先生情報の登録を完了します。</li>
+            <li>スプレッドシートで「導入・配布 → 導入パネルを開く」を押します。</li>
+            <li>「先生情報を登録して導入を進める」で登録を完了します。</li>
             <li>「詳しいガイド」または Apps Script 画面から Webアプリ化します。</li>
             <li>表示された URL または deploymentId を「デプロイURL反映と更新認可」で保存します。</li>
             <li>その場で更新機能の認可確認まで進みます。失敗したときだけ認可をやり直します。</li>
@@ -1525,7 +1562,7 @@ function showSetupGuideDialog() {
     </body>
     </html>
   `).setWidth(980).setHeight(760);
-  SpreadsheetApp.getUi().showModelessDialog(html, 'セットアップガイド');
+  SpreadsheetApp.getUi().showModelessDialog(html, '導入ガイド');
 }
 
 function getCurrentWebAppBaseUrl_() {
@@ -1676,7 +1713,7 @@ function tryMarkCurrentSheetDeployed_() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const result = syncCurrentDeploymentState_(ss, { markAdmin: true });
   if (result && result.changed) {
-    refreshNextSheet_(ss, { setupCompleted: true });
+    cleanupGuideSheets_(ss);
   }
 }
 
@@ -1745,9 +1782,14 @@ function writeGlobalConfig(key, value) {
   const s    = getTenantSpreadsheet_().getSheetByName(SHEET_CFG);
   const data = s.getDataRange().getValues();
   for (let i = 1; i < data.length; i++) {
-    if (data[i][0] === key) { s.getRange(i+1,2).setValue(value); return; }
+    if (data[i][0] === key) {
+      s.getRange(i+1,2).setValue(value);
+      syncGlobalConfigEntryToMaster_(key, value, { updatedBy: 'config_writeGlobalConfig' });
+      return;
+    }
   }
   s.appendRow([key, value, '']);
+  syncGlobalConfigEntryToMaster_(key, value, { updatedBy: 'config_writeGlobalConfig' });
 }
 
 function writeGlobalConfigBatch(valuesByKey) {
@@ -1778,6 +1820,7 @@ function writeGlobalConfigBatch(valuesByKey) {
     row[1] === undefined ? '' : row[1],
     row[2] === undefined ? '' : row[2],
   ]));
+  syncGlobalConfigBatchToMaster_(updates, { updatedBy: 'config_writeGlobalConfigBatch' });
 }
 
 // ============================================================
@@ -2028,4 +2071,9 @@ function parseJsonArray_(value) {
     return [];
   }
 }
+
+
+
+
+
 

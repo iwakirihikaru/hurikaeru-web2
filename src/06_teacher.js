@@ -8,6 +8,7 @@ function teacherInit() {
   let active = null;
   let roster = [];
   let unitProgress = {};
+  let versionControl = null;
   try {
     const unitSnapshot = getAllUnitsSnapshot_({ useMasterContract: true });
     units = Array.isArray(unitSnapshot && unitSnapshot.units) ? unitSnapshot.units : [];
@@ -30,6 +31,12 @@ function teacherInit() {
   } catch (err) {
     errors.push(`unitProgress: ${err && err.message ? err.message : err}`);
   }
+  try {
+    versionControl = getTeacherVersionControlInfo_();
+  } catch (err) {
+    errors.push(`versionControl: ${err && err.message ? err.message : err}`);
+  }
+  const deploymentInfo = buildTeacherDeploymentDisplayInfo_(versionControl);
   return {
     units,
     unitsReadMeta,
@@ -37,6 +44,9 @@ function teacherInit() {
     roster,
     unitProgress,
     build: APP_BUILD,
+    deploymentVersion: deploymentInfo.version,
+    deploymentCreatedAt: deploymentInfo.createdAt,
+    deploymentDescription: deploymentInfo.description,
     errors,
   };
 }
@@ -50,6 +60,7 @@ function teacherStatusInit() {
   let active = null;
   let unitProgress = {};
   let progressNeedsRefresh = false;
+  let versionControl = null;
   try {
     const t0 = Date.now();
     const unitSnapshot = getAllUnitsSnapshot_({ useMasterContract: true });
@@ -75,6 +86,12 @@ function teacherStatusInit() {
     errors.push(`unitProgress: ${err && err.message ? err.message : err}`);
     progressNeedsRefresh = true;
   }
+  try {
+    versionControl = getTeacherVersionControlInfo_();
+  } catch (err) {
+    errors.push(`versionControl: ${err && err.message ? err.message : err}`);
+  }
+  const deploymentInfo = buildTeacherDeploymentDisplayInfo_(versionControl);
   let status = {
     meta: {
       teacherAiEnabled: isTeacherAiEnabled_(),
@@ -104,10 +121,42 @@ function teacherStatusInit() {
     unitProgress,
     progressNeedsRefresh,
     build: APP_BUILD,
+    deploymentVersion: deploymentInfo.version,
+    deploymentCreatedAt: deploymentInfo.createdAt,
+    deploymentDescription: deploymentInfo.description,
     status,
     timing,
     errors,
   };
+}
+
+function buildTeacherDeploymentDisplayInfo_(versionControl) {
+  const vc = versionControl && typeof versionControl === 'object' ? versionControl : {};
+  const currentVersion = Number(vc.currentVersionNumber || 0);
+  if (currentVersion > 0) {
+    return {
+      version: currentVersion,
+      createdAt: String(vc.currentVersionCreatedAt || '').trim(),
+      description: String(vc.currentVersionDescription || '').trim(),
+    };
+  }
+
+  try {
+    const shellState = getTenantShellConfig_({ includeMaintenance: false });
+    const shellConfig = shellState && shellState.config ? shellState.config : {};
+    const latestVersion = Number(shellConfig.latestVersion || 0);
+    return {
+      version: Number.isFinite(latestVersion) ? latestVersion : 0,
+      createdAt: String(shellConfig.checkedAt || shellState.cacheFetchedAt || '').trim(),
+      description: String(shellConfig.latestBuild || '').trim(),
+    };
+  } catch (err) {
+    return {
+      version: 0,
+      createdAt: '',
+      description: '',
+    };
+  }
 }
 
 function teacherStatusSnapshot() {
@@ -743,17 +792,29 @@ function getTeacherVersionControlInfo_() {
       deployment.deploymentConfig &&
       deployment.deploymentConfig.versionNumber || 0
     );
-    const versions = getScriptProjectVersions_(scriptId, 20)
-      .map(version => Number(version && version.versionNumber || 0))
-      .filter(versionNumber => versionNumber > 0)
-      .sort((a, b) => b - a);
-    const previousVersionNumber = versions.find(versionNumber => versionNumber < currentVersionNumber) || 0;
+    const rawVersions = getScriptProjectVersions_(scriptId, 20);
+    const versionsMeta = rawVersions
+      .map(version => ({
+        versionNumber: Number(version && version.versionNumber || 0),
+        createTime: String(version && (version.createTime || version.updateTime) || '').trim(),
+        description: String(version && version.description || '').trim(),
+      }))
+      .filter(version => version.versionNumber > 0)
+      .sort((a, b) => b.versionNumber - a.versionNumber);
+    const versions = versionsMeta.map(version => version.versionNumber);
+    const currentVersionMeta = versionsMeta.find(version => version.versionNumber === currentVersionNumber) || null;
+    const previousVersionMeta = versionsMeta.find(version => version.versionNumber < currentVersionNumber) || null;
+    const previousVersionNumber = Number(previousVersionMeta && previousVersionMeta.versionNumber || 0);
     return {
       ok: true,
       scriptId,
       deploymentId,
       currentVersionNumber,
+      currentVersionCreatedAt: String(currentVersionMeta && currentVersionMeta.createTime || '').trim(),
+      currentVersionDescription: String(currentVersionMeta && currentVersionMeta.description || '').trim(),
       previousVersionNumber,
+      previousVersionCreatedAt: String(previousVersionMeta && previousVersionMeta.createTime || '').trim(),
+      previousVersionDescription: String(previousVersionMeta && previousVersionMeta.description || '').trim(),
       recentVersions: versions.slice(0, 6),
       canRollback: Boolean(previousVersionNumber),
       reason: previousVersionNumber ? '' : 'この個体では1つ前の版が見つかりません。',
@@ -2726,6 +2787,8 @@ function saveGlobalSettings(medalTop, promptComment, promptScore, promptPortfoli
     },
   };
 }
+
+
 
 
 

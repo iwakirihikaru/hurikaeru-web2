@@ -529,9 +529,17 @@ function forgetRememberedStudent_(){
 //  番号ボタン生成
 // =====================================
 const bootstrapStudentOptions = <?!= JSON.stringify(typeof bootstrapStudentOptions !== 'undefined' ? bootstrapStudentOptions : {students:[]}) ?>;
-applyStudentShellState_(bootstrapStudentOptions.shell||{});
-renderNumberButtons(bootstrapStudentOptions.students||[]);
-setupRememberedStudentResume_(bootstrapStudentOptions.students||[]);
+let studentAppBootStarted=false;
+
+function startStudentApp_(){
+  if(studentAppBootStarted) return;
+  studentAppBootStarted=true;
+  applyStudentShellState_(bootstrapStudentOptions.shell||{});
+  renderNumberButtons(bootstrapStudentOptions.students||[]);
+  setupRememberedStudentResume_(bootstrapStudentOptions.students||[]);
+}
+
+startStudentApp_();
 
 function getBootstrapClassSnapshot_(){
   const snapshot=bootstrapStudentOptions.classSnapshot;

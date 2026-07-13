@@ -100,14 +100,12 @@
       background: #eef6f3;
       border: 1px solid #c9e5dd;
     }
-    .primary-box strong,
-    .fallback strong {
+    .primary-box strong {
       display: block;
       margin-bottom: 8px;
       font-size: 15px;
     }
-    .primary-box p,
-    .fallback p {
+    .primary-box p {
       margin: 0 0 12px;
       font-size: 13px;
       line-height: 1.8;
@@ -137,41 +135,12 @@
       border: 1px solid #c9e5dd;
       color: var(--ink);
     }
-    .small {
-      margin-top: 12px;
-      font-size: 13px;
-      color: var(--sub);
-      word-break: break-all;
-    }
-    .fallback {
-      padding: 16px;
-      border-radius: 14px;
-      background: #fff7f3;
-      border: 1px solid #efc7b8;
-    }
     .step.alert-step {
       background: #fff7f3;
       border-color: #efc7b8;
     }
     .step.alert-step .step-num {
       color: var(--accent-2);
-    }
-    .quick-link {
-      margin-top: 12px;
-      padding: 16px;
-      border-radius: 14px;
-      border: 1px solid var(--line);
-      background: #fffaf5;
-    }
-    .quick-link strong {
-      display: block;
-      margin-bottom: 8px;
-      font-size: 15px;
-    }
-    .quick-link p {
-      margin: 0 0 12px;
-      font-size: 13px;
-      line-height: 1.8;
     }
     @media (max-width: 640px) {
       .step-grid {
@@ -185,22 +154,22 @@
     <div class="card">
       <div class="eyebrow">配布開始ページ</div>
       <h1>ふりかえりアプリ 配布ページ</h1>
-      <p class="lead">アプリに必要なスプレッドシートをコピーします。まずは緑のボタンから進めます。できれば、使いたい Google アカウントでブラウザにログインし直してから進めてください。</p>
+      <p class="lead">アプリに必要なスプレッドシートをコピーします。基本は下の緑のボタンから進めます。うまくいかなかったときだけ、ブラウザでログイン中の Google アカウントを確認してからやり直してください。</p>
       <div class="step-grid">
         <div class="step">
           <div class="step-num">STEP 1</div>
-          <strong>できれば先にログインし直す</strong>
-          <span>可能であれば、コピーしたい Google アカウントでブラウザにログインし直してから、このページの URL をもう一度貼り付けて開きます。</span>
+          <strong>緑のボタンでコピー画面を開く</strong>
+          <span>まずは下の緑のボタンを押します。ブラウザに今ログインしている Google アカウントの Drive にコピーされます。別の Google アカウントでログインしているときは、コピーしたいアカウントでログインし直してから、このページの URL をもう一度開いてください。</span>
         </div>
         <div class="step">
           <div class="step-num">STEP 2</div>
-          <strong>緑のボタンでコピーする</strong>
-          <span>基本は下の緑のボタンを押して進めます。ブラウザに今ログインしている Google アカウントの Drive にコピーされます。</span>
+          <strong>コピーを作成する</strong>
+          <span>開いた画面でそのままコピーを作成します。作成後は自分の Drive にあるコピー先シートが開きます。</span>
         </div>
         <div class="step">
           <div class="step-num">STEP 3</div>
-          <strong>コピー先で初期設定</strong>
-          <span>作成されたシートで初期設定を押し、その後「つぎへ」から Webアプリ化します。</span>
+          <strong>コピー先で導入を進める</strong>
+          <span>作成されたシートを開いたら、上のメニューの「導入・配布」から導入を進めます。先生情報の登録と Webアプリ化ガイドは、ここから続けて開けます。開いた直後はメニューやボタンが押せるようになるまで数秒かかることがあります。</span>
         </div>
         <div class="step alert-step">
           <div class="step-num">補足</div>
@@ -214,29 +183,19 @@
           <p>まずはこの方法で進めます。いちばん迷いにくい入口です。</p>
           <a id="direct-link" class="button button-main" href="#" rel="noopener noreferrer">ブラウザにログインしているGoogleアカウントで作成</a>
         </div>
-        <div class="fallback">
+        <div class="primary-box">
           <strong>うまくいかなかったときだけ</strong>
-          <p>違う Drive に入った場合だけ、別の Google アカウントでログインし直すか、下のボタンから別アカウント向けの導線を使います。</p>
-          <a id="template-link" class="button button-sub" href="#" rel="noopener noreferrer">別のGoogleアカウントで作成</a>
+          <p>緑のボタンで開けないときは、テンプレシートを開いてから Google スプレッドシートの「ファイル」→「コピーを作成」で進めます。</p>
+          <a id="template-link" class="button button-sub" href="#" rel="noopener noreferrer">テンプレシートを開く</a>
         </div>
       </div>
-      <div id="status-box" class="note">基本は緑のボタンで進めます。開けないときは、通常ブラウザ → シークレットウィンドウ → Edge の順で試してください。うまくいかなかったときだけ、オレンジのボタンか下の補助リンクを使ってください。</div>
-      <div class="quick-link">
-        <strong>ブラウザのGoogleアカウントを切り替える場合はこちら</strong>
-        <p>ワンクリックでコピー先アカウントの選択ページを開きます。先にブラウザで目的の Google アカウントにログインし直してから使うと分かりやすいです。</p>
-        <a id="template-link-inline" class="button button-sub" href="#" rel="noopener noreferrer">アカウントを選んでコピーする</a>
-        <div class="small">補助URL: <span id="template-url-text"></span></div>
-      </div>
-      <div class="note" style="margin-top:12px;">
-        Chrome で開けないときは、まずシークレットウィンドウで試してください。それでもだめなときは、Edge で開いてください。Google アカウントが複数ログイン中だと、正しいアカウントでも開けないことがあります。
+      <div id="status-box" class="note">基本は緑のボタンで進めます。開けないときだけテンプレシートを開いて手動でコピーしてください。違う Drive に入ったときは、そのコピーでは初期設定せず閉じてください。ブラウザで使いたい Google アカウントにログインし直してから、もう一度このページを開いてやり直します。Chrome で開けないときは、通常ブラウザ → シークレットウィンドウ → Edge の順で試してください。
       </div>
     </div>
   </div>
   <script>
     const directLink = document.getElementById('direct-link');
     const templateLink = document.getElementById('template-link');
-    const templateLinkInline = document.getElementById('template-link-inline');
-    const templateUrlText = document.getElementById('template-url-text');
     const statusBox = document.getElementById('status-box');
 
     function setStatus(text) {
@@ -247,11 +206,11 @@
       .withSuccessHandler((json) => {
         if (!json || !json.ok) return;
         const directTemplateUrl = String(json.directTemplateUrl || '').trim();
-        const chooserTemplateUrl = String(json.chooserTemplateUrl || '').trim();
+        const templateSheetUrl = directTemplateUrl
+          ? directTemplateUrl.replace(/\/copy(?:[?#].*)?$/u, '/edit')
+          : '';
         directLink.href = directTemplateUrl || '#';
-        templateLink.href = chooserTemplateUrl || '#';
-        templateLinkInline.href = chooserTemplateUrl || '#';
-        templateUrlText.textContent = chooserTemplateUrl || '(URLなし)';
+        templateLink.href = templateSheetUrl || directTemplateUrl || '#';
       })
       .registerTeacherFromForm({});
   </script>

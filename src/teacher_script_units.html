@@ -11,6 +11,67 @@ const UNIT_LIST_PAGE_SIZE=10;
 const TEACHER_FEEDBACK_PREFS_KEY='teacher_feedback_prefs_v1';
 let teacherFeedbackPrefsLoaded=false;
 
+function formatStatusTimingLine_(label,timing,keys){
+  if(!timing || typeof timing!=='object' || !Array.isArray(keys) || !keys.length) return '';
+  const parts=keys
+    .map(key=>{
+      const value=Number(timing[key]||0);
+      if(!Number.isFinite(value) || value<=0) return '';
+      const name=String(key||'').replace(/Ms$/,'');
+      return `${name} ${value}ms`;
+    })
+    .filter(Boolean);
+  if(!parts.length) return '';
+  return `${label}: ${parts.join(' / ')}`;
+}
+
+function formatResponseReadMetaLine_(meta){
+  if(!meta || typeof meta!=='object') return '';
+  const mode=String(meta.mode||'').trim();
+  if(!mode) return '';
+  const parts=[`response ${mode}`];
+  if(Number.isFinite(Number(meta.masterCount))) parts.push(`master ${Number(meta.masterCount||0)}`);
+  if(Number.isFinite(Number(meta.mergedCount))) parts.push(`merged ${Number(meta.mergedCount||0)}`);
+  return parts.join(' / ');
+}
+
+function formatUnitsReadMetaLine_(meta){
+  if(!meta || typeof meta!=='object') return '';
+  const mode=String(meta.mode||'').trim();
+  if(!mode) return '';
+  const parts=[`units ${mode}`];
+  const masterReadPath=String(meta.masterReadPath||'').trim();
+  if(masterReadPath) parts.push(masterReadPath);
+  if(Number.isFinite(Number(meta.masterCount))) parts.push(`master ${Number(meta.masterCount||0)}`);
+  if(Number.isFinite(Number(meta.mergedCount))) parts.push(`merged ${Number(meta.mergedCount||0)}`);
+  if(meta.cached===true) parts.push('cached');
+  return parts.join(' / ');
+}
+
+function renderStatusPerfDebug_(){
+  const el=document.getElementById('statusPerfDebug');
+  if(!el) return;
+  const lessonTiming=latestStatusMeta && latestStatusMeta.timing || null;
+  const requestTiming=latestStatusMeta && latestStatusMeta.serverRequestTiming || null;
+  const responseReadMeta=latestStatusMeta && latestStatusMeta.responseReadMeta || null;
+  const unitsReadMeta=(latestStatusMeta && latestStatusMeta.unitsReadMeta)
+    || window.__teacherUnitsReadMeta
+    || null;
+  const lines=[
+    formatStatusTimingLine_('表示データ',lessonTiming,['totalMs','responsesMs','draftsMs','rosterMs','studentBuildMs']),
+    formatStatusTimingLine_('初回読込',requestTiming,['totalMs','unitsMs','activeMs','unitProgressMs','lessonStatusMs']),
+    formatUnitsReadMetaLine_(unitsReadMeta),
+    formatResponseReadMetaLine_(responseReadMeta),
+  ].filter(Boolean);
+  if(!lines.length){
+    el.style.display='none';
+    el.textContent='';
+    return;
+  }
+  el.style.display='block';
+  el.textContent=lines.join(' | ');
+}
+
 function loadTeacherFeedbackPrefs_(){
   try{
     const raw=localStorage.getItem(TEACHER_FEEDBACK_PREFS_KEY);
@@ -61,6 +122,11 @@ function loadStatus(){
 function renderStatus(d){
   latestStatusRows=Array.isArray(d && d.students)?d.students:[];
   latestStatusMeta=d && d.meta || {};
+  writeTeacherStatusPreloadCache_({
+    meta:latestStatusMeta,
+    students:latestStatusRows,
+  });
+  renderStatusPerfDebug_();
   const st=latestStatusRows;
   const aiReturnedCount=st.filter(s=>String(s.comment||'').trim()).length;
   const draftCount=st.filter(s=>hasTeacherDraft(s)).length;
@@ -1466,3 +1532,4 @@ function confirmDelete(){
 }
 function closeModal(){document.getElementById('delModal').classList.remove('show');}
 </script>
+

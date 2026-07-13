@@ -12,11 +12,365 @@ var __assign = (this && this.__assign) || function () {
 };
 var portfolioInitRequestSeq = 0;
 var portfolioDataRequestSeq = 0;
-function loadPortfolioTab() {
-    var body = document.getElementById('portfolioBody');
-    syncTeacherAiUi_();
-    ensurePromptPreload();
-    var requestSeq = ++portfolioInitRequestSeq;
+var aggregateLoadRequestSeq = 0;
+var aggregateScopeFetchKey = '';
+var portfolioFetchKey = '';
+var reportTabInitInFlight = false;
+var reportTabInitWaiters = [];
+var PORTFOLIO_CACHE_LIMIT = 16;
+var AGGREGATE_PRELOAD_ROW_LIMIT = 800;
+var AGGREGATE_LIVE_FRESH_MS = 60 * 1000;
+function readAggregatePreloadCache_() {
+    var cached = preloadCache.aggregate;
+    if (!cached || typeof cached !== 'object')
+        return null;
+    if ((Date.now() - Number(cached.savedAt || 0)) > TEACHER_PRELOAD_TTL_MS) {
+        preloadCache.aggregate = null;
+        persistTeacherPreloadCache_();
+        return null;
+    }
+    if (!Array.isArray(cached.rows) || !cached.rows.length)
+        return null;
+    return cached.rows.slice();
+}
+function writeAggregatePreloadCache_(rows) {
+    if (!Array.isArray(rows) || !rows.length) {
+        preloadCache.aggregate = null;
+        persistTeacherPreloadCache_();
+        return;
+    }
+    preloadCache.aggregate = {
+        savedAt: Date.now(),
+        rows: rows.slice(0, AGGREGATE_PRELOAD_ROW_LIMIT),
+    };
+    persistTeacherPreloadCache_();
+}
+function isAggregateRecordPaneActive_() {
+    var pane = document.getElementById('record-pane-aggregate');
+    return Boolean(pane && pane.classList.contains('active'));
+}
+function isGradingRecordPaneActive_() {
+    var pane = document.getElementById('record-pane-grading');
+    return Boolean(pane && pane.classList.contains('active'));
+}
+function renderAggregateDataSet_(rows, meta) {
+    allAggData = Array.isArray(rows) ? rows : [];
+    var scopeMeta = meta && typeof meta === 'object' ? meta : {};
+    allAggMeta = {
+        scope: String(scopeMeta.scope || 'unknown'),
+        fetchedAt: Number(scopeMeta.fetchedAt || Date.now()) || 0,
+        unitId: String(scopeMeta.unitId || ''),
+        subject: String(scopeMeta.subject || ''),
+    };
+    filterAgg();
+    filterGrading();
+}
+function fetchAggregateDataSet_(options) {
+    var opts = options || {};
+    var unitId = opts.unitId || null;
+    var subject = String(opts.subject || '').trim();
+    var requestSeq = opts.requestSeq || 0;
+    google.script.run
+        .withSuccessHandler(function (raw) {
+        if (requestSeq && requestSeq !== aggregateLoadRequestSeq)
+            return;
+        var res = null;
+        try {
+            res = raw ? JSON.parse(raw) : null;
+        }
+        catch (e) {
+            if (typeof opts.onParseError === 'function')
+                opts.onParseError(e);
+            return;
+        }
+        if (res && res.ok === false && res.error) {
+            if (typeof opts.onError === 'function')
+                opts.onError(res.error);
+            return;
+        }
+        var rows = res && res.rows || [];
+        if (typeof opts.onSuccess === 'function')
+            opts.onSuccess(rows, res || {});
+    })
+        .withFailureHandler(function (err) {
+        if (requestSeq && requestSeq !== aggregateLoadRequestSeq)
+            return;
+        if (typeof opts.onFailure === 'function')
+            opts.onFailure(err);
+    })
+        .getAggregateDataJson(unitId, subject ? JSON.stringify({ subject: subject }) : '');
+}
+function getInitialAggregateFetchOptions_(renderedImmediate) {
+    var currentAggUnitId = (document.getElementById('aggUnit') || {}).value || '';
+    if (!renderedImmediate && isAggregateRecordPaneActive_() && !currentAggUnitId && activeUnitId) {
+        return { unitId: String(activeUnitId) };
+    }
+    if (isGradingRecordPaneActive_()) {
+        var mode = (document.getElementById('gradeMode') || {}).value || 'unit';
+        if (mode === 'subject') {
+            var subject = (document.getElementById('gradeSubject') || {}).value || '';
+            if (subject)
+                return { subject: subject };
+            return null;
+        }
+        var gradeUnitId = (document.getElementById('gradeUnit') || {}).value || '';
+        if (gradeUnitId)
+            return { unitId: gradeUnitId };
+    }
+    return null;
+}
+function hasFreshFullAggregateData_() {
+    if (!Array.isArray(allAggData))
+        return false;
+    if (!allAggMeta || String(allAggMeta.scope || '') !== 'full')
+        return false;
+    return (Date.now() - Number(allAggMeta.fetchedAt || 0)) <= AGGREGATE_LIVE_FRESH_MS;
+}
+function hasFreshAggregateData_() {
+    if (!Array.isArray(allAggData))
+        return false;
+    var scope = String(allAggMeta && allAggMeta.scope || '');
+    if (!scope || scope === 'unknown' || scope === 'preload')
+        return false;
+    return (Date.now() - Number(allAggMeta && allAggMeta.fetchedAt || 0)) <= AGGREGATE_LIVE_FRESH_MS;
+}
+function normalizeAggregateScopeOptions_(options) {
+    var opts = options || {};
+    return {
+        unitId: String(opts.unitId || '').trim(),
+        subject: String(opts.subject || '').trim(),
+    };
+}
+function buildAggregateScopeKey_(options) {
+    var opts = normalizeAggregateScopeOptions_(options);
+    if (opts.subject)
+        return "subject:".concat(opts.subject);
+    if (opts.unitId)
+        return "unit:".concat(opts.unitId);
+    return 'full';
+}
+function buildAggregateScopeMeta_(options) {
+    var opts = normalizeAggregateScopeOptions_(options);
+    return {
+        scope: opts.subject ? 'subject' : (opts.unitId ? 'unit' : 'full'),
+        fetchedAt: Date.now(),
+        unitId: opts.unitId,
+        subject: opts.subject,
+    };
+}
+function hasFreshAggregateScopeFor_(options) {
+    var opts = normalizeAggregateScopeOptions_(options);
+    if (!hasFreshAggregateData_())
+        return false;
+    var scope = String(allAggMeta && allAggMeta.scope || '');
+    if (scope === 'full')
+        return true;
+    if (opts.subject)
+        return scope === 'subject' && String(allAggMeta.subject || '') === opts.subject;
+    if (opts.unitId)
+        return scope === 'unit' && String(allAggMeta.unitId || '') === opts.unitId;
+    return false;
+}
+function requestAggregateScope_(options, callbacks) {
+    var opts = normalizeAggregateScopeOptions_(options);
+    var key = buildAggregateScopeKey_(opts);
+    var cb = callbacks || {};
+    if (hasFreshAggregateScopeFor_(opts)) {
+        if (typeof cb.onReuse === 'function')
+            cb.onReuse();
+        return false;
+    }
+    if (aggregateScopeFetchKey === key) {
+        return false;
+    }
+    aggregateScopeFetchKey = key;
+    var requestSeq = ++aggregateLoadRequestSeq;
+    fetchAggregateDataSet_({
+        unitId: opts.unitId || null,
+        subject: opts.subject || '',
+        requestSeq: requestSeq,
+        onParseError: function (error) {
+            if (aggregateScopeFetchKey === key)
+                aggregateScopeFetchKey = '';
+            if (typeof cb.onParseError === 'function')
+                cb.onParseError(error);
+        },
+        onError: function (error) {
+            if (aggregateScopeFetchKey === key)
+                aggregateScopeFetchKey = '';
+            if (typeof cb.onError === 'function')
+                cb.onError(error);
+        },
+        onFailure: function (error) {
+            if (aggregateScopeFetchKey === key)
+                aggregateScopeFetchKey = '';
+            if (typeof cb.onFailure === 'function')
+                cb.onFailure(error);
+        },
+        onSuccess: function (rows) {
+            if (aggregateScopeFetchKey === key)
+                aggregateScopeFetchKey = '';
+            if (!opts.subject && !opts.unitId) {
+                writeAggregatePreloadCache_(rows);
+            }
+            renderAggregateDataSet_(rows, buildAggregateScopeMeta_(opts));
+            if (typeof cb.onSuccess === 'function')
+                cb.onSuccess(rows);
+        },
+    });
+    return true;
+}
+function formatAggregateScopeAge_(fetchedAt) {
+    var ageMs = Math.max(0, Date.now() - Number(fetchedAt || 0));
+    if (ageMs < 1000)
+        return "".concat(ageMs, "ms\u524D");
+    return "".concat(Math.round(ageMs / 1000), "s\u524D");
+}
+function getAggregateScopeDebugText_(options) {
+    var opts = normalizeAggregateScopeOptions_(options);
+    var scope = String(allAggMeta && allAggMeta.scope || 'unknown');
+    var rowCount = Array.isArray(allAggData) ? allAggData.length : 0;
+    var freshness = hasFreshAggregateData_() ? 'fresh' : 'stale';
+    var age = formatAggregateScopeAge_(allAggMeta && allAggMeta.fetchedAt || 0);
+    var currentKey = buildAggregateScopeKey_({
+        unitId: allAggMeta && allAggMeta.unitId || '',
+        subject: allAggMeta && allAggMeta.subject || '',
+    });
+    var viewKey = buildAggregateScopeKey_(opts);
+    var waiting = aggregateScopeFetchKey ? " / fetch\u4E2D ".concat(aggregateScopeFetchKey) : '';
+    return "scope ".concat(scope, " (").concat(currentKey, ") / rows ").concat(rowCount, " / ").concat(freshness, " / ").concat(age, " / view ").concat(viewKey).concat(waiting);
+}
+function updateAggregateDebug_(options, rows) {
+    var box = document.getElementById('aggDebug');
+    if (!box)
+        return;
+    var count = Array.isArray(rows) ? rows.length : 0;
+    box.textContent = "\u5358\u5143\u8A18\u9332 ".concat(count, " \u4EF6\u3092\u8868\u793A\u4E2D\u3002").concat(getAggregateScopeDebugText_(options));
+}
+function normalizeRecordLoadErrorMessage_(error, fallback) {
+    if (error && error.message)
+        return String(error.message);
+    if (typeof error === 'string' && error.trim())
+        return error.trim();
+    return String(fallback || '読み込みに失敗しました');
+}
+function handleAggregateLoadFailure_(error, renderedImmediate) {
+    var message = normalizeRecordLoadErrorMessage_(error, '単元記録の読み込みに失敗しました');
+    showToast("\u5358\u5143\u8A18\u9332\u306E\u8AAD\u307F\u8FBC\u307F\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat(message), { tone: 'error', duration: 4200 });
+    var gradeDebug = document.getElementById('gradeDebug');
+    if (gradeDebug)
+        gradeDebug.textContent = "\u8A55\u5B9A\u30C7\u30FC\u30BF\u306E\u8AAD\u307F\u8FBC\u307F\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat(message);
+    if (!renderedImmediate)
+        renderAggregateDataSet_([]);
+}
+function handlePortfolioLoadFailure_(body, cards, debugBox, error, renderedImmediate) {
+    var message = normalizeRecordLoadErrorMessage_(error, 'ポートフォリオデータの読み込みに失敗しました');
+    if (renderedImmediate) {
+        if (debugBox)
+            debugBox.textContent = "\u6700\u65B0\u53D6\u5F97\u306B\u5931\u6557\u3057\u305F\u305F\u3081\u3001\u5148\u306B\u8868\u793A\u3057\u305F\u5185\u5BB9\u3092\u305D\u306E\u307E\u307E\u4F7F\u3063\u3066\u3044\u307E\u3059: ".concat(message);
+        return;
+    }
+    if (debugBox)
+        debugBox.textContent = 'デバッグ情報の取得に失敗しました。';
+    if (body)
+        body.innerHTML = "<tr><td colspan=\"6\" style=\"text-align:center;padding:14px;color:#C62828;\">".concat(esc(message), "</td></tr>");
+    if (cards)
+        cards.innerHTML = '<div class="portfolio-empty">ポートフォリオデータの読み込みに失敗しました</div>';
+}
+function ensurePortfolioPreloadCache_() {
+    if (!preloadCache.portfolio || typeof preloadCache.portfolio !== 'object') {
+        preloadCache.portfolio = { items: {} };
+    }
+    if (!preloadCache.portfolio.items || typeof preloadCache.portfolio.items !== 'object') {
+        preloadCache.portfolio.items = {};
+    }
+    return preloadCache.portfolio;
+}
+function buildPortfolioCacheKey_(studentNumber, unitId) {
+    return "".concat(String(studentNumber || '').trim(), "::").concat(String(unitId || '').trim() || 'all');
+}
+function sortPortfolioRows_(rows) {
+    return (Array.isArray(rows) ? rows.slice() : []).sort(function (a, b) {
+        var subjectCmp = String(a.subject || '').localeCompare(String(b.subject || ''), 'ja');
+        if (subjectCmp !== 0)
+            return subjectCmp;
+        var unitCmp = String(a.unitName || '').localeCompare(String(b.unitName || ''), 'ja');
+        if (unitCmp !== 0)
+            return unitCmp;
+        var periodCmp = Number(a.period || 0) - Number(b.period || 0);
+        if (periodCmp !== 0)
+            return periodCmp;
+        return String(a.date || '').localeCompare(String(b.date || ''));
+    });
+}
+function buildPortfolioRowsFromAggregate_(rows, studentNumber, unitId) {
+    var normalizedStudent = String(studentNumber || '').trim();
+    var normalizedUnit = String(unitId || '').trim();
+    if (!normalizedStudent || !Array.isArray(rows) || !rows.length)
+        return [];
+    return sortPortfolioRows_(rows
+        .filter(function (row) {
+        if (String(row && row.num || '').trim() !== normalizedStudent)
+            return false;
+        if (normalizedUnit && String(row && row.unitId || '').trim() !== normalizedUnit)
+            return false;
+        return true;
+    })
+        .map(function (row) { return ({
+        unitName: row && row.unitName || '',
+        subject: row && row.subject || '',
+        period: row && row.period || '',
+        num: row && row.num || '',
+        name: row && row.name || '',
+        date: row && row.date || '',
+        review: row && row.review || '',
+        score: row && row.score || 0,
+        rank: row && row.rank || '',
+        medal: row && row.medal || '',
+        comment: row && row.comment || '',
+        unitId: row && row.unitId || '',
+        answersMap: row && row.answersMap || {},
+        fields: Array.isArray(row && row.fields) ? row.fields : [],
+    }); }));
+}
+function readPortfolioCache_(studentNumber, unitId) {
+    var normalizedStudent = String(studentNumber || '').trim();
+    if (!normalizedStudent)
+        return null;
+    if (Array.isArray(allAggData) && allAggData.length) {
+        var aggregateRows = buildPortfolioRowsFromAggregate_(allAggData, normalizedStudent, unitId);
+        if (aggregateRows.length) {
+            return {
+                rows: aggregateRows,
+                source: hasFreshFullAggregateData_() ? 'aggregate-live' : 'aggregate-cache',
+            };
+        }
+    }
+    var cacheStore = ensurePortfolioPreloadCache_().items;
+    var cached = cacheStore[buildPortfolioCacheKey_(normalizedStudent, unitId)];
+    if (!cached || !Array.isArray(cached.rows) || !cached.rows.length)
+        return null;
+    return {
+        rows: sortPortfolioRows_(cached.rows),
+        source: 'portfolio-cache',
+    };
+}
+function writePortfolioCache_(studentNumber, unitId, rows) {
+    var normalizedStudent = String(studentNumber || '').trim();
+    if (!normalizedStudent)
+        return;
+    var items = ensurePortfolioPreloadCache_().items;
+    var key = buildPortfolioCacheKey_(normalizedStudent, unitId);
+    items[key] = {
+        savedAt: Date.now(),
+        rows: sortPortfolioRows_(rows),
+    };
+    var keys = Object.keys(items).sort(function (a, b) { return Number(items[b] && items[b].savedAt || 0) - Number(items[a] && items[a].savedAt || 0); });
+    keys.slice(PORTFOLIO_CACHE_LIMIT).forEach(function (oldKey) { return delete items[oldKey]; });
+    persistTeacherPreloadCache_();
+}
+function ensureReportTabInitData_(options) {
+    var opts = options || {};
     var hasImmediateRoster = Array.isArray(rosterEntries) && rosterEntries.length > 0;
     var hasImmediateUnits = Array.isArray(allUnits) && allUnits.length > 0;
     if (!hasImmediateRoster && preloadCache.roster && Array.isArray(preloadCache.roster.roster)) {
@@ -24,35 +378,99 @@ function loadPortfolioTab() {
         hasImmediateRoster = rosterEntries.length > 0;
     }
     if (hasImmediateRoster || hasImmediateUnits) {
+        if (typeof opts.onImmediate === 'function') {
+            opts.onImmediate({
+                hasImmediateRoster: hasImmediateRoster,
+                hasImmediateUnits: hasImmediateUnits,
+            });
+        }
+    }
+    if (hasImmediateRoster && hasImmediateUnits)
+        return false;
+    if (reportTabInitInFlight) {
+        reportTabInitWaiters.push(opts);
+        return true;
+    }
+    reportTabInitInFlight = true;
+    reportTabInitWaiters = [opts];
+    google.script.run
+        .withSuccessHandler(function (d) {
+        if (Array.isArray(d && d.units)) {
+            allUnits = d.units;
+        }
+        if (Array.isArray(d && d.roster)) {
+            rosterEntries = d.roster.filter(function (row) { return row.active !== false; });
+            preloadCache.roster = { roster: d.roster };
+            persistTeacherPreloadCache_();
+        }
+        teacherBuild = d.build || teacherBuild || '';
+        var waiters = reportTabInitWaiters.slice();
+        reportTabInitWaiters = [];
+        reportTabInitInFlight = false;
+        waiters.forEach(function (waiter) {
+            if (typeof waiter.onSuccess === 'function')
+                waiter.onSuccess(d || {});
+        });
+    })
+        .withFailureHandler(function (err) {
+        var waiters = reportTabInitWaiters.slice();
+        reportTabInitWaiters = [];
+        reportTabInitInFlight = false;
+        waiters.forEach(function (waiter) {
+            if (typeof waiter.onFailure === 'function')
+                waiter.onFailure(err);
+        });
+    })
+        .teacherInit();
+    return true;
+}
+function loadPortfolioTab() {
+    var body = document.getElementById('portfolioBody');
+    syncTeacherAiUi_();
+    ensurePromptPreload();
+    var requestSeq = ++portfolioInitRequestSeq;
+    var hasImmediateRoster = Array.isArray(rosterEntries) && rosterEntries.length > 0;
+    var hasImmediateUnits = Array.isArray(allUnits) && allUnits.length > 0;
+    var renderedInit = false;
+    function renderPortfolioInit_() {
         renderPortfolioSelectors();
         loadPortfolioData();
+        renderedInit = true;
+    }
+    if (hasImmediateRoster || hasImmediateUnits) {
+        renderPortfolioInit_();
     }
     else {
         body.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:14px;"><span class="spinner"></span></td></tr>';
     }
-    google.script.run
-        .withSuccessHandler(function (d) {
-        if (requestSeq !== portfolioInitRequestSeq)
-            return;
-        allUnits = d.units || [];
-        rosterEntries = (d.roster || []).filter(function (row) { return row.active !== false; });
-        teacherBuild = d.build || teacherBuild || '';
-        renderPortfolioSelectors();
-        loadPortfolioData();
-    })
-        .withFailureHandler(function (err) {
-        if (requestSeq !== portfolioInitRequestSeq)
-            return;
-        var message = (err && err.message) || err || 'ポートフォリオの読み込みに失敗しました';
-        var debugBox = document.getElementById('portfolioDebug');
-        if (hasImmediateRoster || hasImmediateUnits) {
-            if (debugBox)
-                debugBox.textContent = "\u30DD\u30FC\u30C8\u30D5\u30A9\u30EA\u30AA\u521D\u671F\u30C7\u30FC\u30BF\u306E\u66F4\u65B0\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat(message);
-            return;
-        }
-        body.innerHTML = "<tr><td colspan=\"6\" style=\"text-align:center;padding:14px;color:#C62828;\">".concat(esc(message), "</td></tr>");
-    })
-        .teacherInit();
+    ensureReportTabInitData_({
+        onImmediate: function (state) {
+            if (requestSeq !== portfolioInitRequestSeq)
+                return;
+            hasImmediateRoster = Boolean(state && state.hasImmediateRoster);
+            hasImmediateUnits = Boolean(state && state.hasImmediateUnits);
+            if (!renderedInit && (hasImmediateRoster || hasImmediateUnits)) {
+                renderPortfolioInit_();
+            }
+        },
+        onSuccess: function (d) {
+            if (requestSeq !== portfolioInitRequestSeq)
+                return;
+            renderPortfolioInit_();
+        },
+        onFailure: function (err) {
+            if (requestSeq !== portfolioInitRequestSeq)
+                return;
+            var message = (err && err.message) || err || 'ポートフォリオの読み込みに失敗しました';
+            var debugBox = document.getElementById('portfolioDebug');
+            if (hasImmediateRoster || hasImmediateUnits) {
+                if (debugBox)
+                    debugBox.textContent = "\u30DD\u30FC\u30C8\u30D5\u30A9\u30EA\u30AA\u521D\u671F\u30C7\u30FC\u30BF\u306E\u66F4\u65B0\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat(message);
+                return;
+            }
+            body.innerHTML = "<tr><td colspan=\"6\" style=\"text-align:center;padding:14px;color:#C62828;\">".concat(esc(message), "</td></tr>");
+        },
+    });
 }
 function renderPortfolioSelectors() {
     var studentSel = document.getElementById('pfStudent');
@@ -74,23 +492,47 @@ function loadPortfolioData() {
     var body = document.getElementById('portfolioBody');
     var cards = document.getElementById('portfolioCards');
     var debugBox = document.getElementById('portfolioDebug');
-    var requestSeq = ++portfolioDataRequestSeq;
+    var requestKey = buildPortfolioCacheKey_(studentNumber, unitId);
+    var immediate = readPortfolioCache_(studentNumber, unitId);
+    var renderedImmediate = false;
     if (debugBox && !String(debugBox.dataset.baseText || '').trim()) {
         debugBox.dataset.baseText = '児童を選ぶと取得件数を表示します。';
     }
     document.getElementById('portfolioReport').style.display = 'none';
     if (!studentNumber) {
+        portfolioFetchKey = '';
         portfolioRows = [];
         body.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:14px;color:#999;">児童を選択してください</td></tr>';
         cards.innerHTML = '<div class="portfolio-empty">児童を選択してください</div>';
         debugBox.textContent = '児童を選ぶと取得件数を表示します。';
         return;
     }
-    body.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:14px;"><span class="spinner"></span></td></tr>';
-    cards.innerHTML = '<div class="portfolio-empty"><span class="spinner"></span></div>';
-    debugBox.textContent = '取得状況を確認中…';
+    if (immediate && immediate.rows.length) {
+        portfolioRows = immediate.rows.slice();
+        renderPortfolioRows();
+        renderedImmediate = true;
+        debugBox.textContent = (immediate.source === 'aggregate-cache' || immediate.source === 'aggregate-live')
+            ? '集約済みデータを先に表示しています。最新状態を確認中…'
+            : '前回表示キャッシュを先に表示しています。最新状態を確認中…';
+        if (immediate.source === 'aggregate-live') {
+            writePortfolioCache_(studentNumber, unitId, portfolioRows);
+            debugBox.textContent = '集約済みデータを先に表示しています。最新状態を確認中…';
+        }
+    }
+    else {
+        body.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:14px;"><span class="spinner"></span></td></tr>';
+        cards.innerHTML = '<div class="portfolio-empty"><span class="spinner"></span></div>';
+        debugBox.textContent = '取得状況を確認中…';
+    }
+    if (portfolioFetchKey === requestKey) {
+        return;
+    }
+    var requestSeq = ++portfolioDataRequestSeq;
+    portfolioFetchKey = requestKey;
     google.script.run
         .withSuccessHandler(function (raw) {
+        if (portfolioFetchKey === requestKey)
+            portfolioFetchKey = '';
         if (requestSeq !== portfolioDataRequestSeq)
             return;
         var res = null;
@@ -98,20 +540,30 @@ function loadPortfolioData() {
             res = raw ? JSON.parse(raw) : null;
         }
         catch (e) {
+            if (renderedImmediate) {
+                debugBox.textContent = "\u6700\u65B0\u53D6\u5F97\u306E\u89E3\u6790\u306B\u5931\u6557\u3057\u305F\u305F\u3081\u3001\u5148\u306B\u8868\u793A\u3057\u305F\u5185\u5BB9\u3092\u305D\u306E\u307E\u307E\u4F7F\u3063\u3066\u3044\u307E\u3059: ".concat(e.message || e);
+                return;
+            }
             debugBox.textContent = "JSON parse error: ".concat(e.message || e, " / raw=").concat(String(raw).slice(0, 280));
             portfolioRows = [];
             renderPortfolioRows();
             return;
         }
         if (res && res.ok === false && res.error) {
+            if (renderedImmediate) {
+                debugBox.textContent = "\u6700\u65B0\u53D6\u5F97\u306B\u5931\u6557\u3057\u305F\u305F\u3081\u3001\u5148\u306B\u8868\u793A\u3057\u305F\u5185\u5BB9\u3092\u305D\u306E\u307E\u307E\u4F7F\u3063\u3066\u3044\u307E\u3059: ".concat(res.error);
+                return;
+            }
             debugBox.textContent = "portfolio error: ".concat(res.error, " / build=").concat(res.build || teacherBuild || 'unknown');
             portfolioRows = [];
             renderPortfolioRows();
             return;
         }
         portfolioRows = res && res.rows || [];
+        writePortfolioCache_(studentNumber, unitId, portfolioRows);
         if (res && res.debug) {
             res.debug.build = res.build || '';
+            res.debug.responseReadMeta = res.responseReadMeta || null;
             renderPortfolioDebug(res.debug);
         }
         else {
@@ -120,15 +572,16 @@ function loadPortfolioData() {
         renderPortfolioRows();
     })
         .withFailureHandler(function (err) {
+        if (portfolioFetchKey === requestKey)
+            portfolioFetchKey = '';
         if (requestSeq !== portfolioDataRequestSeq)
             return;
-        debugBox.textContent = 'デバッグ情報の取得に失敗しました。';
-        body.innerHTML = "<tr><td colspan=\"6\" style=\"text-align:center;padding:14px;color:#C62828;\">".concat(esc((err && err.message) || err || 'ポートフォリオデータの読み込みに失敗しました'), "</td></tr>");
-        cards.innerHTML = '<div class="portfolio-empty">ポートフォリオデータの読み込みに失敗しました</div>';
+        handlePortfolioLoadFailure_(body, cards, debugBox, err, renderedImmediate);
     })
         .getStudentPortfolioDataJson(studentNumber, unitId || null);
 }
 function renderPortfolioDebug(debug) {
+    var _a, _b;
     var box = document.getElementById('portfolioDebug');
     if (!debug) {
         box.innerHTML = "<div class=\"debug-summary\">\u53D6\u5F97\u4EF6\u6570\u3092\u8868\u793A\u3067\u304D\u307E\u305B\u3093\u3067\u3057\u305F\u3002</div><details><summary>\u8A73\u7D30\u3092\u898B\u308B</summary><code>teacherInit build=".concat(esc(teacherBuild || 'unknown'), "</code></details>");
@@ -137,7 +590,10 @@ function renderPortfolioDebug(debug) {
     var sample = (debug.sampleMatchedRows || [])
         .map(function (row, idx) { return "".concat(idx + 1, ". ").concat(row.subject, "/").concat(row.unitName, "/").concat(row.period, "\u6642\u9593\u76EE\n   ").concat(row.date, "\n   ").concat(row.preview); })
         .join('\n\n');
-    var summary = "\u8A18\u9332 ".concat(debug.responseCount || 0, "\u4EF6 / \u5150\u7AE5\u4E00\u81F4 ").concat(debug.matchedStudentCount || 0, "\u4EF6 / \u5358\u5143\u4E00\u81F4 ").concat(debug.matchedUnitCount || 0, "\u4EF6");
+    var readMeta = debug.responseReadMeta && typeof debug.responseReadMeta === 'object'
+        ? " / source ".concat(String(debug.responseReadMeta.mode || 'master_only'), " / master ").concat(Number((_b = (_a = debug.responseReadMeta.estimatedMasterOnlyCount) !== null && _a !== void 0 ? _a : debug.responseReadMeta.masterCount) !== null && _b !== void 0 ? _b : 0))
+        : '';
+    var summary = "\u8A18\u9332 ".concat(debug.responseCount || 0, "\u4EF6 / \u5150\u7AE5\u4E00\u81F4 ").concat(debug.matchedStudentCount || 0, "\u4EF6 / \u5358\u5143\u4E00\u81F4 ").concat(debug.matchedUnitCount || 0, "\u4EF6").concat(readMeta);
     var buildLine = "teacher=".concat(teacherBuild || 'unknown', " / portfolio=").concat(debug.build || 'unknown');
     box.innerHTML =
         "<div class=\"debug-summary\">".concat(esc(summary), "</div><details><summary>\u8A73\u7D30\u3092\u898B\u308B</summary><code>").concat(esc(buildLine)).concat(sample ? "\n\n".concat(sample) : '', "</code></details>");
@@ -197,49 +653,83 @@ function generatePortfolioSummary() {
 function loadAgg() {
     syncTeacherAiUi_();
     ensurePromptPreload();
-    google.script.run.withSuccessHandler(function (d) {
-        allUnits = d.units || [];
-        rosterEntries = (d.roster || []).filter(function (row) { return row.active !== false; });
+    var renderedImmediate = false;
+    if (hasFreshAggregateData_()) {
+        filterAgg();
+        filterGrading();
+        renderedImmediate = true;
+    }
+    else {
+        var immediateRows = readAggregatePreloadCache_();
+        if (Array.isArray(immediateRows) && immediateRows.length) {
+            renderAggregateDataSet_(immediateRows, {
+                scope: 'preload',
+                fetchedAt: Date.now(),
+            });
+            renderedImmediate = true;
+        }
+    }
+    ensureReportTabInitData_({
+        onSuccess: function () {
+            populateUnitSelects();
+            populateGradingSelects();
+        },
+        onFailure: function () { },
+    });
+    if ((Array.isArray(allUnits) && allUnits.length) || (Array.isArray(rosterEntries) && rosterEntries.length)) {
         populateUnitSelects();
         populateGradingSelects();
-    }).teacherInit();
-    google.script.run
-        .withSuccessHandler(function (raw) {
-        var res = null;
-        try {
-            res = raw ? JSON.parse(raw) : null;
-        }
-        catch (e) {
-            showToast('単元記録の読み込みに失敗しました', { tone: 'error' });
-            allAggData = [];
-            filterAgg();
-            return;
-        }
-        if (res && res.ok === false && res.error) {
-            showToast("\u5358\u5143\u8A18\u9332\u306E\u8AAD\u307F\u8FBC\u307F\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat(res.error), { tone: 'error', duration: 4200 });
-            allAggData = [];
-            filterAgg();
-            return;
-        }
-        allAggData = res && res.rows || [];
-        filterAgg();
-        filterGrading();
-    })
-        .withFailureHandler(function (err) {
-        showToast("\u5358\u5143\u8A18\u9332\u306E\u8AAD\u307F\u8FBC\u307F\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat((err && err.message) || err || 'unknown'), { tone: 'error', duration: 4200 });
-        var gradeDebug = document.getElementById('gradeDebug');
-        if (gradeDebug)
-            gradeDebug.textContent = "\u8A55\u5B9A\u30C7\u30FC\u30BF\u306E\u8AAD\u307F\u8FBC\u307F\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat((err && err.message) || err || 'unknown');
-        allAggData = [];
-        filterAgg();
-        filterGrading();
-    })
-        .getAggregateDataJson(null);
+    }
+    var initialFetch = getInitialAggregateFetchOptions_(renderedImmediate);
+    if (initialFetch && initialFetch.unitId && isAggregateRecordPaneActive_()) {
+        var aggUnitSel = document.getElementById('aggUnit');
+        if (aggUnitSel)
+            aggUnitSel.value = initialFetch.unitId;
+    }
+    if (initialFetch && hasFreshAggregateScopeFor_(initialFetch)) {
+        return;
+    }
+    if (!initialFetch && hasFreshFullAggregateData_()) {
+        return;
+    }
+    if (initialFetch) {
+        requestAggregateScope_(initialFetch, {
+            onParseError: function (error) {
+                handleAggregateLoadFailure_(error, renderedImmediate);
+            },
+            onError: function (error) {
+                handleAggregateLoadFailure_(error, renderedImmediate);
+            },
+            onFailure: function (err) {
+                handleAggregateLoadFailure_(err, renderedImmediate);
+            },
+        });
+        return;
+    }
+    requestAggregateScope_(null, {
+        onParseError: function (error) {
+            handleAggregateLoadFailure_(error, renderedImmediate);
+        },
+        onError: function (error) {
+            handleAggregateLoadFailure_(error, renderedImmediate);
+        },
+        onFailure: function (err) {
+            handleAggregateLoadFailure_(err, renderedImmediate);
+        },
+    });
 }
 function filterAgg() {
     populateAggUnitSelect();
     var subject = document.getElementById('aggSubject').value;
     var unitId = document.getElementById('aggUnit').value;
+    var desiredScope = { subject: subject, unitId: unitId };
+    if (isAggregateRecordPaneActive_() && !hasFreshAggregateScopeFor_(desiredScope)) {
+        requestAggregateScope_(desiredScope, {
+            onError: function () { },
+            onParseError: function () { },
+            onFailure: function () { },
+        });
+    }
     var period = document.getElementById('aggPeriod').value;
     var preset = (document.getElementById('aggPreset') || {}).value || 'standard';
     var showComment = Boolean((document.getElementById('aggShowComment') || {}).checked);
@@ -269,6 +759,7 @@ function filterAgg() {
     var head = document.getElementById('aggHead');
     var fieldMeta = resolveAggPresetFields(rows, preset, showComment);
     head.innerHTML = buildAggHeaderHtml(fieldMeta);
+    updateAggregateDebug_(desiredScope, rows);
     if (!rows.length) {
         renderAggSummary([]);
         var emptyCols = (5 + fieldMeta.fields.length + 1);
@@ -329,6 +820,14 @@ function filterGrading() {
     var unitId = (document.getElementById('gradeUnit') || {}).value || '';
     var period = (document.getElementById('gradePeriod') || {}).value || '';
     var gradingCategory = (document.getElementById('gradeCategory') || {}).value || 'thinking';
+    var desiredScope = mode === 'subject' ? (subject ? { subject: subject } : null) : (unitId ? { unitId: unitId } : null);
+    if (isGradingRecordPaneActive_() && desiredScope && !hasFreshAggregateScopeFor_(desiredScope)) {
+        requestAggregateScope_(desiredScope, {
+            onError: function () { },
+            onParseError: function () { },
+            onFailure: function () { },
+        });
+    }
     var rows = allAggData.filter(function (r) {
         if (subject && String(r.subject || '') !== String(subject))
             return false;
@@ -364,8 +863,8 @@ function filterGrading() {
     gradeHead.innerHTML = buildAggProcessingHeaderHtml(periods, gradingCategory);
     if (gradeDebug) {
         gradeDebug.textContent = unitId
-            ? "".concat(FIELD_CATEGORY_LABELS[gradingCategory], " \u306E\u8A55\u5B9A\u7528\u306B ").concat(rows.length, " \u4EF6\u306E\u8A18\u9332\u3092\u8868\u793A\u4E2D\u3067\u3059\u3002")
-            : '評定する単元を選択してください。';
+            ? "".concat(FIELD_CATEGORY_LABELS[gradingCategory], " \u306E\u8A55\u5B9A\u7528\u306B ").concat(rows.length, " \u4EF6\u306E\u8A18\u9332\u3092\u8868\u793A\u4E2D\u3067\u3059\u3002 / ").concat(getAggregateScopeDebugText_(desiredScope || {}))
+            : "\u8A55\u5B9A\u3059\u308B\u5358\u5143\u3092\u9078\u629E\u3057\u3066\u304F\u3060\u3055\u3044\u3002 / ".concat(getAggregateScopeDebugText_(desiredScope || {}));
     }
     if (!unitId) {
         gradeBody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;padding:14px;">成績入力をするには単元を選択してください</td></tr>';
@@ -490,7 +989,7 @@ function renderGradingSubjectMatrix(subject, gradingCategory) {
         gradeBody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#999;padding:14px;">教科を選択してください</td></tr>';
         gradeCards.innerHTML = '<div class="portfolio-empty">教科を選択してください</div>';
         if (gradeDebug)
-            gradeDebug.textContent = '教科ごとの一覧入力では、まず教科を選択してください。';
+            gradeDebug.textContent = "\u6559\u79D1\u3054\u3068\u306E\u4E00\u89A7\u5165\u529B\u3067\u306F\u3001\u307E\u305A\u6559\u79D1\u3092\u9078\u629E\u3057\u3066\u304F\u3060\u3055\u3044\u3002 / ".concat(getAggregateScopeDebugText_({ subject: '' }));
         return;
     }
     if (!units.length) {
@@ -498,13 +997,13 @@ function renderGradingSubjectMatrix(subject, gradingCategory) {
         gradeBody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#999;padding:14px;">この教科の単元がありません</td></tr>';
         gradeCards.innerHTML = '<div class="portfolio-empty">この教科の単元がありません</div>';
         if (gradeDebug)
-            gradeDebug.textContent = "".concat(subject, " \u306E\u5358\u5143\u304C\u307E\u3060\u3042\u308A\u307E\u305B\u3093\u3002");
+            gradeDebug.textContent = "".concat(subject, " \u306E\u5358\u5143\u304C\u307E\u3060\u3042\u308A\u307E\u305B\u3093\u3002 / ").concat(getAggregateScopeDebugText_({ subject: subject }));
         return;
     }
     var rows = buildGradingSubjectRows(subject, gradingCategory);
     gradeHead.innerHTML = "<tr><th>#</th><th>\u306A\u307E\u3048</th>".concat(units.map(function (unit) { return "<th>".concat(esc(unit.name || ''), "</th>"); }).join(''), "</tr>");
     if (gradeDebug) {
-        gradeDebug.textContent = "".concat(subject, " \u306E ").concat(units.length, " \u5358\u5143\u3092\u6A2A\u4E26\u3073\u8868\u793A\u3057\u3066\u3044\u307E\u3059\u3002").concat(FIELD_CATEGORY_LABELS[gradingCategory], " \u3092\u4E00\u89A7\u3067\u5165\u529B\u3067\u304D\u307E\u3059\u3002");
+        gradeDebug.textContent = "".concat(subject, " \u306E ").concat(units.length, " \u5358\u5143\u3092\u6A2A\u4E26\u3073\u8868\u793A\u3057\u3066\u3044\u307E\u3059\u3002").concat(FIELD_CATEGORY_LABELS[gradingCategory], " \u3092\u4E00\u89A7\u3067\u5165\u529B\u3067\u304D\u307E\u3059\u3002 / ").concat(getAggregateScopeDebugText_({ subject: subject }));
     }
     if (!rows.length) {
         gradeBody.innerHTML = "<tr><td colspan=\"".concat(2 + units.length, "\" style=\"text-align:center;color:#999;padding:14px;\">\u540D\u7C3F\u30C7\u30FC\u30BF\u304C\u3042\u308A\u307E\u305B\u3093</td></tr>");

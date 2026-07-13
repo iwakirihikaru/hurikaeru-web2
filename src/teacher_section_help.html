@@ -7,19 +7,19 @@
         <div class="guide-card">
           <h3 id="helpStep1Title">1. 最初の流れ</h3>
           <ol class="guide-list">
-            <li id="helpStep1Item1">単元設定で単元を作る</li>
-            <li id="helpStep1Item2">必要なら名簿を入れる</li>
-            <li id="helpStep1Item3">授業スタートで授業を開始する</li>
-            <li id="helpStep1Item4">この下のWEB児童ページURLを配布する</li>
+            <li id="helpStep1Item1">下の登録ページを開く</li>
+            <li id="helpStep1Item2">緑のボタンからスプレッドシートをコピーする</li>
+            <li id="helpStep1Item3">コピー先のシートで初期設定と導入・配布を進める</li>
+            <li id="helpStep1Item4">終わったらまず先生ページURLから入り、そこから児童ページURLを配布する</li>
           </ol>
         </div>
         <div class="guide-card">
-          <h3 id="helpStep2Title">2. 児童への配布</h3>
+          <h3 id="helpStep2Title">2. 先生と児童の入り口</h3>
           <ol class="guide-list">
-            <li id="helpStep2Item1">初回だけ下のWEB接続ページを児童端末で開く</li>
-            <li id="helpStep2Item2">そのまま保存して接続確認する</li>
-            <li id="helpStep2Item3">2回目以降はWEB児童ページURLだけ配布する</li>
-            <li id="helpStep2Item4">児童はそのURLから毎時間入る</li>
+            <li id="helpStep2Item1">先生はふだん下の先生ページURLだけを開く</li>
+            <li id="helpStep2Item2">先生はWEB版の先生ページを使う</li>
+            <li id="helpStep2Item3">児童には下の児童ページURLだけを配布する</li>
+            <li id="helpStep2Item4">保存が消えた端末や接続先を入れ直すときだけ接続補助ページを使う</li>
             <li id="helpStep2Item5">単元と時間目は先生側の授業スタートに連動する</li>
           </ol>
         </div>
@@ -27,31 +27,54 @@
 
       <div class="guide-link-grid" style="margin-top:14px;">
         <div class="guide-link-card">
-          <div class="guide-link-title" id="helpStudentCardTitle">WEB児童ページ</div>
+          <div class="guide-link-title" id="helpTeacherCardTitle">先生ページ</div>
+          <div class="guide-link-actions">
+            <button class="btn-update" type="button" onclick="openHelpLink('teacher')" id="helpTeacherOpenBtn">開く</button>
+            <button class="btn-cancel" type="button" onclick="copyHelpLink('teacher')" id="helpTeacherCopyBtn">URLをコピー</button>
+          </div>
+          <input class="inp" id="teacherPageUrl" readonly>
+          <div class="guide-note" id="helpTeacherCardNote">この先生の保存先付きURLです。先生はまずこれを開きます。</div>
+          <div class="qr-card">
+            <div class="qr-title" id="helpTeacherQrTitle">先生ページQR</div>
+            <img id="teacherQrImage" class="qr-image" alt="先生ページQR">
+          </div>
+        </div>
+        <div class="guide-link-card">
+          <div class="guide-link-title" id="helpStudentCardTitle">児童ページ</div>
           <div class="guide-link-actions">
             <button class="btn-update" type="button" onclick="openHelpLink('student')" id="helpStudentOpenBtn">開く</button>
             <button class="btn-cancel" type="button" onclick="copyHelpLink('student')" id="helpStudentCopyBtn">URLをコピー</button>
           </div>
           <input class="inp" id="helpStudentUrl" readonly>
+          <div class="guide-note" id="helpStudentCardNote">この先生の保存先付きURLです。児童には基本これだけ配布します。</div>
           <div class="qr-card">
-            <div class="qr-title" id="helpStudentQrTitle">WEB児童ページQR</div>
-            <img id="studentQrImage" class="qr-image" alt="WEB児童ページQR">
+            <div class="qr-title" id="helpStudentQrTitle">児童ページQR</div>
+            <img id="studentQrImage" class="qr-image" alt="児童ページQR">
           </div>
         </div>
+        <div class="guide-link-card" id="helpSetupCard">
+          <div class="guide-link-title" id="helpSetupCardTitle">接続補助ページ</div>
+          <div class="guide-link-actions">
+            <button class="btn-update" type="button" onclick="openHelpLink('setup')" id="helpSetupOpenBtn">開く</button>
+            <button class="btn-cancel" type="button" onclick="copyHelpLink('setup')" id="helpSetupCopyBtn">URLをコピー</button>
+          </div>
+          <input class="inp" id="helpSetupUrl" readonly>
+          <div class="guide-note" id="helpSetupCardNote">保存が消えた端末や、接続先を入れ直したいときだけ使います。</div>
+        </div>
         <div class="guide-link-card" id="helpRegistrationCard">
-          <div class="guide-link-title" id="helpRegistrationCardTitle">WEB接続ページ</div>
+          <div class="guide-link-title" id="helpRegistrationCardTitle">登録ページ（コピー用）</div>
           <div class="guide-link-actions">
             <button class="btn-update" type="button" onclick="openHelpLink('registration')" id="helpRegistrationOpenBtn">開く</button>
             <button class="btn-cancel" type="button" onclick="copyHelpLink('registration')" id="helpRegistrationCopyBtn">URLをコピー</button>
           </div>
           <input class="inp" id="helpRegistrationUrl" readonly>
           <div class="qr-card">
-            <div class="qr-title" id="helpRegistrationQrTitle">WEB接続ページQR</div>
-            <img id="registrationQrImage" class="qr-image" alt="WEB接続ページQR">
+            <div class="qr-title" id="helpRegistrationQrTitle">登録ページQR</div>
+            <img id="registrationQrImage" class="qr-image" alt="登録ページQR">
           </div>
         </div>
       </div>
-      <div class="guide-note" style="margin-top:10px;" id="helpDistributionNote">初回だけWEB接続ページ、以後はWEB児童ページを配布してください。先生用の基本URLは児童には配りません。</div>
+      <div class="guide-note" style="margin-top:10px;" id="helpDistributionNote">先生は登録ページで配布用スプレッドシートを作成したあと、まず先生ページURLから入ります。児童には児童ページURLだけを配布してください。接続先を入れ直したい端末だけ接続補助ページを使います。</div>
 
       <div class="guide-grid" style="margin-top:14px;">
         <div class="guide-card">

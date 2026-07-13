@@ -4,7 +4,7 @@
   var REDIRECT_FLAG_KEY = "__portable_setup_redirecting__";
   var TEACHER_BOOTSTRAP_CACHE_KEY = "jibun-matome-teacher-bootstrap-fast";
   var TEACHER_BOOTSTRAP_TTL_MS = 60 * 1000;
-  var PORTABLE_FETCH_TIMEOUT_MS = 15000;
+  var PORTABLE_FETCH_TIMEOUT_MS = 45000;
   var PORTABLE_FETCH_RETRY_COUNT = 0;
 
   function readApiUrlFromQuery() {
@@ -255,11 +255,27 @@
     return runFetch();
   }
 
+  function buildLegacyRpcPayload(action, payload) {
+    var normalizedAction = String(action || "").trim();
+    var body = payload && typeof payload === "object" ? payload : {};
+    return {
+      action: "rpc",
+      payload: {
+        method: normalizedAction,
+        args: Array.isArray(body.args) ? body.args : []
+      }
+    };
+  }
+
   async function postAction(action, payload) {
-    var result = await sendRequest({
+    var requestPayload = {
       action: action,
       payload: payload || {}
-    }, false);
+    };
+    var result = await sendRequest(requestPayload, false);
+    if (!result.ok && String(result.error || "") === "unknown_action" && String(action || "").trim() !== "rpc") {
+      result = await sendRequest(buildLegacyRpcPayload(action, payload), false);
+    }
     if (!result.ok) {
       throw new Error(getErrorMessage(result.error));
     }
@@ -267,10 +283,14 @@
   }
 
   function postActionSync(action, payload) {
-    var result = sendRequest({
+    var requestPayload = {
       action: action,
       payload: payload || {}
-    }, true);
+    };
+    var result = sendRequest(requestPayload, true);
+    if (!result.ok && String(result.error || "") === "unknown_action" && String(action || "").trim() !== "rpc") {
+      result = sendRequest(buildLegacyRpcPayload(action, payload), true);
+    }
     if (!result.ok) {
       throw new Error(getErrorMessage(result.error));
     }
@@ -382,5 +402,7 @@
 
   syncMemoryApiUrl();
 })();
+
+
 
 

@@ -11,9 +11,12 @@ let activePeriod   = 0;
 let statusTimer    = null;
 let delTargetId    = null;
 let allAggData     = [];
+let allAggMeta     = { scope:'unknown', fetchedAt:0, unitId:'', subject:'' };
 let rosterEntries  = [];
 let portfolioRows  = [];
 let teacherBuild   = '';
+let teacherDeploymentVersion = 0;
+let teacherDeploymentCreatedAt = '';
 let teacherHelpData = null;
 let teacherHelpLoading = false;
 let teacherHelpAutoChecked = false;
@@ -23,6 +26,7 @@ let teacherDataEpoch = 0;
 let lastTeacherStartAtMs = 0;
 let teacherEndingLesson = false;
 let teacherActiveDebug = '';
+let teacherUnitsReadMeta = null;
 const TEACHER_CLIENT_BUILD = 'client-20260704-1035';
 let teacherBootstrapApplied = false;
 const UI_STATE_KEY = 'jibun-matome-teacher-ui';
@@ -162,6 +166,9 @@ const preloadCache = {
   roster:null,
   editor:null,
   prompts:null,
+  portfolio:null,
+  status:null,
+  aggregate:null,
   rosterLoading:false,
   editorLoading:false,
   promptsLoading:false,
@@ -226,6 +233,10 @@ function loadStatusInit(options){
   const opts=options||{};
   const requestEpoch=teacherDataEpoch;
   applyEmbeddedTeacherBootstrap_();
+  const cachedStatus=readTeacherStatusPreloadCache_();
+  if(cachedStatus){
+    renderStatus(cachedStatus);
+  }
   const runner=google.script.run
       .withSuccessHandler(d=>{
         if(requestEpoch!==teacherDataEpoch) return;
@@ -241,6 +252,7 @@ function loadStatusInit(options){
       if(opts.startPolling){
         startStatusPoll(Boolean(d && d.status));
       }
+      scheduleTeacherUnitProgressRefresh_(d);
     })
     .withFailureHandler(err=>{
       if(requestEpoch!==teacherDataEpoch) return;
@@ -249,11 +261,38 @@ function loadStatusInit(options){
         startStatusPoll(false);
         }
       })
-  if(opts.lightweight !== false && Array.isArray(allUnits) && allUnits.length){
+  const hasUnitsReadMeta=Boolean(teacherUnitsReadMeta && typeof teacherUnitsReadMeta==='object');
+  if(opts.lightweight !== false && hasUnitsReadMeta && Array.isArray(allUnits) && allUnits.length){
     runner.teacherStatusSnapshot();
     return;
   }
   runner.teacherStatusInit();
+}
+
+function scheduleTeacherUnitProgressRefresh_(data){
+  if(!(data && data.progressNeedsRefresh)) return;
+  if(scheduleTeacherUnitProgressRefresh_._started) return;
+  scheduleTeacherUnitProgressRefresh_._started = true;
+  const run=()=>{
+    google.script.run
+      .withSuccessHandler(res=>{
+        const map=res && res.unitProgress;
+        if(!map || typeof map!=='object') return;
+        unitProgressByUnitId = map;
+        populateUnitSelects();
+        const unitListSection=document.getElementById('unitListWrap');
+        if(unitListSection && unitListSection.offsetParent!==null){
+          renderUnitList();
+        }
+      })
+      .withFailureHandler(()=>{})
+      .teacherUnitProgressRefresh();
+  };
+  if(typeof requestIdleCallback==='function'){
+    requestIdleCallback(run,{ timeout:4000 });
+  }else{
+    setTimeout(run, 2500);
+  }
 }
 
 function invalidateTeacherDataRequests_(){
@@ -312,6 +351,10 @@ function applyTeacherInitData(d, options){
   const previousUnitId=activeUnitId;
   const previousPeriod=activePeriod;
   if(Array.isArray(d.units)) allUnits = d.units;
+  if(d.unitsReadMeta && typeof d.unitsReadMeta==='object'){
+    teacherUnitsReadMeta = d.unitsReadMeta;
+    window.__teacherUnitsReadMeta = d.unitsReadMeta;
+  }
   if(d.active !== undefined){
     const rawActive=d.active||{};
     d.active = buildResolvedActiveState_(d.active);
@@ -327,6 +370,8 @@ function applyTeacherInitData(d, options){
   }
   if(d.unitProgress && typeof d.unitProgress === 'object') unitProgressByUnitId = d.unitProgress;
   if(d.build) teacherBuild = d.build;
+  if(d.deploymentVersion !== undefined) teacherDeploymentVersion = Number(d.deploymentVersion || 0);
+  if(d.deploymentCreatedAt !== undefined) teacherDeploymentCreatedAt = String(d.deploymentCreatedAt || '').trim();
   if(opts.includeRoster){
     if(Array.isArray(d.roster)){
       rosterEntries = d.roster.filter(row=>row.active!==false);
@@ -334,6 +379,10 @@ function applyTeacherInitData(d, options){
       persistTeacherPreloadCache_();
     }
   }
+  if(!activeUnitId || !activePeriod){
+    clearTeacherStatusPreloadCache_();
+  }
+  persistPortableTeacherBootstrap_();
   applySavedUiState();
   renderBuildBar();
   renderActiveBanner(d.active);
@@ -373,6 +422,31 @@ function handleTeacherInitFailure_(err, source){
   showTeacherLoadWarning_(`${source}: ${message}`);
 }
 
+function buildPortableTeacherBootstrapPayload_(){
+  const rosterSource=Array.isArray(rosterEntries) && rosterEntries.length
+    ? rosterEntries
+    : (preloadCache.roster && Array.isArray(preloadCache.roster.roster) ? preloadCache.roster.roster : []);
+  const activePayload=(activeUnitId!=null && activePeriod>0)
+    ? buildResolvedActiveState_({ unitId:activeUnitId, period:activePeriod })
+    : null;
+  return {
+    units:Array.isArray(allUnits) ? allUnits : [],
+    active:activePayload && activePayload.unitId ? activePayload : null,
+    roster:Array.isArray(rosterSource) ? rosterSource : [],
+    unitProgress:unitProgressByUnitId && typeof unitProgressByUnitId==='object' ? unitProgressByUnitId : {},
+    build:teacherBuild || '',
+    deploymentVersion:Number(teacherDeploymentVersion||0),
+    deploymentCreatedAt:String(teacherDeploymentCreatedAt||''),
+  };
+}
+
+function persistPortableTeacherBootstrap_(){
+  if(!(window.__portableGas && typeof window.__portableGas.cacheTeacherBootstrap==='function')) return;
+  const payload=buildPortableTeacherBootstrapPayload_();
+  window.__TEACHER_BOOTSTRAP__ = payload;
+  window.__portableGas.cacheTeacherBootstrap(payload);
+}
+
 function scheduleTeacherPreload(){
   if(preloadCache.started) return;
   preloadCache.started = true;
@@ -381,6 +455,9 @@ function scheduleTeacherPreload(){
     ensureEditorPreload();
     ensurePromptPreload();
     preloadTeacherHelpInfo();
+    if(typeof scheduleAggregateBackgroundPreload==='function'){
+      scheduleAggregateBackgroundPreload('teacher-preload');
+    }
   };
   if(typeof requestIdleCallback === 'function'){
     requestIdleCallback(runner,{timeout:1500});
@@ -401,6 +478,9 @@ function hydrateTeacherPreloadCache_(){
     if(parsed.roster) preloadCache.roster=parsed.roster;
     if(parsed.editor) preloadCache.editor=parsed.editor;
     if(parsed.prompts) preloadCache.prompts=parsed.prompts;
+    if(parsed.portfolio) preloadCache.portfolio=parsed.portfolio;
+    if(parsed.status) preloadCache.status=parsed.status;
+    if(parsed.aggregate) preloadCache.aggregate=parsed.aggregate;
   }catch(_err){}
 }
 
@@ -411,8 +491,51 @@ function persistTeacherPreloadCache_(){
       roster:preloadCache.roster||null,
       editor:preloadCache.editor||null,
       prompts:preloadCache.prompts||null,
+      portfolio:preloadCache.portfolio||null,
+      status:preloadCache.status||null,
+      aggregate:preloadCache.aggregate||null,
     }));
   }catch(_err){}
+}
+
+function clearTeacherStatusPreloadCache_(skipPersist){
+  preloadCache.status=null;
+  if(skipPersist) return;
+  persistTeacherPreloadCache_();
+}
+
+function readTeacherStatusPreloadCache_(){
+  const cached=preloadCache.status;
+  if(!cached || typeof cached!=='object') return null;
+  if((Date.now()-Number(cached.savedAt||0))>TEACHER_PRELOAD_TTL_MS){
+    clearTeacherStatusPreloadCache_();
+    return null;
+  }
+  if(String(cached.unitId||'')!==String(activeUnitId||'')) return null;
+  if(Number(cached.period||0)!==Number(activePeriod||0)) return null;
+  const status=cached.status;
+  if(!status || typeof status!=='object' || !Array.isArray(status.students)) return null;
+  return {
+    meta:status.meta||{},
+    students:status.students,
+  };
+}
+
+function writeTeacherStatusPreloadCache_(status){
+  if(!activeUnitId || !activePeriod || !status || typeof status!=='object' || !Array.isArray(status.students)){
+    clearTeacherStatusPreloadCache_();
+    return;
+  }
+  preloadCache.status={
+    savedAt:Date.now(),
+    unitId:String(activeUnitId||''),
+    period:Number(activePeriod||0),
+    status:{
+      meta:status.meta||{},
+      students:status.students,
+    },
+  };
+  persistTeacherPreloadCache_();
 }
 
 function readUiState(){
@@ -585,10 +708,40 @@ function ensurePromptPreload(force){
     .teacherPromptInit();
 }
 
+function formatTeacherDeploymentCreatedAt_(value){
+  const text=String(value||'').trim();
+  if(!text) return '';
+  const date=new Date(text);
+  if(Number.isNaN(date.getTime())){
+    return text.replace('T',' ').replace(/\.\d+Z?$/,'').replace(/Z$/,'').trim();
+  }
+  try{
+    return date.toLocaleString('ja-JP', {
+      year:'numeric',
+      month:'2-digit',
+      day:'2-digit',
+      hour:'2-digit',
+      minute:'2-digit',
+      hour12:false,
+    }).replace(/\//g,'-');
+  }catch(_err){
+    return text;
+  }
+}
+
 function renderBuildBar(){
   const el=document.getElementById('buildBar');
   if(!el) return;
-  el.textContent=`build: ${teacherBuild||'unknown'} / ${TEACHER_CLIENT_BUILD}`;
+  const parts=[];
+  if(Number(teacherDeploymentVersion||0)>0){
+    parts.push(`GAS v${Number(teacherDeploymentVersion||0)}`);
+  }else{
+    parts.push(`build ${teacherBuild||'unknown'}`);
+  }
+  const deployedAt=formatTeacherDeploymentCreatedAt_(teacherDeploymentCreatedAt);
+  if(deployedAt) parts.push(`deployed ${deployedAt}`);
+  parts.push(TEACHER_CLIENT_BUILD);
+  el.textContent=parts.join(' / ');
 }
 
 function populateUnitSelects(){
@@ -706,8 +859,9 @@ function applyTeacherHelpData(data){
   const links=teacherHelpData.links||{};
   const shell=teacherHelpData.shell||{};
   const teacherUrl=String(links.teacherUrl||'').trim();
-  const registrationUrl=String(links.registrationUrl||'').trim();
+  const registrationUrl=resolveRegistrationHelpUrl_(links);
   const studentUrl=String(links.studentUrl||'').trim();
+  const setupUrl=String(links.setupUrl||'').trim();
   const idsToValues=[
     ['statusTeacherUrl', teacherUrl],
     ['teacherPageUrl', teacherUrl],
@@ -716,11 +870,13 @@ function applyTeacherHelpData(data){
     ['statusStudentUrl', studentUrl],
     ['studentPageUrl', studentUrl],
     ['helpStudentUrl', studentUrl],
+    ['helpSetupUrl', setupUrl],
   ];
   idsToValues.forEach(([id, value])=>{
     const el=document.getElementById(id);
     if(el) el.value=value;
   });
+  applyQrImage('teacherQrImage', teacherUrl);
   applyQrImage('registrationQrImage', registrationUrl);
   applyQrImage('studentQrImage', studentUrl);
   applyTeacherHelpShellContent_(shell);
@@ -736,6 +892,22 @@ function applyTeacherHelpData(data){
       });
     }, 10);
   }
+}
+
+function resolveRegistrationHelpUrl_(links){
+  const direct=String(links && links.registrationUrl || '').trim();
+  const guide=String(links && links.guideUrl || '').trim();
+  if (guide) {
+    try {
+      const parsed = new URL(guide);
+      parsed.searchParams.set('mode', 'form');
+      return parsed.toString();
+    } catch (_error) {
+      if (/mode=guide/.test(guide)) return guide.replace(/mode=guide/, 'mode=form');
+      return guide;
+    }
+  }
+  return direct;
 }
 
 function setTextIfPresent_(id, value){
@@ -759,7 +931,11 @@ function applyTeacherHelpShellContent_(shell){
     ['helpStep2Item3', labels.helpStep2Item3],
     ['helpStep2Item4', labels.helpStep2Item4],
     ['helpStep2Item5', labels.helpStep2Item5],
+    ['helpTeacherCardNote', labels.helpTeacherCardNote],
     ['helpStudentCardTitle', labels.helpStudentCardTitle],
+    ['helpStudentCardNote', labels.helpStudentCardNote],
+    ['helpSetupCardTitle', labels.helpSetupCardTitle],
+    ['helpSetupCardNote', labels.helpSetupCardNote],
     ['helpRegistrationCardTitle', labels.helpRegistrationCardTitle],
     ['helpStudentQrTitle', labels.helpStudentQrTitle],
     ['helpRegistrationQrTitle', labels.helpRegistrationQrTitle],
@@ -774,8 +950,10 @@ function applyTeacherHelpShellContent_(shell){
   textMap.forEach(([id, value])=>setTextIfPresent_(id, value));
   setTextIfPresent_('helpStudentOpenBtn', labels.helpOpenLabel);
   setTextIfPresent_('helpRegistrationOpenBtn', labels.helpOpenLabel);
+  setTextIfPresent_('helpSetupOpenBtn', labels.helpOpenLabel);
   setTextIfPresent_('helpStudentCopyBtn', labels.helpCopyLabel);
   setTextIfPresent_('helpRegistrationCopyBtn', labels.helpCopyLabel);
+  setTextIfPresent_('helpSetupCopyBtn', labels.helpCopyLabel);
   setTextIfPresent_('helpApiStudioBtn', labels.helpApiStudioLabel);
   setTextIfPresent_('helpOpenUpdateBtn', labels.helpOpenUpdateLabel);
 
@@ -860,8 +1038,9 @@ function openHelpLink(kind){
   ensureTeacherHelpLoaded(data=>{
     const links=(data && data.links)||{};
     const urlMap={
-      registration:links.registrationUrl||'',
+      registration:resolveRegistrationHelpUrl_(links),
       student:links.studentUrl||'',
+      setup:links.setupUrl||'',
       teacher:links.teacherUrl||'',
       apiKey:links.apiKeyGuideUrl||'',
     };
@@ -878,8 +1057,9 @@ function copyHelpLink(kind){
   ensureTeacherHelpLoaded(data=>{
     const links=(data && data.links)||{};
     const urlMap={
-      registration:links.registrationUrl||'',
+      registration:resolveRegistrationHelpUrl_(links),
       student:links.studentUrl||'',
+      setup:links.setupUrl||'',
       teacher:links.teacherUrl||'',
       apiKey:links.apiKeyGuideUrl||'',
     };
@@ -1440,3 +1620,6 @@ function startStatusPoll(skipImmediate){
   statusTimer=setInterval(loadStatus,8000);
 }
 </script>
+
+
+

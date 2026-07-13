@@ -59,9 +59,12 @@ const AI_EVENT_HEADERS = ['eventId','responseId','lessonId','unitId','studentId'
 const FIELD_PRESET_HEADERS = ['presetKey','label','emoji','type','placeholder','options','hints','categoriesJson','isReview','updatedAt','deleted'];
 const TEMPLATE_CFG_SHEET = '_setup';
 const ADMIN_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbyIxBewjHHF2JLlGbI6yuDfdMM7l_AkvY1QRlclIM0uR_nOGa_NXNcAZXY9Jl_g973G/exec';
-const MAIN_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxNEShjIPMsE8s7xXTMYByNI-DGxgQJyMH-Tp1FvKw2/exec';
+const MAIN_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbwo3TBXAkqLSx6XYcXxTI5m34DerRMHaB6X13dymilmU_wmc-Fn5F-2jkNofErLevVo7Q/exec';
 const PORTABLE_APP_BASE_URL = 'https://hurikaeru-web2.pages.dev';
 const DISTRIBUTION_TEMPLATE_MASTER_SPREADSHEET_ID = '1rW5FPPwmlfXbfAIxmVBzMRd8oB0_R4Hb5LOfCF8Jgzk';
+const MASTER_GAS_API_APP_ID = 'hurikaeru';
+const MASTER_RESPONSE_RECORD_TYPE = 'response_snapshot';
+const MASTER_RESPONSE_MIRROR_PROP = 'ENABLE_MASTER_RESPONSE_MIRROR';
 
 // 授業シートの列（固定6項目＋内部列）
 // ふりかえりは常に最後の入力列
@@ -592,6 +595,38 @@ function setTenantDeploymentConfig(config) {
     deploymentId,
     enableStudentAi: studentAiEnabled,
     enableTeacherAi: teacherAiEnabled,
+  };
+}
+
+function buildCurrentTenantDeploymentConfig_() {
+  const props = getScriptProperties_();
+  const activeSpreadsheetId = String(
+    props.getProperty('SPREADSHEET_ID') ||
+    ((function() {
+      try {
+        const active = SpreadsheetApp.getActiveSpreadsheet();
+        return active && typeof active.getId === 'function' ? active.getId() : '';
+      } catch (_err) {
+        return '';
+      }
+    })())
+  || '').trim();
+  return {
+    tenantId: String(props.getProperty('TENANT_ID') || '').trim(),
+    teacherName: String(props.getProperty('TEACHER_NAME') || '').trim(),
+    spreadsheetId: activeSpreadsheetId,
+    deploymentId: String(props.getProperty('DEPLOYMENT_ID') || '').trim(),
+    enableStudentAi: getScriptBooleanProperty_('ENABLE_STUDENT_AI', false),
+    enableTeacherAi: isTeacherAiEnabled_(),
+  };
+}
+
+function reapplyCurrentTenantDeploymentConfig_() {
+  const config = buildCurrentTenantDeploymentConfig_();
+  const result = setTenantDeploymentConfig(config);
+  return {
+    ...result,
+    reappliedAt: new Date().toISOString(),
   };
 }
 

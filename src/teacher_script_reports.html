@@ -3,6 +3,8 @@ let portfolioInitRequestSeq=0;
 let portfolioDataRequestSeq=0;
 let aggregateLoadRequestSeq=0;
 let aggregateScopeFetchKey='';
+let aggregateBackgroundPreloadScheduled=false;
+let aggregateBackgroundPreloadInFlight=false;
 let portfolioFetchKey='';
 let reportTabInitInFlight=false;
 let reportTabInitWaiters=[];
@@ -10,7 +12,7 @@ const PORTFOLIO_CACHE_LIMIT=16;
 const AGGREGATE_PRELOAD_ROW_LIMIT=800;
 const AGGREGATE_LIVE_FRESH_MS=60*1000;
 
-function readAggregatePreloadCache_(){
+function readAggregatePreloadCacheEntry_(){
   const cached=preloadCache.aggregate;
   if(!cached || typeof cached!=='object') return null;
   if((Date.now()-Number(cached.savedAt||0))>TEACHER_PRELOAD_TTL_MS){
@@ -19,7 +21,15 @@ function readAggregatePreloadCache_(){
     return null;
   }
   if(!Array.isArray(cached.rows) || !cached.rows.length) return null;
-  return cached.rows.slice();
+  return {
+    rows:cached.rows.slice(),
+    savedAt:Number(cached.savedAt||0)||Date.now(),
+  };
+}
+
+function readAggregatePreloadCache_(){
+  const entry=readAggregatePreloadCacheEntry_();
+  return entry ? entry.rows : null;
 }
 
 function writeAggregatePreloadCache_(rows){
@@ -33,6 +43,46 @@ function writeAggregatePreloadCache_(rows){
     rows:rows.slice(0, AGGREGATE_PRELOAD_ROW_LIMIT),
   };
   persistTeacherPreloadCache_();
+}
+
+function shouldRenderAggregatePreloadResult_(){
+  return isAggregateRecordPaneActive_() || isGradingRecordPaneActive_();
+}
+
+function scheduleAggregateBackgroundPreload(reason){
+  if(aggregateBackgroundPreloadScheduled) return;
+  aggregateBackgroundPreloadScheduled=true;
+  const run=()=>ensureAggregateBackgroundPreload_(reason||'idle');
+  if(typeof requestIdleCallback==='function'){
+    requestIdleCallback(run,{ timeout:7000 });
+  }else{
+    setTimeout(run,4500);
+  }
+}
+
+function ensureAggregateBackgroundPreload_(reason){
+  if(readAggregatePreloadCacheEntry_()) return false;
+  if(aggregateBackgroundPreloadInFlight) return false;
+  if(aggregateScopeFetchKey){
+    aggregateBackgroundPreloadScheduled=false;
+    setTimeout(()=>scheduleAggregateBackgroundPreload('retry-busy'),8000);
+    return false;
+  }
+  aggregateBackgroundPreloadInFlight=true;
+  fetchAggregateDataSet_({
+    onParseError:()=>{ aggregateBackgroundPreloadInFlight=false; },
+    onError:()=>{ aggregateBackgroundPreloadInFlight=false; },
+    onFailure:()=>{ aggregateBackgroundPreloadInFlight=false; },
+    onSuccess:rows=>{
+      aggregateBackgroundPreloadInFlight=false;
+      writeAggregatePreloadCache_(rows);
+      if(!Array.isArray(rows) || !rows.length) return;
+      if(shouldRenderAggregatePreloadResult_() && !hasFreshAggregateData_()){
+        renderAggregateDataSet_(rows,{ scope:'full', fetchedAt:Date.now() });
+      }
+    },
+  });
+  return true;
 }
 
 function isAggregateRecordPaneActive_(){
@@ -211,7 +261,10 @@ function getAggregateScopeDebugText_(options){
     subject:allAggMeta && allAggMeta.subject || '',
   });
   const viewKey=buildAggregateScopeKey_(opts);
-  const waiting=aggregateScopeFetchKey ? ` / fetch中 ${aggregateScopeFetchKey}` : '';
+  const waitingParts=[];
+  if(aggregateScopeFetchKey) waitingParts.push(`fetch中 ${aggregateScopeFetchKey}`);
+  if(aggregateBackgroundPreloadInFlight) waitingParts.push('裏取得中 full');
+  const waiting=waitingParts.length ? ` / ${waitingParts.join(' / ')}` : '';
   return `scope ${scope} (${currentKey}) / rows ${rowCount} / ${freshness} / ${age} / view ${viewKey}${waiting}`;
 }
 
@@ -634,13 +687,13 @@ function loadAgg(){
     filterGrading();
     renderedImmediate=true;
   }else{
-    const immediateRows=readAggregatePreloadCache_();
-    if(Array.isArray(immediateRows) && immediateRows.length){
-    renderAggregateDataSet_(immediateRows,{
-      scope:'preload',
-      fetchedAt:Date.now(),
-    });
-    renderedImmediate=true;
+    const immediateEntry=readAggregatePreloadCacheEntry_();
+    if(immediateEntry && Array.isArray(immediateEntry.rows) && immediateEntry.rows.length){
+      renderAggregateDataSet_(immediateEntry.rows,{
+        scope:'full',
+        fetchedAt:immediateEntry.savedAt||Date.now(),
+      });
+      renderedImmediate=true;
     }
   }
   ensureReportTabInitData_({
@@ -663,6 +716,10 @@ function loadAgg(){
     return;
   }
   if(!initialFetch && hasFreshFullAggregateData_()){
+    return;
+  }
+  if(aggregateBackgroundPreloadInFlight){
+    filterAgg();
     return;
   }
   if(initialFetch){
@@ -696,7 +753,7 @@ function loadAgg(){
     const subject=document.getElementById('aggSubject').value;
     const unitId=document.getElementById('aggUnit').value;
     const desiredScope={ subject, unitId };
-    if(isAggregateRecordPaneActive_() && !hasFreshAggregateScopeFor_(desiredScope)){
+    if(isAggregateRecordPaneActive_() && !aggregateBackgroundPreloadInFlight && !hasFreshAggregateScopeFor_(desiredScope)){
       requestAggregateScope_(desiredScope,{
         onError:()=>{},
         onParseError:()=>{},
@@ -735,8 +792,10 @@ function loadAgg(){
   if(!rows.length){
     renderAggSummary([]);
     const emptyCols=(5+fieldMeta.fields.length+1);
-    body.innerHTML=`<tr><td colspan="${emptyCols}" style="text-align:center;color:#999;padding:14px;">データがありません</td></tr>`;
-    cards.innerHTML='<div class="portfolio-empty">データがありません</div>';
+    const loadingEmpty=Boolean(aggregateScopeFetchKey || aggregateBackgroundPreloadInFlight);
+    const emptyText=loadingEmpty ? '単元記録を取得中です。少し待つと表示されます。' : 'データがありません';
+    body.innerHTML=`<tr><td colspan="${emptyCols}" style="text-align:center;color:#999;padding:14px;">${emptyText}</td></tr>`;
+    cards.innerHTML=`<div class="portfolio-empty">${emptyText}</div>`;
     return;
   }
   renderAggSummary(rows);
