@@ -1882,6 +1882,10 @@ function applyTeacherInitData(d, options) {
         unitProgressByUnitId = d.unitProgress;
     if (d.build)
         teacherBuild = d.build;
+    if (d.deploymentVersion !== undefined)
+        teacherDeploymentVersion = Number(d.deploymentVersion || 0);
+    if (d.deploymentCreatedAt !== undefined)
+        teacherDeploymentCreatedAt = String(d.deploymentCreatedAt || '').trim();
     if (opts.includeRoster) {
         if (Array.isArray(d.roster)) {
             rosterEntries = d.roster.filter(function (row) { return row.active !== false; });
