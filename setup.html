@@ -130,7 +130,7 @@ body{margin:0;font-family:var(--font);background:var(--bg);color:#212121}
     renderCurrent();
     setStatus('接続確認中...', '');
     try {
-      await window.__portableGas.postAction('rpc', { method: 'teacherInit', args: [] });
+      await window.__portableGas.postAction('teacherInit', {});
       setStatus('接続できました。この端末は使えます。', 'ok');
     } catch (error) {
       setStatus('接続に失敗しました: ' + (error && error.message ? error.message : String(error)), 'error');

@@ -4,6 +4,8 @@
   var REDIRECT_FLAG_KEY = "__portable_setup_redirecting__";
   var TEACHER_BOOTSTRAP_CACHE_KEY = "jibun-matome-teacher-bootstrap-fast";
   var TEACHER_BOOTSTRAP_TTL_MS = 60 * 1000;
+  var PORTABLE_FETCH_TIMEOUT_MS = 15000;
+  var PORTABLE_FETCH_RETRY_COUNT = 0;
 
   function readApiUrlFromQuery() {
     try {
@@ -66,6 +68,39 @@
     if (typeof error === "string") return error;
     if (error.message) return error.message;
     return String(error);
+  }
+
+  function createPortableError(message, extra) {
+    var details = extra && typeof extra === "object" ? extra : {};
+    var error = new Error(String(message || "Unknown API error."));
+    if (details.code) error.code = details.code;
+    if (details.status) error.status = details.status;
+    if (details.retriable === true) error.retriable = true;
+    if (details.cause) error.cause = details.cause;
+    return error;
+  }
+
+  function normalizePortableError(error) {
+    if (error instanceof Error) {
+      return error;
+    }
+    if (typeof error === "string") {
+      return createPortableError(error);
+    }
+    if (error && typeof error === "object") {
+      return createPortableError(getErrorMessage(error), error);
+    }
+    return createPortableError(String(error || "Unknown API error."));
+  }
+
+  function isRetriablePortableError(error) {
+    var normalized = normalizePortableError(error);
+    if (normalized.retriable === true) return true;
+    if (normalized.name === "AbortError") return true;
+    if (normalized.code === "timeout") return true;
+    var status = Number(normalized.status || 0);
+    if (status >= 500) return true;
+    return false;
   }
 
   function readJsonCache(cacheKey) {
@@ -154,39 +189,93 @@
     var apiUrl = getApiUrl();
     if (!apiUrl) {
       redirectToSetupIfNeeded();
-      throw new Error("GAS_API_URL is not set in localStorage.");
+      throw createPortableError("GAS_API_URL is not set in localStorage.", { code: "missing_api_url" });
     }
     if (sync) {
       var xhr = new XMLHttpRequest();
       xhr.open("POST", apiUrl, false);
+      xhr.timeout = PORTABLE_FETCH_TIMEOUT_MS;
       xhr.setRequestHeader("Content-Type", "text/plain;charset=utf-8");
-      xhr.send(JSON.stringify(payload));
-      if (xhr.status < 200 || xhr.status >= 300) {
-        throw new Error("HTTP " + xhr.status);
+      try {
+        xhr.send(JSON.stringify(payload));
+      } catch (error) {
+        throw createPortableError(getErrorMessage(error), { code: "network_error", retriable: true, cause: error });
       }
-      return parseResponseText(xhr.responseText);
+      if (xhr.status < 200 || xhr.status >= 300) {
+        throw createPortableError("HTTP " + xhr.status, { code: "http_error", status: xhr.status, retriable: xhr.status >= 500 });
+      }
+      try {
+        return parseResponseText(xhr.responseText);
+      } catch (error) {
+        throw createPortableError("Invalid JSON response.", { code: "invalid_json", cause: error });
+      }
     }
-    return fetch(apiUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "text/plain;charset=utf-8"
-      },
-      body: JSON.stringify(payload)
-    })
-      .then(function (response) {
-        if (!response.ok) {
-          throw new Error("HTTP " + response.status);
-        }
-        return response.text();
+    var requestBody = JSON.stringify(payload);
+    var attempt = 0;
+    function runFetch() {
+      attempt += 1;
+      var controller = typeof AbortController === "function" ? new AbortController() : null;
+      var timeoutId = controller ? setTimeout(function () {
+        controller.abort();
+      }, PORTABLE_FETCH_TIMEOUT_MS) : null;
+      return fetch(apiUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "text/plain;charset=utf-8"
+        },
+        body: requestBody,
+        signal: controller ? controller.signal : undefined
       })
-      .then(parseResponseText);
+        .then(function (response) {
+          if (timeoutId) clearTimeout(timeoutId);
+          if (!response.ok) {
+            throw createPortableError("HTTP " + response.status, { code: "http_error", status: response.status, retriable: response.status >= 500 });
+          }
+          return response.text();
+        })
+        .then(function (text) {
+          try {
+            return parseResponseText(text);
+          } catch (error) {
+            throw createPortableError("Invalid JSON response.", { code: "invalid_json", cause: error });
+          }
+        })
+        .catch(function (error) {
+          if (timeoutId) clearTimeout(timeoutId);
+          var normalized = normalizePortableError(error);
+          if (normalized.name === "AbortError") {
+            normalized = createPortableError("Request timed out.", { code: "timeout", retriable: true, cause: error });
+          }
+          if (attempt <= PORTABLE_FETCH_RETRY_COUNT && isRetriablePortableError(normalized)) {
+            return runFetch();
+          }
+          throw normalized;
+        });
+    }
+    return runFetch();
+  }
+
+  function buildLegacyRpcPayload(action, payload) {
+    var normalizedAction = String(action || "").trim();
+    var body = payload && typeof payload === "object" ? payload : {};
+    return {
+      action: "rpc",
+      payload: {
+        method: normalizedAction,
+        args: Array.isArray(body.args) ? body.args : []
+      }
+    };
   }
 
   async function postAction(action, payload) {
-    var result = await sendRequest({
+    var requestPayload = {
       action: action,
       payload: payload || {}
-    }, false);
+    };
+    var result = await sendRequest(requestPayload, false);
+    if (!result.ok && String(result.error || "") === "unknown_action" && String(action || "").trim() !== "rpc") {
+      result = await sendRequest(buildLegacyRpcPayload(action, payload), false);
+    }
     if (!result.ok) {
       throw new Error(getErrorMessage(result.error));
     }
@@ -194,10 +283,14 @@
   }
 
   function postActionSync(action, payload) {
-    var result = sendRequest({
+    var requestPayload = {
       action: action,
       payload: payload || {}
-    }, true);
+    };
+    var result = sendRequest(requestPayload, true);
+    if (!result.ok && String(result.error || "") === "unknown_action" && String(action || "").trim() !== "rpc") {
+      result = sendRequest(buildLegacyRpcPayload(action, payload), true);
+    }
     if (!result.ok) {
       throw new Error(getErrorMessage(result.error));
     }
@@ -214,6 +307,21 @@
     return postActionSync(String(method || ""), {
       args: Array.isArray(args) ? args : []
     });
+  }
+
+  function readEmptyStudentBootstrap() {
+    return { students: [], shell: {} };
+  }
+
+  function bootstrapStudentAsync() {
+    if (!getApiUrl()) {
+      redirectToSetupIfNeeded();
+      return Promise.resolve(readEmptyStudentBootstrap());
+    }
+    return callPortableMethod("getStudentEntryOptions", [])
+      .then(function (data) {
+        return data || readEmptyStudentBootstrap();
+      });
   }
 
   function createRunner(successHandler, failureHandler) {
@@ -241,7 +349,7 @@
               })
               .catch(function (error) {
                 if (typeof failureHandler === "function") {
-                  failureHandler(error && error.message ? error.message : String(error));
+                  failureHandler(normalizePortableError(error));
                   return;
                 }
                 console.error(error);
@@ -276,10 +384,10 @@
     bootstrapStudent: function () {
       if (!getApiUrl()) {
         redirectToSetupIfNeeded();
-        return { students: [], shell: {} };
       }
-      return callPortableMethodSync("getStudentEntryOptions", []) || { students: [], shell: {} };
-    }
+      return readEmptyStudentBootstrap();
+    },
+    bootstrapStudentAsync: bootstrapStudentAsync
   };
 
   if (!window.google) {
@@ -294,3 +402,6 @@
 
   syncMemoryApiUrl();
 })();
+
+
+
