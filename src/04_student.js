@@ -26,7 +26,7 @@ function studentInit(num, periodOverride) {
   const rosterStudent = students.find(student => String(student.number) === String(num));
   const studentName = rosterStudent?.name || '';
   const enabledFields = getEnabledFields_({ fields: active.fields || active.unit?.fields || [] });
-  const state = buildStudentState_(active.unit, period, num, studentName, enabledFields, { includePrevReview: false });
+  const state = buildStudentState_(active.unit, period, num, studentName, enabledFields, { includePrevReview: true });
 
   return Object.assign({}, state, {
     needPeriodSelect: false,
@@ -176,12 +176,10 @@ function getStudentPreviousReview(unitId, period, num) {
   const normalizedUnitId = String(unitId || '').trim();
   const normalizedPeriod = parseInt(period, 10) || 0;
   const normalizedNum = String(num || '').trim();
-  if (!normalizedUnitId || normalizedPeriod <= 1 || !normalizedNum) return { prevReview: '' };
+  if (!normalizedUnitId || normalizedPeriod <= 1 || !normalizedNum) return { prevReview: '', previousNextGoal: '' };
   const units = getAllUnits();
   const unit = units.find(item => String(item.id) === normalizedUnitId) || null;
-  return {
-    prevReview: getPreviousReviewFromDb_(normalizedUnitId, normalizedPeriod, normalizedNum, unit),
-  };
+  return getPreviousStudentLearningContextFromDb_(normalizedUnitId, normalizedPeriod, normalizedNum, unit);
 }
 
 function getStudentPastRecords(num, unitId, limit) {
@@ -340,6 +338,9 @@ function buildStudentState_(unit, period, num, studentName, enabledFields, optio
   const customs = response
     ? mapAnswersToCustoms_(enabledFields, response.answersMap)
     : Array(enabledFields.length).fill('');
+  const previousContext = opts.includePrevReview === true
+    ? getPreviousStudentLearningContextFromDb_(unitId, period, num, unit)
+    : { prevReview: '', previousNextGoal: '' };
   return {
     fields: enabledFields,
     num,
@@ -351,7 +352,8 @@ function buildStudentState_(unit, period, num, studentName, enabledFields, optio
     medalColor: getMedalColor_(response?.medal || ''),
     submitted: response ? response.submitted : false,
     aiStatus: response?.aiStatus || '',
-    prevReview: opts.includePrevReview === true ? getPreviousReviewFromDb_(unitId, period, num, unit) : '',
+    prevReview: previousContext.prevReview || '',
+    previousNextGoal: previousContext.previousNextGoal || '',
     responseReadMeta,
     studentAiEnabled: opts.featureFlags ? opts.featureFlags.studentAiEnabled : isStudentAiEnabled_(),
     studentAiAutoSubmitEnabled: opts.featureFlags ? opts.featureFlags.studentAiAutoSubmitEnabled : isStudentAiAutoSubmitEnabled_(),

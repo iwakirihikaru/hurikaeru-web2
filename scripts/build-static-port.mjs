@@ -46,7 +46,7 @@ function buildStudentHtml() {
     "const bootstrapStudentOptions = window.__STUDENT_BOOTSTRAP__ || { students: [], shell: {} };\nlet bootstrapStudentReadyPromise = Promise.resolve(bootstrapStudentOptions);\nif (!window.__STUDENT_BOOTSTRAP__) {\n  bootstrapStudentReadyPromise = window.__portableGas.bootstrapStudentAsync()\n    .then(data => { if (data && typeof data === 'object') Object.assign(bootstrapStudentOptions, data); return bootstrapStudentOptions; })\n    .catch(error => { console.error(error); return bootstrapStudentOptions; });\n}"
   ).replace(
     'startStudentApp_();',
-    "bootstrapStudentReadyPromise.then(() => startStudentApp_()).catch(error => { console.error(error); startStudentApp_(); });"
+    "startStudentApp_();\nbootstrapStudentReadyPromise.then(data => applyStudentBootstrapData_(data)).catch(error => { console.error(error); });"
   );
 }
 
@@ -60,7 +60,7 @@ function buildIndexHtml() {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Furikaeri Portable</title>
+<title>ふりカエル Portable</title>
 <style>
 :root{
   --navy:#1A237E;--green:#388E3C;--bg:#F5F5F5;--card:#fff;--line:#D7E3F8;
@@ -81,7 +81,7 @@ body{margin:0;font-family:var(--font);background:var(--bg);color:#212121}
 </style>
 </head>
 <body>
-<div class="nav">Furikaeri Portable</div>
+<div class="nav">ふりカエル Portable</div>
 <div class="wrap">
   <div class="card">
     <div class="lead">通常は先生が配るURLから入ります。<span class="mono">setup</span> は配布ページへの入口と、例外時の接続補助です。</div>
@@ -184,7 +184,7 @@ function buildSetupHtml() {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ふりかえり 接続補助</title>
+<title>ふりカエル 接続補助</title>
 <script src="./runtime-shim.js"></script>
 <style>
 :root{
@@ -221,7 +221,7 @@ body{margin:0;font-family:var(--font);background:var(--bg);color:#212121}
 </style>
 </head>
 <body>
-<div class="nav">ふりかえり 接続補助</div>
+<div class="nav">ふりカエル 接続補助</div>
 <div class="wrap">
   <div class="card">
     <div class="lead">このページは接続補助です。通常は先生が配るURLから入り、ここは保存が消えたときや、接続先を手で入れ替えたいときだけ使います。</div>

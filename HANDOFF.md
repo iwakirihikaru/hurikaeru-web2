@@ -44,8 +44,8 @@
 
 ## 現在の最新版
 
-- 2026-07-11 時点
-  - 本番 version `354`
+- 2026-07-14 時点
+  - 本番 version `361`
   - repo管理 debug deployment version `354`
   - デバッグ昇格版 version `10`
   - 配布テンプレート version `64`
@@ -114,10 +114,103 @@
     - `src/02_setup.js`
       - `legacy_writeGlobalConfig` / `legacy_writeGlobalConfigBatch` 由来の audit source 名を
         `config_writeGlobalConfig` / `config_writeGlobalConfigBatch` へ変更。
+  - 2026-07-13 追加前進
+    - 授業スタートタブ初回表示の体感速度対策。
+    - `src/06_teacher.js`
+      - `teacherInit()` / `teacherStatusInit()` から `getTeacherVersionControlInfo_()` の同期実行を外した。
+      - 初期表示では Apps Script API の deployment / versions 取得を行わず、単元・現在授業・授業状況を優先して返す。
+      - 版詳細・ロールバック情報は `teacherHelpInit()` など更新系画面で従来どおり取得する。
+    - `src/07_portable_rpc.js`
+      - 既存クライアント分岐で使う `teacherStatusSnapshot` を portable allowlist に追加。
+    - 確認済み:
+      - `node --check src/06_teacher.js`
+      - `node --check src/07_portable_rpc.js`
+      - `npm run build:portable`
+    - deploy:
+      - 2026-07-13 に本番 Webアプリへ deploy 済み。
+      - 本番 deployment `AKfycbwo3TBXAkqLSx6XYcXxTI5m34DerRMHaB6X13dymilmU_wmc-Fn5F-2jkNofErLevVo7Q` を version `359` へ更新。
+      - `admin.config.json` がない環境だったため、配布テンプレート・導入管理・provision 更新は deploy script 上でスキップ。
+    - 補足:
+      - `portable/` は `build:portable` 実行後に modified 表示になる場合があるが、今回確認時点では内容差分は出ていない。
+      - `AGENTS.md` と `.codex/` は作業開始時点から存在する未関与差分。
+  - 2026-07-13 追加前進 2
+    - 児童ページの出席番号表示・番号押下後ロードを体感優先へ変更。
+    - `src/index.html`
+      - 出席番号は名簿取得済みまたは直近キャッシュがある場合だけ実在番号を表示。
+      - 名簿未取得の初回は `名簿を確認中…` を表示し、名簿にない番号は表示しない。
+      - GAS から名簿・授業状態が返ったら番号ボタンと resume 表示を更新し、名簿キャッシュも更新。
+      - 番号押下時に選択中の色・`よみこみ中` 表示・スピナーを出し、手ごたえを追加。
+      - 番号押下後の初期ロードで、現在の授業内容・自分の記録・前時ふりかえり・前時の「次のめあて」を取得。
+      - 前時の「次のめあて」は、該当項目の設定と入力値がある場合だけ表示。
+      - 提出済み時の過去記録一覧は、初期表示を妨げないよう idle / 遅延で自分の記録だけバックグラウンド取得。
+      - 履歴タブを開いた時点で未取得なら、その場で履歴を取得。
+    - `src/03_domain.js` / `src/04_student.js`
+      - 前時のふりかえりと、前時項目内の「次のめあて」をまとめて返す初期ロード用コンテキストを追加。
+      - 通常の「めあて」項目は表示対象にせず、「次/つぎ」+「めあて/目標/ゴール」系の項目だけを対象にする。
+    - `src/07_portable_rpc.js`
+      - portable RPC の児童系メソッドで、`studentInit` / `studentLoadState` / `getStudentPreviousReview` / `getStudentPastRecords` などの引数を正しく渡すよう修正。
+    - `scripts/build-static-port.mjs`
+      - portable 児童画面で bootstrap 完了を待たず `startStudentApp_()` を即実行し、完了後に `applyStudentBootstrapData_()` で反映するよう変更。
+    - `npm run build:portable` 実行済み。
+    - 確認済み:
+      - `node --check src/03_domain.js`
+      - `node --check src/04_student.js`
+      - `node --check src/07_portable_rpc.js`
+      - `node --check scripts/build-static-port.mjs`
+      - `src/index.html` の script 構文確認
+      - `portable/student.html` の script 構文確認
+    - deploy:
+      - 2026-07-14 に本番 Webアプリへ deploy 済み。
+      - 本番 deployment `AKfycbwo3TBXAkqLSx6XYcXxTI5m34DerRMHaB6X13dymilmU_wmc-Fn5F-2jkNofErLevVo7Q` を version `360` へ更新。
+      - `admin.config.json` がない環境だったため、配布テンプレート・導入管理・provision 更新は deploy script 上でスキップ。
+  - 2026-07-14 追加前進
+    - 教師画面の名簿・単元名・記録取得の体感速度対策。
+    - `src/06_teacher.js`
+      - `teacherInit()` から全 Responses を読む単元進捗の同期生成を外し、キャッシュ済み進捗だけ返すよう変更。
+      - 単元進捗は `teacherUnitProgressRefresh()` で後追い更新する前提に整理。
+      - `getAggregateData()` は単元 / 教科指定がある場合、全 Responses ではなく対象 lesson の Responses だけ読むよう変更。
+    - `src/teacher_script_core.html`
+      - `teacherInit()` 後に必要な場合だけ単元進捗を idle 後に更新。
+      - 初期プリロードは名簿を先に走らせ、エディタ・プロンプト・ヘルプ・全記録プリロードは少し遅らせる。
+      - `ensureRosterPreload()` に更新後コールバックを追加し、名簿単体取得の結果をキャッシュと画面状態へ反映。
+    - `src/teacher_script_admin.html`
+      - 名簿タブはキャッシュがあれば即表示し、その裏で名簿単体 API を更新取得。
+      - キャッシュがない場合も、全授業記録取得を待たず名簿単体 API だけを呼ぶ。
+    - `src/teacher_script_reports.html`
+      - 記録系は選択中の単元 / 教科スコープを優先取得し、全体記録は後からバックグラウンド取得。
+    - `src/07_portable_rpc.js`
+      - portable 経由で `teacherUnitProgressRefresh` を呼べるよう allowlist へ追加。
+    - `node scripts/build-teacher-legacy.js` と `npm run build:portable` 実行済み。
+    - 確認済み:
+      - `node --check src/06_teacher.js`
+      - `node --check src/07_portable_rpc.js`
+      - `src/teacher.html` の script 構文確認
+      - `portable/teacher.html` の script 構文確認
+    - 2026-07-14 追加前進 2
+      - 版情報タブの不要文言を整理。
+      - `src/06_teacher.js`
+        - 中央の `latestVersion` が現在の deployment version より古い場合は、この個体の deployment version を優先表示するよう変更。
+      - `scripts/deploy-webapp.ps1`
+        - deploy 時に `onboarding/admin-app.js` の `latestTenantAppVersion` に加えて、`cdn/shell-config.json` の `latestVersion` も同期するよう変更。
+      - 確認済み:
+        - `node --check src/06_teacher.js`
+        - `node scripts/build-teacher-legacy.js`
+        - `npm run build:portable`
+      - deploy:
+        - 2026-07-14 に本番 Webアプリへ deploy 済み。
+        - 本番 deployment `AKfycbwo3TBXAkqLSx6XYcXxTI5m34DerRMHaB6X13dymilmU_wmc-Fn5F-2jkNofErLevVo7Q` を version `361` へ更新。
+        - `admin.config.json` がない環境のため、導入管理 Webアプリ自体の再デプロイは引き続きスキップ。
   - まだ残る主な検討点
     - `src/07_portable_rpc.js` の `rpc` 互換受理をどこまで縮められるか。
     - `scripts/build-static-port.ps1` を残置するか、運用上 retire できるか。
     - `teacher_script_*_legacy.html` / `build-teacher-legacy.js` を改名テーマに切るか現状維持にするか。
+    - 薄いGAS依存をどこまで固定API化で減らすか。
+      - 方針は `1 + 2` を本命にする。
+      - `1`: 薄いGASの公開APIを固定契約に寄せ、返り値の破壊的変更を避ける。
+      - `2`: `portable` 側で古い返り値を正規化し、既定値補完で互換吸収する。
+      - 主対象は `teacherInit` / `teacherStatusSnapshot` / `studentInit` / `studentLoadState` と `src/07_portable_rpc.js`。
+      - ねらいは「新機能追加や初期ロード最適化のたびに薄いGASを更新しなくてよい状態」に近づけること。
+      - デメリットとして、クライアント側の吸収ロジック増加、APIの肥大化、テスト観点増加は受け入れる前提。
 
 ## Master GAS API v1
 
@@ -213,6 +306,8 @@
 - `src/07_portable_rpc.js` の `rpc` 互換受理を、実参照を見ながらさらに縮める。
 - `scripts/build-static-port.ps1` の retire 可否を運用面から判断する。
 - `main` 一本化後に preview branch 運用をどこまで減らせるか確認する。
+- 薄いGASの固定契約にする最小APIセットを整理する。
+- `portable` 側で古い返り値を吸収する正規化層の候補を洗い出す。
 - 実行テストは未実施なので、必要になった段階で別途行う。
 
 ## 次スレで十分な依頼文

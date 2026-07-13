@@ -3,13 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>じぶんまとめ</title>
+<title>ふりカエル</title>
 <style>
 :root{
   --sky:#29B6F6;--green:#66BB6A;--yellow:#FFD54F;--coral:#FF7043;
   --purple:#AB47BC;--ink:#1A237E;--muted:#78909C;
   --bg:#E8F5E9;--card:#fff;--r:16px;--sh:0 3px 12px rgba(0,0,0,.10);
   --font:'Hiragino Maru Gothic ProN','BIZ UDPGothic',sans-serif;
+  --mascot:url("data:image/png;base64,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");
 }
 *{box-sizing:border-box;margin:0;padding:0;}
 html,body{height:100%;font-family:var(--font);background:var(--bg);color:var(--ink);}
@@ -26,6 +27,13 @@ html,body{height:100%;font-family:var(--font);background:var(--bg);color:var(--i
 
 /* 番号選択 */
 #screen-select{align-items:center;justify-content:center;min-height:100vh;padding:24px 16px;}
+.brand-lockup{display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:8px;}
+.brand-mascot{
+  background-image:var(--mascot);background-size:cover;background-position:center;border-radius:50%;
+  box-shadow:0 4px 14px rgba(26,35,126,.18);
+}
+.brand-mascot-lg{width:96px;height:96px;}
+.brand-mascot-sm{width:34px;height:34px;flex:0 0 34px;}
 .sel-title{font-size:26px;font-weight:bold;margin-bottom:4px;text-align:center;}
 .sel-sub{font-size:14px;color:var(--muted);margin-bottom:20px;text-align:center;}
 .resume-box{
@@ -48,6 +56,13 @@ html,body{height:100%;font-family:var(--font);background:var(--bg);color:var(--i
   transition:transform .12s,background .12s;
 }
 .num-btn:active{transform:scale(.9);background:var(--sky);color:#fff;}
+.num-btn.selected,.num-btn.loading{background:var(--sky);color:#fff;}
+.num-btn.loading{opacity:.78;position:relative;font-size:12px;}
+.num-btn.loading::after{
+  content:"";position:absolute;right:7px;bottom:7px;width:8px;height:8px;border-radius:50%;
+  border:2px solid rgba(255,255,255,.7);border-top-color:transparent;animation:spin .7s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg);}}
 
 /* 時間目選択 */
 #screen-period{align-items:center;justify-content:center;min-height:100vh;padding:24px 16px;}
@@ -70,6 +85,8 @@ html,body{height:100%;font-family:var(--font);background:var(--bg);color:var(--i
   flex-shrink:0;box-shadow:0 2px 6px rgba(0,0,0,.2);position:sticky;top:0;z-index:200;
 }
 .app-header h1{font-size:15px;letter-spacing:.03em;}
+.student-brand{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.student-brand-name{display:inline-flex;align-items:center;}
 .app-header .meta{font-size:11px;opacity:.85;margin-top:1px;}
 .auto-ctrl{display:flex;align-items:center;gap:5px;font-size:11px;}
 
@@ -79,6 +96,7 @@ html,body{height:100%;font-family:var(--font);background:var(--bg);color:var(--i
   .split{flex-direction:column;}
   .pane-tl{width:100%!important;max-height:36vh;border-right:none;border-bottom:2px solid #e0e0e0;}
   .student-top-tabs{justify-content:flex-start;margin-top:6px;}
+  .brand-mascot-lg{width:82px;height:82px;}
 }
 .pane-tl{width:38%;flex-shrink:0;overflow-y:auto;padding:10px;border-right:2px solid #e0e0e0;background:#F0F7FF;}
 .pane-form{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;}
@@ -295,7 +313,10 @@ textarea.f{min-height:70px;}
 
 <!-- ① 出席番号 -->
 <div id="screen-select" class="screen active">
-  <div class="sel-title" id="studentSelectTitle">✏️ じぶんまとめ</div>
+  <div class="brand-lockup">
+    <div class="brand-mascot brand-mascot-lg" aria-hidden="true"></div>
+    <div class="sel-title" id="studentSelectTitle">ふりカエル</div>
+  </div>
   <div class="sel-sub" id="studentSelectSubtitle">きみのばんごうをタップしてね</div>
   <div id="resumeBox" class="resume-box">
     <div class="resume-title" id="resumeLabel"></div>
@@ -318,7 +339,7 @@ textarea.f{min-height:70px;}
 <div id="screen-main" class="screen" style="height:100vh;">
   <div class="app-header">
     <div>
-      <h1>✏️ じぶんまとめ &nbsp;<span id="hdrUnit" style="font-size:12px;opacity:.85;"></span></h1>
+      <h1 class="student-brand"><span class="brand-mascot brand-mascot-sm" aria-hidden="true"></span><span class="student-brand-name">ふりカエル</span><span id="hdrUnit" style="font-size:12px;opacity:.85;"></span></h1>
       <div class="meta" id="hdrMeta"></div>
       <button type="button" class="link-btn" id="changeStudentBtn" onclick="changeStudentNumber_()" style="display:none;">番号をえらびなおす</button>
     </div>
@@ -354,6 +375,10 @@ textarea.f{min-height:70px;}
         <div class="card" id="prevCard" style="display:none;">
           <div class="card-title">📖 まえのじゅぎょうのふりかえり</div>
           <div class="prev-box" id="prevReviewBox"></div>
+        </div>
+        <div class="card" id="prevGoalCard" style="display:none;">
+          <div class="card-title">🎯 前の時間に決めためあて</div>
+          <div class="prev-box" id="prevGoalBox"></div>
         </div>
 
         <!-- 入力フォーム（動的生成） -->
@@ -427,6 +452,8 @@ let studentHistoryGroups = [];
 let studentHistoryScopeKey = 'unit';
 let studentHistoryRows = [];
 let studentHistoryIndex = 0;
+let studentHistoryLoaded = false;
+let studentHistoryLoading = false;
 let studentMaintenanceMode = false;
 let currentStudentShellState = {};
 let currentStudentUnitInfo = null;
@@ -436,6 +463,7 @@ const POLL_WAITING_AI_MS = 2500;
 const POLL_DONE_MS = 6000;
 const STUDENT_CACHE_TTL_MS = 5 * 60 * 1000;
 const STUDENT_NUMBER_CACHE_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+const STUDENT_ENTRY_CACHE_KEY = 'furikaeri:studentEntryOptions';
 
 function getStudentCacheKey_(kind, suffix){
   return `furikaeri:${kind}:${String(suffix||'')}`;
@@ -525,18 +553,71 @@ function forgetRememberedStudent_(){
   if(box) box.style.display='none';
 }
 
+function readStudentEntryOptionsCache_(){
+  try{
+    const raw=localStorage.getItem(STUDENT_ENTRY_CACHE_KEY);
+    if(!raw) return null;
+    const parsed=JSON.parse(raw);
+    if(!parsed || !parsed.savedAt || Date.now()-Number(parsed.savedAt)>STUDENT_CACHE_TTL_MS) return null;
+    const payload=parsed.payload;
+    return payload && Array.isArray(payload.students) && payload.students.length ? payload : null;
+  }catch(_err){
+    return null;
+  }
+}
+
+function writeStudentEntryOptionsCache_(payload){
+  try{
+    if(!payload || !Array.isArray(payload.students) || !payload.students.length) return;
+    localStorage.setItem(STUDENT_ENTRY_CACHE_KEY, JSON.stringify({
+      savedAt:Date.now(),
+      payload,
+    }));
+  }catch(_err){}
+}
+
 // =====================================
 //  番号ボタン生成
 // =====================================
 const bootstrapStudentOptions = <?!= JSON.stringify(typeof bootstrapStudentOptions !== 'undefined' ? bootstrapStudentOptions : {students:[]}) ?>;
 let studentAppBootStarted=false;
+let studentEntryOptionsLoaded=Array.isArray(bootstrapStudentOptions.students) && bootstrapStudentOptions.students.length>0;
+
+function getInitialStudentOptions_(){
+  if(Array.isArray(bootstrapStudentOptions.students) && bootstrapStudentOptions.students.length){
+    return bootstrapStudentOptions.students;
+  }
+  const cached=readStudentEntryOptionsCache_();
+  if(cached){
+    Object.assign(bootstrapStudentOptions, cached);
+    studentEntryOptionsLoaded=true;
+    return cached.students;
+  }
+  return [];
+}
+
+function applyStudentBootstrapData_(data, options){
+  const opts=options||{};
+  if(data && typeof data==='object'){
+    Object.assign(bootstrapStudentOptions, data);
+    studentEntryOptionsLoaded=true;
+    writeStudentEntryOptionsCache_(bootstrapStudentOptions);
+  }
+  applyStudentShellState_(bootstrapStudentOptions.shell||{});
+  const students=getInitialStudentOptions_();
+  const selectScreen=document.getElementById('screen-select');
+  if(selectScreen && selectScreen.classList.contains('active') && !initBusy){
+    renderNumberButtons(students);
+  }
+  if(opts.skipResume!==true && !initBusy){
+    setupRememberedStudentResume_(students);
+  }
+}
 
 function startStudentApp_(){
   if(studentAppBootStarted) return;
   studentAppBootStarted=true;
-  applyStudentShellState_(bootstrapStudentOptions.shell||{});
-  renderNumberButtons(bootstrapStudentOptions.students||[]);
-  setupRememberedStudentResume_(bootstrapStudentOptions.students||[]);
+  applyStudentBootstrapData_(bootstrapStudentOptions);
 }
 
 startStudentApp_();
@@ -642,19 +723,51 @@ function applyStudentShellState_(shell){
 
 function renderNumberButtons(students){
   const g=document.getElementById('numGrid');
-  const list=students||[];
+  const list=(students&&students.length)?students:[];
   if(!list.length){
-    const emptyMessage=getStudentShellLabel_('studentRosterEmptyMessage', '名簿がまだ設定されていません。先生に伝えてね。');
+    const emptyMessage=studentEntryOptionsLoaded
+      ? getStudentShellLabel_('studentRosterEmptyMessage', '名簿がまだ設定されていません。先生に伝えてね。')
+      : '名簿を確認中…';
     g.innerHTML=`<div style="grid-column:1/-1;text-align:center;color:#78909C;font-size:14px;">${esc(emptyMessage)}</div>`;
     return;
   }
   g.innerHTML='';
   list.forEach(student=>{
     const b=document.createElement('button');
-    b.className='num-btn';b.textContent=student.number;
+    b.className='num-btn';
+    b.textContent=student.number;
+    b.dataset.number=String(student.number);
+    if(student.name) b.title=`${student.number}ばん ${student.name}`;
     b.onclick=()=>selectNumber(student.number);
     g.appendChild(b);
   });
+}
+
+function setNumberSelectionBusy_(num, busy){
+  document.querySelectorAll('.num-btn').forEach(btn=>{
+    const matched=String(btn.dataset.number||btn.textContent||'')===String(num);
+    btn.disabled=Boolean(busy);
+    btn.classList.toggle('selected', Boolean(busy&&matched));
+    btn.classList.toggle('loading', Boolean(busy&&matched));
+    if(busy && matched){
+      if(!btn.dataset.defaultLabel) btn.dataset.defaultLabel=btn.textContent||String(num);
+      btn.textContent='よみこみ中';
+    }else if(!busy && btn.dataset.defaultLabel){
+      btn.textContent=btn.dataset.defaultLabel;
+      delete btn.dataset.defaultLabel;
+    }
+  });
+}
+
+function hasLoadedStudentRoster_(){
+  return Array.isArray(bootstrapStudentOptions.students)
+    && bootstrapStudentOptions.students.length
+    && !bootstrapStudentOptions.students.some(student=>student&&student.fallback===true);
+}
+
+function isStudentNumberInRoster_(num){
+  if(!hasLoadedStudentRoster_()) return true;
+  return bootstrapStudentOptions.students.some(student=>String(student&&student.number||'')===String(num));
 }
 
 function setupRememberedStudentResume_(students){
@@ -686,22 +799,31 @@ function setupRememberedStudentResume_(students){
 function selectNumber(num, options){
   if(initBusy) return;
   const opts=options||{};
+  if(!isStudentNumberInRoster_(num)){
+    showToast('この番号は名簿にありません。先生に伝えてね。');
+    return;
+  }
   initBusy=true;
   myNum=num;
+  setNumberSelectionBusy_(num,true);
   if(opts.remember!==false) rememberStudentNumber_(num);
   const bootstrapState=getBootstrapStudentSnapshotState_(num);
   if(bootstrapState){
     initBusy=false;
+    setNumberSelectionBusy_(num,false);
     loadMain(bootstrapState);
     return;
   }
   showCachedStudentLanding_(findRecentStudentStateCache_(num));
-  document.querySelectorAll('.num-btn').forEach(btn=>btn.disabled=true);
   google.script.run
-    .withSuccessHandler(d=>{initBusy=false;onInit(d);})
+    .withSuccessHandler(d=>{
+      initBusy=false;
+      setNumberSelectionBusy_(num,false);
+      onInit(d);
+    })
     .withFailureHandler(e=>{
       initBusy=false;
-      document.querySelectorAll('.num-btn').forEach(btn=>btn.disabled=false);
+      setNumberSelectionBusy_(num,false);
       showToast(opts.auto ? '前の番号で入れなかったので、えらびなおしてね。' : 'エラー:'+e);
     })
     .studentInit(num,0);
@@ -770,6 +892,7 @@ function loadMain(d){
 
   showScreen('screen-main');
   document.getElementById('prevCard').style.display='none';
+  document.getElementById('prevGoalCard').style.display='none';
   document.getElementById('rewriteRow').style.display='none';
   document.getElementById('submitNote').textContent='';
   document.getElementById('aiBox').style.display='none';
@@ -790,6 +913,8 @@ function loadMain(d){
   studentHistoryScopeKey='unit';
   studentHistoryRows=[];
   studentHistoryIndex=0;
+  studentHistoryLoaded=false;
+  studentHistoryLoading=false;
   showStudentTab('current');
   setFieldInteractivity(false);
   document.getElementById('submitNote').textContent=d.cacheOnly ? 'さいしんじょうほうをよみこみ中…' : 'よみこみ中…';
@@ -797,7 +922,10 @@ function loadMain(d){
   if(d.bootstrapTimeline) applyTimelinePayload(d.bootstrapTimeline);
   if(!d.cacheOnly){
     const skipLocalFallback=Boolean(d.bootstrapTimeline);
-    loadStudentSupplemental({ skipCachedTimeline:skipLocalFallback });
+    loadStudentSupplemental({
+      skipCachedTimeline:skipLocalFallback,
+      skipPreviousReview:Boolean(d.prevReview||d.previousNextGoal),
+    });
     loadStudentState({ skipCachedState:skipLocalFallback });
   }
   resetAutoSave();
@@ -826,7 +954,7 @@ function loadStudentState(options){
 
 function loadStudentSupplemental(options){
   const opts=options||{};
-  loadPreviousReview();
+  if(!opts.skipPreviousReview) loadPreviousReview();
   const timelineCacheKey=[myUnitId,myPeriod,myNum].join('_');
   if(!opts.skipCachedTimeline){
     const cachedTimeline=readStudentCache_('timeline',timelineCacheKey);
@@ -838,30 +966,49 @@ function loadStudentSupplemental(options){
 function loadPreviousReview(){
   if(!myUnitId||!myPeriod||!myNum||Number(myPeriod)<=1){
     document.getElementById('prevCard').style.display='none';
+    document.getElementById('prevGoalCard').style.display='none';
     return;
   }
   const cacheKey=[myUnitId,myPeriod,myNum].join('_');
   const cached=readStudentCache_('prevReview',cacheKey);
   if(cached){
     const cachedText=String(cached.prevReview||'').trim();
+    const cachedGoal=String(cached.previousNextGoal||'').trim();
     if(cachedText){
       document.getElementById('prevCard').style.display='block';
       document.getElementById('prevReviewBox').textContent=cachedText;
     }
+    renderPreviousNextGoal_(cachedGoal);
   }
   google.script.run
     .withSuccessHandler(res=>{
       const text=String(res?.prevReview||'').trim();
-      writeStudentCache_('prevReview',cacheKey,res||{prevReview:''});
+      const previousNextGoal=String(res?.previousNextGoal||'').trim();
+      writeStudentCache_('prevReview',cacheKey,res||{prevReview:'',previousNextGoal:''});
       if(text){
         document.getElementById('prevCard').style.display='block';
         document.getElementById('prevReviewBox').textContent=text;
       }else{
         document.getElementById('prevCard').style.display='none';
       }
+      renderPreviousNextGoal_(previousNextGoal);
     })
     .withFailureHandler(()=>{})
     .getStudentPreviousReview(myUnitId,myPeriod,myNum);
+}
+
+function renderPreviousNextGoal_(text){
+  const box=document.getElementById('prevGoalCard');
+  const body=document.getElementById('prevGoalBox');
+  if(!box||!body) return;
+  const value=String(text||'').trim();
+  if(value){
+    box.style.display='block';
+    body.textContent=value;
+  }else{
+    box.style.display='none';
+    body.textContent='';
+  }
 }
 
 function applyStudentState(d){
@@ -892,7 +1039,9 @@ function applyStudentState(d){
     aiStatus:d.aiStatus||'',
     teacherTimelineFieldKey:teacherTimelineFieldKey||'',
     studentAiEnabled:studentAiEnabled,
-    studentAiAutoSubmitEnabled:studentAiAutoSubmitEnabled
+    studentAiAutoSubmitEnabled:studentAiAutoSubmitEnabled,
+    prevReview:d.prevReview||'',
+    previousNextGoal:d.previousNextGoal||''
   });
   submitted=Boolean(d.submitted);
   const aiStatus=String(d.aiStatus||'');
@@ -914,7 +1063,7 @@ function applyStudentState(d){
   document.getElementById('submitNote').textContent='';
   if(d.submitted){
     lockSubmitted();
-    loadStudentPastRecords_();
+    scheduleStudentHistoryPreload_();
   }
   syncStudentTabState_();
   const aiWaiting=studentAiEnabled&&['pending','processing'].includes(String(d.aiStatus||''));
@@ -935,6 +1084,7 @@ function applyStudentState(d){
     document.getElementById('prevCard').style.display='block';
     document.getElementById('prevReviewBox').textContent=d.prevReview;
   }
+  renderPreviousNextGoal_(d.previousNextGoal||'');
 }
 
 // =====================================
@@ -1255,7 +1405,7 @@ function doSubmit(){
         }
       }
       syncStudentTabState_();
-      loadStudentPastRecords_();
+      scheduleStudentHistoryPreload_();
       refreshTimeline();
     })
     .withFailureHandler(e=>{
@@ -1427,21 +1577,41 @@ function showStudentTab(tabName){
   if(historyPanel) historyPanel.classList.toggle('active',target==='history');
   if(currentBtn) currentBtn.classList.toggle('active',target==='current');
   if(historyBtn) historyBtn.classList.toggle('active',target==='history');
+  if(target==='history' && !studentHistoryLoaded && !studentHistoryLoading){
+    loadStudentPastRecords_();
+  }
 }
 
-function loadStudentPastRecords_(){
+function scheduleStudentHistoryPreload_(){
+  if(!submitted||!myNum||studentHistoryLoaded||studentHistoryLoading) return;
+  const run=()=>loadStudentPastRecords_({ background:true });
+  if(typeof requestIdleCallback==='function'){
+    requestIdleCallback(run,{timeout:3000});
+  }else{
+    setTimeout(run,1200);
+  }
+}
+
+function loadStudentPastRecords_(options){
+  const opts=options||{};
   if(!submitted||!myNum) return;
+  if(studentHistoryLoading) return;
+  studentHistoryLoading=true;
   const list=document.getElementById('studentHistoryList');
-  if(list) list.innerHTML='<div class="history-empty"><span class="spinner"></span> よみこみ中…</div>';
+  if(list && !opts.background) list.innerHTML='<div class="history-empty"><span class="spinner"></span> よみこみ中…</div>';
   const cacheKey=[myNum,myUnitId].join('_');
   const cached=readStudentCache_('history',cacheKey);
   if(cached) renderStudentPastRecords_(cached);
   google.script.run
     .withSuccessHandler(res=>{
+      studentHistoryLoading=false;
+      studentHistoryLoaded=true;
       writeStudentCache_('history',cacheKey,res||{groups:[]});
       renderStudentPastRecords_(res||{groups:[]});
     })
     .withFailureHandler(()=>{
+      studentHistoryLoading=false;
+      studentHistoryLoaded=true;
       renderStudentPastRecords_({groups:[]});
     })
     .getStudentPastRecords(myNum,myUnitId,6);

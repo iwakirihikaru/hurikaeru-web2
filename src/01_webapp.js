@@ -2,11 +2,24 @@
 //  Web 繧｢繝励Μ 繧ｨ繝ｳ繝医Μ繝ｼ
 // ============================================================
 function doGet(e) {
+  const mode = String((e && e.parameter && e.parameter.mode) || '').trim();
+  if (mode === 'shellConfig') {
+    return jsonOutput_(getLocalTenantShellConfigResponse_());
+  }
+  if (mode === 'maintenanceStatus') {
+    return jsonOutput_(getLocalTenantMaintenanceStatusResponse_());
+  }
+  if (mode === 'releaseInfo') {
+    return jsonOutput_(getLocalTenantReleaseInfoResponse_());
+  }
   return textOutput_(MASTER_GAS_API_GET_TEXT);
 }
 
 function doPost(e) {
   const body = parseWebAppJsonBody_(e);
+  if (String(body && body.action || '').trim() === 'syncLocalTenantReleaseInfo') {
+    return jsonOutput_(syncLocalTenantReleaseInfo_(body));
+  }
   const masterApiResponse = tryHandleMasterGasApiPost_(body);
   if (masterApiResponse) {
     return jsonOutput_(masterApiResponse);

@@ -97,6 +97,9 @@ const TENANT_SHELL_CONFIG_PROP_KEY = 'TENANT_SHELL_CONFIG_JSON';
 const TENANT_SHELL_CONFIG_FETCHED_AT_PROP_KEY = 'TENANT_SHELL_CONFIG_FETCHED_AT';
 const TENANT_SHELL_CONFIG_MAINTENANCE_PROP_KEY = 'TENANT_SHELL_MAINTENANCE_JSON';
 const TENANT_SHELL_CONFIG_MAINTENANCE_AT_PROP_KEY = 'TENANT_SHELL_MAINTENANCE_FETCHED_AT';
+const TENANT_LOCAL_RELEASE_VERSION_PROP_KEY = 'TENANT_LOCAL_RELEASE_VERSION';
+const TENANT_LOCAL_RELEASE_BUILD_PROP_KEY = 'TENANT_LOCAL_RELEASE_BUILD';
+const TENANT_LOCAL_RELEASE_SYNCED_AT_PROP_KEY = 'TENANT_LOCAL_RELEASE_SYNCED_AT';
 const LOCK_AUTOSAVE_MS = 250;
 const LOCK_SUBMIT_MS = 8000;
 const LOCK_AI_RESULT_MS = 15000;
@@ -177,12 +180,17 @@ function normalizeShellEndpoints_(raw) {
 }
 
 function getDefaultTenantShellEndpoints_() {
-  const base = String(ADMIN_WEBAPP_URL || '').trim();
+  const selfBase = normalizeWebAppUrl_(
+    getCurrentWebAppBaseUrl_() ||
+    buildWebAppUrlFromDeploymentId_(String(getScriptProperties_().getProperty('DEPLOYMENT_ID') || '').trim()) ||
+    MAIN_WEBAPP_URL
+  );
+  const adminBase = String(ADMIN_WEBAPP_URL || '').trim();
   return normalizeShellEndpoints_({
-    primaryShellConfigUrl: '',
-    fallbackShellConfigUrl: appendQueryParams_(base, { mode: 'shellConfig' }),
-    primaryMaintenanceUrl: '',
-    fallbackMaintenanceUrl: appendQueryParams_(base, { mode: 'maintenanceStatus' }),
+    primaryShellConfigUrl: appendQueryParams_(selfBase, { mode: 'shellConfig' }),
+    fallbackShellConfigUrl: appendQueryParams_(adminBase, { mode: 'shellConfig' }),
+    primaryMaintenanceUrl: appendQueryParams_(selfBase, { mode: 'maintenanceStatus' }),
+    fallbackMaintenanceUrl: appendQueryParams_(adminBase, { mode: 'maintenanceStatus' }),
   });
 }
 
@@ -292,6 +300,111 @@ function clearTenantShellConfigCache_() {
     ok: true,
     cleared: true,
   };
+}
+
+function getLocalTenantReleaseInfo_() {
+  const props = getScriptProperties_();
+  return {
+    latestVersion: String(props.getProperty(TENANT_LOCAL_RELEASE_VERSION_PROP_KEY) || '').trim(),
+    latestBuild: String(props.getProperty(TENANT_LOCAL_RELEASE_BUILD_PROP_KEY) || APP_BUILD).trim(),
+    checkedAt: String(props.getProperty(TENANT_LOCAL_RELEASE_SYNCED_AT_PROP_KEY) || '').trim(),
+  };
+}
+
+function buildLocalTenantShellConfig_() {
+  const cached = readTenantShellConfigCache_();
+  const cachedConfig = cached && cached.config ? cached.config : normalizeTeacherShellConfig_({});
+  const cachedMaintenance = readTenantMaintenanceCache_();
+  const releaseInfo = getLocalTenantReleaseInfo_();
+  return normalizeTeacherShellConfig_({
+    ...cachedConfig,
+    latestVersion: releaseInfo.latestVersion || String(cachedConfig.latestVersion || '').trim(),
+    latestBuild: releaseInfo.latestBuild || String(cachedConfig.latestBuild || APP_BUILD).trim(),
+    maintenanceMode: cachedMaintenance ? Boolean(cachedMaintenance.maintenanceMode) : Boolean(cachedConfig.maintenanceMode),
+    featureToggles: cachedConfig.featureToggles && typeof cachedConfig.featureToggles === 'object'
+      ? cachedConfig.featureToggles
+      : {
+          allowUpdateRequest: true,
+          showAiSettings: true,
+          showUpdateTab: true,
+          showNoticeBanner: true,
+          showRegistrationLink: true,
+          showHelpUpdateGuide: true,
+        },
+    endpoints: getDefaultTenantShellEndpoints_(),
+    labels: cachedConfig.labels && typeof cachedConfig.labels === 'object' ? cachedConfig.labels : {},
+    questionTemplates: cachedConfig.questionTemplates && typeof cachedConfig.questionTemplates === 'object' ? cachedConfig.questionTemplates : {},
+    aiPrompts: cachedConfig.aiPrompts && typeof cachedConfig.aiPrompts === 'object' ? cachedConfig.aiPrompts : {},
+    noticeBanner: cachedMaintenance && cachedMaintenance.noticeBanner
+      ? cachedMaintenance.noticeBanner
+      : (cachedConfig.noticeBanner && typeof cachedConfig.noticeBanner === 'object' ? cachedConfig.noticeBanner : {}),
+    checkedAt: releaseInfo.checkedAt || (cachedMaintenance && cachedMaintenance.checkedAt) || String(cachedConfig.checkedAt || '').trim(),
+    configVersion: APP_BUILD,
+    source: 'self',
+  });
+}
+
+function getLocalTenantShellConfigResponse_() {
+  const shell = buildLocalTenantShellConfig_();
+  return {
+    ok: true,
+    latestVersion: String(shell.latestVersion || '').trim(),
+    latestBuild: String(shell.latestBuild || '').trim(),
+    maintenanceMode: Boolean(shell.maintenanceMode),
+    featureToggles: shell.featureToggles || {},
+    endpoints: shell.endpoints || {},
+    labels: shell.labels || {},
+    questionTemplates: shell.questionTemplates || {},
+    aiPrompts: shell.aiPrompts || {},
+    noticeBanner: shell.noticeBanner || {},
+    checkedAt: String(shell.checkedAt || '').trim(),
+    configVersion: String(shell.configVersion || '').trim(),
+    source: String(shell.source || 'self').trim(),
+  };
+}
+
+function getLocalTenantMaintenanceStatusResponse_() {
+  const shell = buildLocalTenantShellConfig_();
+  return {
+    ok: true,
+    maintenanceMode: Boolean(shell.maintenanceMode),
+    noticeBanner: shell.noticeBanner || {},
+    checkedAt: String(shell.checkedAt || '').trim(),
+    configVersion: String(shell.configVersion || '').trim(),
+  };
+}
+
+function getLocalTenantReleaseInfoResponse_() {
+  const releaseInfo = getLocalTenantReleaseInfo_();
+  return {
+    ok: true,
+    latestTenantAppBuild: String(releaseInfo.latestBuild || APP_BUILD).trim(),
+    latestTenantAppVersion: String(releaseInfo.latestVersion || '').trim(),
+    latestTenantAppNote: '',
+    checkedAt: String(releaseInfo.checkedAt || '').trim(),
+  };
+}
+
+function syncLocalTenantReleaseInfo_(body) {
+  const payload = body && typeof body === 'object' ? body : {};
+  const version = String(payload.versionNumber || payload.latestVersion || '').trim();
+  const build = String(payload.latestBuild || APP_BUILD).trim() || APP_BUILD;
+  const checkedAt = new Date().toISOString();
+  getScriptProperties_().setProperties({
+    [TENANT_LOCAL_RELEASE_VERSION_PROP_KEY]: version,
+    [TENANT_LOCAL_RELEASE_BUILD_PROP_KEY]: build,
+    [TENANT_LOCAL_RELEASE_SYNCED_AT_PROP_KEY]: checkedAt,
+  }, false);
+  const cached = readTenantShellConfigCache_();
+  writeTenantShellConfigCache_({
+    ...(cached && cached.config ? cached.config : {}),
+    latestVersion: version,
+    latestBuild: build,
+    endpoints: getDefaultTenantShellEndpoints_(),
+    configVersion: APP_BUILD,
+    source: 'self',
+  });
+  return getLocalTenantShellConfigResponse_();
 }
 
 function fetchJsonFromShellEndpoint_(url, fallbackError) {

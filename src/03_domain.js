@@ -1626,6 +1626,41 @@ function getPreviousReviewFromDb_(unitId, period, studentNumber, unit) {
   return '';
 }
 
+function getPreviousStudentLearningContextFromDb_(unitId, period, studentNumber, unit) {
+  if (period <= 1) return { prevReview: '', previousNextGoal: '' };
+  const previousLesson = getLessonRecordByUnitPeriod_(unitId, period - 1);
+  if (!previousLesson) return { prevReview: '', previousNextGoal: '' };
+  const response = getResponseRecordByStudentNumber_(previousLesson.lessonId, studentNumber);
+  if (!response) return { prevReview: '', previousNextGoal: '' };
+  return {
+    prevReview: String(response.reviewText || ''),
+    previousNextGoal: extractPreviousNextGoal_(response, previousLesson, unit),
+  };
+}
+
+function extractPreviousNextGoal_(response, previousLesson, unit) {
+  const answersMap = response && response.answersMap && typeof response.answersMap === 'object'
+    ? response.answersMap
+    : {};
+  if (!Object.keys(answersMap).length) return '';
+  const fields = getLessonFields_(previousLesson, unit);
+  const field = (fields || []).find(item => isNextGoalField_(item));
+  if (field && field.key) {
+    return String(answersMap[field.key] || '').trim();
+  }
+  const fallbackKey = Object.keys(answersMap).find(key => /next.*(goal|target)|tsugi|next_goal|nextGoal/i.test(String(key || '')));
+  return fallbackKey ? String(answersMap[fallbackKey] || '').trim() : '';
+}
+
+function isNextGoalField_(field) {
+  if (!field) return false;
+  const key = String(field.key || '').trim();
+  const label = String(field.label || '').trim();
+  const text = `${key} ${label}`.toLowerCase();
+  if (/next.*(goal|target)|next_goal|nextGoal|tsugi/.test(text)) return true;
+  return /次|つぎ/.test(label) && /めあて|目標|ゴール|goal|target/i.test(label);
+}
+
 function getOrCreateStudent_(number, name) {
   const sheet = getStudentsDbSheet_();
   const normalizedNumber = String(number || '');

@@ -7,8 +7,6 @@ function teacherInit() {
   let unitsReadMeta = null;
   let active = null;
   let roster = [];
-  let unitProgress = {};
-  let versionControl = null;
   try {
     const unitSnapshot = getAllUnitsSnapshot_({ useMasterContract: true });
     units = Array.isArray(unitSnapshot && unitSnapshot.units) ? unitSnapshot.units : [];
@@ -26,23 +24,20 @@ function teacherInit() {
   } catch (err) {
     errors.push(`roster: ${err && err.message ? err.message : err}`);
   }
+  const deploymentInfo = buildTeacherDeploymentDisplayInfo_(null, { skipShellFallback: true });
+  let unitProgress = {};
   try {
-    unitProgress = getTeacherUnitProgress_();
+    unitProgress = readTeacherUnitProgressSnapshot_();
   } catch (err) {
-    errors.push(`unitProgress: ${err && err.message ? err.message : err}`);
+    errors.push(`unitProgressCache: ${err && err.message ? err.message : err}`);
   }
-  try {
-    versionControl = getTeacherVersionControlInfo_();
-  } catch (err) {
-    errors.push(`versionControl: ${err && err.message ? err.message : err}`);
-  }
-  const deploymentInfo = buildTeacherDeploymentDisplayInfo_(versionControl);
   return {
     units,
     unitsReadMeta,
     active,
     roster,
     unitProgress,
+    progressNeedsRefresh: true,
     build: APP_BUILD,
     deploymentVersion: deploymentInfo.version,
     deploymentCreatedAt: deploymentInfo.createdAt,
@@ -60,7 +55,6 @@ function teacherStatusInit() {
   let active = null;
   let unitProgress = {};
   let progressNeedsRefresh = false;
-  let versionControl = null;
   try {
     const t0 = Date.now();
     const unitSnapshot = getAllUnitsSnapshot_({ useMasterContract: true });
@@ -86,12 +80,7 @@ function teacherStatusInit() {
     errors.push(`unitProgress: ${err && err.message ? err.message : err}`);
     progressNeedsRefresh = true;
   }
-  try {
-    versionControl = getTeacherVersionControlInfo_();
-  } catch (err) {
-    errors.push(`versionControl: ${err && err.message ? err.message : err}`);
-  }
-  const deploymentInfo = buildTeacherDeploymentDisplayInfo_(versionControl);
+  const deploymentInfo = buildTeacherDeploymentDisplayInfo_(null, { skipShellFallback: true });
   let status = {
     meta: {
       teacherAiEnabled: isTeacherAiEnabled_(),
@@ -130,7 +119,8 @@ function teacherStatusInit() {
   };
 }
 
-function buildTeacherDeploymentDisplayInfo_(versionControl) {
+function buildTeacherDeploymentDisplayInfo_(versionControl, options) {
+  const opts = options && typeof options === 'object' ? options : {};
   const vc = versionControl && typeof versionControl === 'object' ? versionControl : {};
   const currentVersion = Number(vc.currentVersionNumber || 0);
   if (currentVersion > 0) {
@@ -138,6 +128,13 @@ function buildTeacherDeploymentDisplayInfo_(versionControl) {
       version: currentVersion,
       createdAt: String(vc.currentVersionCreatedAt || '').trim(),
       description: String(vc.currentVersionDescription || '').trim(),
+    };
+  }
+  if (opts.skipShellFallback) {
+    return {
+      version: 0,
+      createdAt: '',
+      description: '',
     };
   }
 
@@ -383,19 +380,32 @@ function getTeacherHelpInfo_(preloadedShellState, options) {
   ).trim();
   const scriptId = String(ScriptApp.getScriptId() || '').trim();
   const currentBuild = String(APP_BUILD || '').trim();
-  const latestBuild = String(shellConfig.latestBuild || '').trim();
-  const latestVersion = String(shellConfig.latestVersion || '').trim();
+  const versionControl = getTeacherVersionControlInfo_();
+  const currentDeploymentVersion = Number(versionControl.currentVersionNumber || 0);
+  const remoteLatestBuild = String(shellConfig.latestBuild || '').trim();
+  const remoteLatestVersion = String(shellConfig.latestVersion || '').trim();
+  const remoteLatestVersionNumber = Number(remoteLatestVersion || 0);
+  const preferCurrentDeployment =
+    currentDeploymentVersion > 0 &&
+    (!remoteLatestVersionNumber || remoteLatestVersionNumber < currentDeploymentVersion);
+  const latestBuild = preferCurrentDeployment
+    ? (currentBuild || remoteLatestBuild)
+    : remoteLatestBuild;
+  const latestVersion = preferCurrentDeployment
+    ? String(currentDeploymentVersion)
+    : remoteLatestVersion;
   const updateAvailable = Boolean(latestBuild && currentBuild && latestBuild !== currentBuild);
   const props = getScriptProperties_();
   const registrationId = String(setupConfig.registrationId || '').trim();
-  const versionControl = getTeacherVersionControlInfo_();
   const canRequestUpdate = Boolean(
     updateAvailable &&
     String(ADMIN_WEBAPP_URL || '').trim() &&
     registrationId
   );
   const updateActionMode = canRequestUpdate ? 'request_update' : 'disabled';
-  const helpReason = updateAvailable
+  const helpReason = preferCurrentDeployment
+    ? '中央の版情報が古いため、この個体の deployment version を優先表示しています。'
+    : updateAvailable
     ? (canRequestUpdate
       ? 'この個体は更新通知まで自動です。コード更新は更新依頼で進めます。'
       : 'この個体では更新依頼に必要な登録情報が不足しています。')
@@ -443,7 +453,7 @@ function getTeacherHelpInfo_(preloadedShellState, options) {
       selfUpdateLastBuild: String(props.getProperty('LAST_SELF_UPDATE_BUILD') || '').trim(),
       selfUpdateLastAt: String(props.getProperty('LAST_SELF_UPDATE_AT') || '').trim(),
       selfUpdateLastError: String(props.getProperty('SELF_UPDATE_ERROR') || '').trim(),
-      currentDeploymentVersion: Number(versionControl.currentVersionNumber || 0),
+      currentDeploymentVersion,
       previousDeploymentVersion: Number(versionControl.previousVersionNumber || 0),
       recentDeploymentVersions: Array.isArray(versionControl.recentVersions) ? versionControl.recentVersions : [],
       canRollbackDeployment: Boolean(versionControl.canRollback),
@@ -1867,6 +1877,8 @@ function logTeacherPerf_(name, payload) {
 
 function readTeacherRecordSource_(options) {
   const opts = options && typeof options === 'object' ? options : {};
+  const filterUnitId = String(opts.unitId || '').trim();
+  const filterSubject = String(opts.subject || '').trim();
   const timing = {};
   const counts = {};
   const startedAt = Date.now();
@@ -1890,7 +1902,26 @@ function readTeacherRecordSource_(options) {
   });
 
   t0 = Date.now();
-  const allResponses = listAllResponses_();
+  let allResponses = [];
+  if (filterUnitId || filterSubject) {
+    const targetLessons = lessons.filter(lesson => {
+      const unitId = String(lesson.unitId || '');
+      if (filterUnitId && unitId !== filterUnitId) return false;
+      if (filterSubject) {
+        const unit = unitMap[unitId];
+        if (String(unit && unit.subject || '') !== filterSubject) return false;
+      }
+      return true;
+    });
+    targetLessons.forEach(lesson => {
+      const lessonId = String(lesson.lessonId || '').trim();
+      if (!lessonId) return;
+      allResponses = allResponses.concat(listResponsesForLesson_(lessonId));
+    });
+    counts.scopedLessonCount = targetLessons.length;
+  } else {
+    allResponses = listAllResponses_();
+  }
   timing.responsesMs = Date.now() - t0;
   counts.rawResponseCount = allResponses.length;
 
@@ -1933,7 +1964,11 @@ function readTeacherRecordSource_(options) {
 function getAggregateData(unitId, options) {
   const startedAt = Date.now();
   const filters = normalizeAggregateFilterOptions_(options);
-  const source = readTeacherRecordSource_({ includeAssessments: true });
+  const source = readTeacherRecordSource_({
+    includeAssessments: true,
+    unitId,
+    subject: filters.subject,
+  });
   const assessmentMap = {};
   (source.assessments || []).forEach(item => {
     assessmentMap[`${String(item.unitId || '')}:${String(item.studentNumber || '')}`] = item;

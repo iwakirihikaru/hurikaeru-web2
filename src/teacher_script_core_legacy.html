@@ -223,6 +223,7 @@ function loadInit() {
         if (requestEpoch !== teacherDataEpoch)
             return;
         applyTeacherInitData(d, { includeRoster: true, renderUnitList: true, schedulePreload: true, source: 'teacherInit' });
+        scheduleTeacherUnitProgressRefresh_(d);
     })
         .withFailureHandler(function (err) {
         if (requestEpoch !== teacherDataEpoch)
@@ -475,12 +476,14 @@ function scheduleTeacherPreload() {
     preloadCache.started = true;
     var runner = function () {
         ensureRosterPreload();
-        ensureEditorPreload();
-        ensurePromptPreload();
-        preloadTeacherHelpInfo();
-        if (typeof scheduleAggregateBackgroundPreload === 'function') {
-            scheduleAggregateBackgroundPreload('teacher-preload');
-        }
+        setTimeout(function () {
+            ensureEditorPreload();
+            ensurePromptPreload();
+            preloadTeacherHelpInfo();
+            if (typeof scheduleAggregateBackgroundPreload === 'function') {
+                scheduleAggregateBackgroundPreload('teacher-preload');
+            }
+        }, 900);
     };
     if (typeof requestIdleCallback === 'function') {
         requestIdleCallback(runner, { timeout: 1500 });
@@ -718,7 +721,8 @@ function setControlValue(id, value) {
     if (el)
         el.value = value;
 }
-function ensureRosterPreload(force) {
+function ensureRosterPreload(force, callbacks) {
+    var cb = callbacks || {};
     if (!force && normalizeRosterPreload_(preloadCache.roster))
         return;
     if (preloadCache.roster && !normalizeRosterPreload_(preloadCache.roster)) {
@@ -733,14 +737,21 @@ function ensureRosterPreload(force) {
         var rosterPayload = normalizeRosterPreload_(d);
         if (rosterPayload) {
             preloadCache.roster = rosterPayload;
+            rosterEntries = rosterPayload.roster.filter(function (row) { return row.active !== false; });
             persistTeacherPreloadCache_();
+            if (typeof cb.onSuccess === 'function')
+                cb.onSuccess(rosterPayload);
         }
         else {
             clearRosterPreload_();
+            if (typeof cb.onEmpty === 'function')
+                cb.onEmpty();
         }
     })
         .withFailureHandler(function () {
         preloadCache.rosterLoading = false;
+        if (typeof cb.onFailure === 'function')
+            cb.onFailure();
     })
         .teacherRosterInit();
 }

@@ -10,6 +10,7 @@ $adminDeployScript = Join-Path $PSScriptRoot 'deploy-admin-webapp.ps1'
 $provisionDeployScript = Join-Path $PSScriptRoot 'deploy-provision-webapp.ps1'
 $linkedDeployScript = Join-Path $PSScriptRoot 'deploy-script.ps1'
 $adminAppSourcePath = Join-Path $workspace 'onboarding\admin-app.js'
+$cdnShellConfigPath = Join-Path $workspace 'cdn\shell-config.json'
 
 if (-not (Test-Path -LiteralPath $clasp)) {
   throw "clasp was not found. Run npm install first."
@@ -105,10 +106,34 @@ try {
     }
   }
 
+  if (Test-Path -LiteralPath $cdnShellConfigPath) {
+    $shellConfig = Get-Content -LiteralPath $cdnShellConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $shellConfig.latestVersion = [string]$versionNumber
+    $shellConfig.checkedAt = [DateTime]::UtcNow.ToString("o")
+    $shellConfig | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $cdnShellConfigPath -Encoding UTF8
+    Write-Host "[2/3] synced cdn shell-config latestVersion -> $versionNumber"
+  }
+
   Write-Host "[3/3] redeploy $deploymentId -> version $versionNumber"
   & $clasp deploy -i $deploymentId -V $versionNumber -d $description
   if ($LASTEXITCODE -ne 0) {
     throw "clasp deploy failed."
+  }
+
+  $webAppUrl = "https://script.google.com/macros/s/$deploymentId/exec"
+  try {
+    $syncResponse = Invoke-RestMethod -Method Post -Uri $webAppUrl -ContentType 'application/json' -Body (@{
+      action = 'syncLocalTenantReleaseInfo'
+      versionNumber = [string]$versionNumber
+      latestBuild = 'shell-config-phase2-2026-07-05-1730'
+    } | ConvertTo-Json -Depth 4)
+    if ($syncResponse -and $syncResponse.ok) {
+      Write-Host "[3/3] synced tenant shell metadata -> version $($syncResponse.latestVersion)"
+    } else {
+      Write-Warning "tenant shell metadata sync returned an unexpected response."
+    }
+  } catch {
+    Write-Warning "tenant shell metadata sync failed: $($_.Exception.Message)"
   }
 
   foreach ($debugDeploymentId in $debugDeploymentIds) {

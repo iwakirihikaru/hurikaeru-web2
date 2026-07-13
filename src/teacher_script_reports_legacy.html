@@ -264,6 +264,9 @@ function requestAggregateScope_(options, callbacks) {
             if (!opts.subject && !opts.unitId) {
                 writeAggregatePreloadCache_(rows);
             }
+            else {
+                scheduleAggregateBackgroundPreload('after-scoped-records');
+            }
             renderAggregateDataSet_(rows, buildAggregateScopeMeta_(opts));
             if (typeof cb.onSuccess === 'function')
                 cb.onSuccess(rows);

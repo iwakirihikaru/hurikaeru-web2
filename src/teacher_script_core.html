@@ -206,6 +206,7 @@ function loadInit(){
     .withSuccessHandler(d=>{
       if(requestEpoch!==teacherDataEpoch) return;
       applyTeacherInitData(d, { includeRoster:true, renderUnitList:true, schedulePreload:true, source:'teacherInit' });
+      scheduleTeacherUnitProgressRefresh_(d);
     })
     .withFailureHandler(err=>{
       if(requestEpoch!==teacherDataEpoch) return;
@@ -452,12 +453,14 @@ function scheduleTeacherPreload(){
   preloadCache.started = true;
   const runner = ()=> {
     ensureRosterPreload();
-    ensureEditorPreload();
-    ensurePromptPreload();
-    preloadTeacherHelpInfo();
-    if(typeof scheduleAggregateBackgroundPreload==='function'){
-      scheduleAggregateBackgroundPreload('teacher-preload');
-    }
+    setTimeout(()=>{
+      ensureEditorPreload();
+      ensurePromptPreload();
+      preloadTeacherHelpInfo();
+      if(typeof scheduleAggregateBackgroundPreload==='function'){
+        scheduleAggregateBackgroundPreload('teacher-preload');
+      }
+    }, 900);
   };
   if(typeof requestIdleCallback === 'function'){
     requestIdleCallback(runner,{timeout:1500});
@@ -676,7 +679,8 @@ function setControlValue(id, value){
   if(el) el.value=value;
 }
 
-function ensureRosterPreload(force){
+function ensureRosterPreload(force, callbacks){
+  const cb=callbacks||{};
   if(!force && normalizeRosterPreload_(preloadCache.roster)) return;
   if(preloadCache.roster && !normalizeRosterPreload_(preloadCache.roster)){
     clearRosterPreload_(true);
@@ -689,13 +693,17 @@ function ensureRosterPreload(force){
       const rosterPayload=normalizeRosterPreload_(d);
       if(rosterPayload){
         preloadCache.roster = rosterPayload;
+        rosterEntries = rosterPayload.roster.filter(row=>row.active!==false);
         persistTeacherPreloadCache_();
+        if(typeof cb.onSuccess==='function') cb.onSuccess(rosterPayload);
       }else{
         clearRosterPreload_();
+        if(typeof cb.onEmpty==='function') cb.onEmpty();
       }
     })
     .withFailureHandler(()=>{
       preloadCache.rosterLoading = false;
+      if(typeof cb.onFailure==='function') cb.onFailure();
     })
     .teacherRosterInit();
 }

@@ -4,7 +4,7 @@
 <script src="./runtime-shim.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>先生画面</title>
+<title>ふりカエル 先生ページ</title>
 <style>
 :root{
   --navy:#1A237E;--sky:#1976D2;--green:#388E3C;--red:#C62828;
@@ -12,6 +12,7 @@
   --bg:#F5F5F5;--card:#fff;--muted:#78909C;
   --r:10px;--sh:0 2px 8px rgba(0,0,0,.10);
   --font:'Hiragino Maru Gothic ProN','BIZ UDPGothic',sans-serif;
+  --mascot:url("data:image/png;base64,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");
 }
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:var(--font);background:var(--bg);color:#212121;}
@@ -19,7 +20,13 @@ body{font-family:var(--font);background:var(--bg);color:#212121;}
 .nav{background:var(--navy);color:#fff;display:flex;align-items:center;
   padding:0 16px;height:50px;position:sticky;top:0;z-index:100;
   box-shadow:0 2px 6px rgba(0,0,0,.3);gap:2px;overflow-x:auto;}
-.nav h1{font-size:14px;margin-right:14px;white-space:nowrap;}
+.nav h1{font-size:14px;margin-right:14px;white-space:nowrap;display:flex;align-items:center;gap:8px;}
+.brand-mascot{
+  width:30px;height:30px;flex:0 0 30px;border-radius:50%;
+  background-image:var(--mascot);background-size:cover;background-position:center;
+  box-shadow:0 2px 6px rgba(0,0,0,.18);
+}
+.brand-title{display:inline-flex;align-items:center;gap:8px;}
 .tab{padding:0 12px;height:50px;border:none;background:transparent;
   color:rgba(255,255,255,.7);font-size:13px;cursor:pointer;white-space:nowrap;
   border-bottom:3px solid transparent;transition:.2s;font-family:var(--font);}
@@ -248,6 +255,8 @@ body{font-family:var(--font);background:var(--bg);color:#212121;}
   .container{padding:10px;}
   .card{padding:14px;}
   .nav{padding:0 8px;}
+  .nav h1{margin-right:8px;}
+  .brand-mascot{width:26px;height:26px;flex-basis:26px;}
   .status-top-grid{
     grid-template-columns:1fr;
   }
@@ -732,7 +741,7 @@ textarea.inp{resize:vertical;min-height:70px;}
 <body>
 
 <div class="nav">
-  <h1>📊 先生画面</h1>
+  <h1><span class="brand-title"><span class="brand-mascot" aria-hidden="true"></span><span>ふりカエル 先生ページ</span></span></h1>
   <button class="tab active" onclick="switchTab('status', this)">📡 授業スタート</button>
   <button class="tab" onclick="switchTab('records', this)">📝 記録・所見・評定</button>
   <button class="tab" onclick="switchTab('curriculum', this)">📚 教科・単元設定</button>
@@ -1022,11 +1031,8 @@ textarea.inp{resize:vertical;min-height:70px;}
             <div class="guide-link-actions" style="margin-top:10px;">
               <button class="btn-update" type="button" onclick="refreshTeacherUpdateInfo()">最新版を確認</button>
             </div>
-            <div class="guide-note" id="helpUpdateMessage" style="margin-top:10px;">この画面では版情報だけを確認できます。更新作業は管理側で行います。</div>
+            <div class="guide-note" id="helpUpdateMessage" style="margin-top:10px;">版情報を確認できます。</div>
           </div>
-        </div>
-        <div class="guide-note" style="margin-top:10px;">
-          先生画面では版情報だけを表示します。更新や版戻しの作業は管理者側で行ってください。
         </div>
       </div>
     </div>
@@ -1715,6 +1721,7 @@ function loadInit() {
         if (requestEpoch !== teacherDataEpoch)
             return;
         applyTeacherInitData(d, { includeRoster: true, renderUnitList: true, schedulePreload: true, source: 'teacherInit' });
+        scheduleTeacherUnitProgressRefresh_(d);
     })
         .withFailureHandler(function (err) {
         if (requestEpoch !== teacherDataEpoch)
@@ -1967,12 +1974,14 @@ function scheduleTeacherPreload() {
     preloadCache.started = true;
     var runner = function () {
         ensureRosterPreload();
-        ensureEditorPreload();
-        ensurePromptPreload();
-        preloadTeacherHelpInfo();
-        if (typeof scheduleAggregateBackgroundPreload === 'function') {
-            scheduleAggregateBackgroundPreload('teacher-preload');
-        }
+        setTimeout(function () {
+            ensureEditorPreload();
+            ensurePromptPreload();
+            preloadTeacherHelpInfo();
+            if (typeof scheduleAggregateBackgroundPreload === 'function') {
+                scheduleAggregateBackgroundPreload('teacher-preload');
+            }
+        }, 900);
     };
     if (typeof requestIdleCallback === 'function') {
         requestIdleCallback(runner, { timeout: 1500 });
@@ -2210,7 +2219,8 @@ function setControlValue(id, value) {
     if (el)
         el.value = value;
 }
-function ensureRosterPreload(force) {
+function ensureRosterPreload(force, callbacks) {
+    var cb = callbacks || {};
     if (!force && normalizeRosterPreload_(preloadCache.roster))
         return;
     if (preloadCache.roster && !normalizeRosterPreload_(preloadCache.roster)) {
@@ -2225,14 +2235,21 @@ function ensureRosterPreload(force) {
         var rosterPayload = normalizeRosterPreload_(d);
         if (rosterPayload) {
             preloadCache.roster = rosterPayload;
+            rosterEntries = rosterPayload.roster.filter(function (row) { return row.active !== false; });
             persistTeacherPreloadCache_();
+            if (typeof cb.onSuccess === 'function')
+                cb.onSuccess(rosterPayload);
         }
         else {
             clearRosterPreload_();
+            if (typeof cb.onEmpty === 'function')
+                cb.onEmpty();
         }
     })
         .withFailureHandler(function () {
         preloadCache.rosterLoading = false;
+        if (typeof cb.onFailure === 'function')
+            cb.onFailure();
     })
         .teacherRosterInit();
 }
@@ -4724,21 +4741,17 @@ function loadRosterEditor() {
         rosterEntries = cachedRoster.roster;
         preloadCache.roster = cachedRoster;
         renderRosterEditor();
+        ensureRosterPreload(true, {
+            onSuccess: function () { return renderRosterEditor(); },
+        });
         return;
     }
     clearRosterPreload_(true);
-    google.script.run.withSuccessHandler(function (d) {
-        var rosterPayload = normalizeRosterPreload_(d);
-        rosterEntries = rosterPayload ? rosterPayload.roster : [];
-        if (rosterPayload) {
-            preloadCache.roster = rosterPayload;
-            persistTeacherPreloadCache_();
-        }
-        else {
-            clearRosterPreload_();
-        }
-        renderRosterEditor();
-    }).teacherRosterInit();
+    renderRosterEditor();
+    ensureRosterPreload(true, {
+        onSuccess: function () { return renderRosterEditor(); },
+        onEmpty: function () { return renderRosterEditor(); },
+    });
 }
 function updateRosterField(idx, key, value) {
     rosterEntries[idx][key] = key === 'number' ? Number(value) : value;
@@ -5403,6 +5416,9 @@ function requestAggregateScope_(options, callbacks) {
                 aggregateScopeFetchKey = '';
             if (!opts.subject && !opts.unitId) {
                 writeAggregatePreloadCache_(rows);
+            }
+            else {
+                scheduleAggregateBackgroundPreload('after-scoped-records');
             }
             renderAggregateDataSet_(rows, buildAggregateScopeMeta_(opts));
             if (typeof cb.onSuccess === 'function')

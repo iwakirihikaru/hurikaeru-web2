@@ -23,21 +23,17 @@ function loadRosterEditor() {
         rosterEntries = cachedRoster.roster;
         preloadCache.roster = cachedRoster;
         renderRosterEditor();
+        ensureRosterPreload(true, {
+            onSuccess: function () { return renderRosterEditor(); },
+        });
         return;
     }
     clearRosterPreload_(true);
-    google.script.run.withSuccessHandler(function (d) {
-        var rosterPayload = normalizeRosterPreload_(d);
-        rosterEntries = rosterPayload ? rosterPayload.roster : [];
-        if (rosterPayload) {
-            preloadCache.roster = rosterPayload;
-            persistTeacherPreloadCache_();
-        }
-        else {
-            clearRosterPreload_();
-        }
-        renderRosterEditor();
-    }).teacherRosterInit();
+    renderRosterEditor();
+    ensureRosterPreload(true, {
+        onSuccess: function () { return renderRosterEditor(); },
+        onEmpty: function () { return renderRosterEditor(); },
+    });
 }
 function updateRosterField(idx, key, value) {
     rosterEntries[idx][key] = key === 'number' ? Number(value) : value;
