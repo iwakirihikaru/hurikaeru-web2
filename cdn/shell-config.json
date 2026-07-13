@@ -1,6 +1,6 @@
 ﻿{
     "ok":  true,
-    "latestVersion":  "356",
+    "latestVersion":  "357",
     "latestBuild":  "shell-config-phase2-2026-07-05-1730",
     "maintenanceMode":  false,
     "featureToggles":  {
@@ -37,7 +37,7 @@
                          "linkUrl":  "",
                          "linkLabel":  ""
                      },
-    "checkedAt":  "2026-07-13T11:21:18.519Z",
+    "checkedAt":  "2026-07-13T12:42:45.941Z",
     "configVersion":  "shell-config-phase2",
     "source":  "sheet"
 }

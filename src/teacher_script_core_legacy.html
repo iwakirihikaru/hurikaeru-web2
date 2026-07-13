@@ -395,7 +395,7 @@ function applyTeacherInitData(d, options) {
     if (d.deploymentCreatedAt !== undefined)
         teacherDeploymentCreatedAt = String(d.deploymentCreatedAt || '').trim();
     if (opts.includeRoster) {
-        if (Array.isArray(d.roster)) {
+        if (Array.isArray(d.roster) && d.roster.length) {
             rosterEntries = d.roster.filter(function (row) { return row.active !== false; });
             preloadCache.roster = { roster: d.roster };
             persistTeacherPreloadCache_();
@@ -489,6 +489,18 @@ function scheduleTeacherPreload() {
         setTimeout(runner, 700);
     }
 }
+function normalizeRosterPreload_(payload) {
+    if (!payload || typeof payload !== 'object')
+        return null;
+    var roster = Array.isArray(payload.roster) ? payload.roster : [];
+    return roster.length ? { roster: roster } : null;
+}
+function clearRosterPreload_(skipPersist) {
+    preloadCache.roster = null;
+    if (skipPersist)
+        return;
+    persistTeacherPreloadCache_();
+}
 function hydrateTeacherPreloadCache_() {
     try {
         var raw = localStorage.getItem(TEACHER_PRELOAD_CACHE_KEY);
@@ -499,8 +511,11 @@ function hydrateTeacherPreloadCache_() {
             localStorage.removeItem(TEACHER_PRELOAD_CACHE_KEY);
             return;
         }
-        if (parsed.roster)
-            preloadCache.roster = parsed.roster;
+        if (parsed.roster) {
+            var rosterPayload = normalizeRosterPreload_(parsed.roster);
+            if (rosterPayload)
+                preloadCache.roster = rosterPayload;
+        }
         if (parsed.editor)
             preloadCache.editor = parsed.editor;
         if (parsed.prompts)
@@ -704,14 +719,25 @@ function setControlValue(id, value) {
         el.value = value;
 }
 function ensureRosterPreload(force) {
-    if (preloadCache.roster || preloadCache.rosterLoading)
+    if (!force && normalizeRosterPreload_(preloadCache.roster))
+        return;
+    if (preloadCache.roster && !normalizeRosterPreload_(preloadCache.roster)) {
+        clearRosterPreload_(true);
+    }
+    if (preloadCache.rosterLoading)
         return;
     preloadCache.rosterLoading = true;
     google.script.run
         .withSuccessHandler(function (d) {
         preloadCache.rosterLoading = false;
-        preloadCache.roster = d || { roster: [] };
-        persistTeacherPreloadCache_();
+        var rosterPayload = normalizeRosterPreload_(d);
+        if (rosterPayload) {
+            preloadCache.roster = rosterPayload;
+            persistTeacherPreloadCache_();
+        }
+        else {
+            clearRosterPreload_();
+        }
     })
         .withFailureHandler(function () {
         preloadCache.rosterLoading = false;

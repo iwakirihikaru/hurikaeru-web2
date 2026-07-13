@@ -373,7 +373,7 @@ function applyTeacherInitData(d, options){
   if(d.deploymentVersion !== undefined) teacherDeploymentVersion = Number(d.deploymentVersion || 0);
   if(d.deploymentCreatedAt !== undefined) teacherDeploymentCreatedAt = String(d.deploymentCreatedAt || '').trim();
   if(opts.includeRoster){
-    if(Array.isArray(d.roster)){
+    if(Array.isArray(d.roster) && d.roster.length){
       rosterEntries = d.roster.filter(row=>row.active!==false);
       preloadCache.roster = { roster:d.roster };
       persistTeacherPreloadCache_();
@@ -466,6 +466,18 @@ function scheduleTeacherPreload(){
   }
 }
 
+function normalizeRosterPreload_(payload){
+  if(!payload || typeof payload!=='object') return null;
+  const roster=Array.isArray(payload.roster) ? payload.roster : [];
+  return roster.length ? { roster } : null;
+}
+
+function clearRosterPreload_(skipPersist){
+  preloadCache.roster=null;
+  if(skipPersist) return;
+  persistTeacherPreloadCache_();
+}
+
 function hydrateTeacherPreloadCache_(){
   try{
     const raw=localStorage.getItem(TEACHER_PRELOAD_CACHE_KEY);
@@ -475,7 +487,10 @@ function hydrateTeacherPreloadCache_(){
       localStorage.removeItem(TEACHER_PRELOAD_CACHE_KEY);
       return;
     }
-    if(parsed.roster) preloadCache.roster=parsed.roster;
+    if(parsed.roster){
+      const rosterPayload=normalizeRosterPreload_(parsed.roster);
+      if(rosterPayload) preloadCache.roster=rosterPayload;
+    }
     if(parsed.editor) preloadCache.editor=parsed.editor;
     if(parsed.prompts) preloadCache.prompts=parsed.prompts;
     if(parsed.portfolio) preloadCache.portfolio=parsed.portfolio;
@@ -662,13 +677,22 @@ function setControlValue(id, value){
 }
 
 function ensureRosterPreload(force){
-  if(preloadCache.roster || preloadCache.rosterLoading) return;
+  if(!force && normalizeRosterPreload_(preloadCache.roster)) return;
+  if(preloadCache.roster && !normalizeRosterPreload_(preloadCache.roster)){
+    clearRosterPreload_(true);
+  }
+  if(preloadCache.rosterLoading) return;
   preloadCache.rosterLoading = true;
   google.script.run
     .withSuccessHandler(d=>{
       preloadCache.rosterLoading = false;
-      preloadCache.roster = d||{ roster:[] };
-      persistTeacherPreloadCache_();
+      const rosterPayload=normalizeRosterPreload_(d);
+      if(rosterPayload){
+        preloadCache.roster = rosterPayload;
+        persistTeacherPreloadCache_();
+      }else{
+        clearRosterPreload_();
+      }
     })
     .withFailureHandler(()=>{
       preloadCache.rosterLoading = false;

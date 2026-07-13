@@ -18,16 +18,24 @@ function renderRosterEditor() {
     body.innerHTML = rosterEntries.map(function (row, idx) { return "\n    <tr>\n      <td>".concat(idx + 1, "</td>\n      <td><input class=\"inp\" type=\"number\" min=\"1\" value=\"").concat(row.number || '', "\" onchange=\"updateRosterField(").concat(idx, ",'number',this.value)\"></td>\n      <td><input class=\"inp\" type=\"text\" value=\"").concat(esc(row.name || ''), "\" onchange=\"updateRosterField(").concat(idx, ",'name',this.value)\"></td>\n      <td style=\"text-align:center;\"><input type=\"checkbox\" ").concat(row.active !== false ? 'checked' : '', " onchange=\"updateRosterField(").concat(idx, ",'active',this.checked)\"></td>\n      <td><button class=\"btn-remove\" onclick=\"removeRosterRow(").concat(idx, ")\">\u2715</button></td>\n    </tr>\n  "); }).join('');
 }
 function loadRosterEditor() {
-    if (preloadCache.roster) {
-        rosterEntries = preloadCache.roster.roster || [];
+    var cachedRoster = normalizeRosterPreload_(preloadCache.roster);
+    if (cachedRoster) {
+        rosterEntries = cachedRoster.roster;
+        preloadCache.roster = cachedRoster;
         renderRosterEditor();
         return;
     }
-    ensureRosterPreload();
+    clearRosterPreload_(true);
     google.script.run.withSuccessHandler(function (d) {
-        rosterEntries = d.roster || [];
-        preloadCache.roster = d || { roster: [] };
-        persistTeacherPreloadCache_();
+        var rosterPayload = normalizeRosterPreload_(d);
+        rosterEntries = rosterPayload ? rosterPayload.roster : [];
+        if (rosterPayload) {
+            preloadCache.roster = rosterPayload;
+            persistTeacherPreloadCache_();
+        }
+        else {
+            clearRosterPreload_();
+        }
         renderRosterEditor();
     }).teacherRosterInit();
 }
