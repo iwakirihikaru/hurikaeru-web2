@@ -468,8 +468,12 @@ const POLL_WAITING_AI_MS = 2500;
 const POLL_DONE_MS = 6000;
 const STUDENT_CACHE_TTL_MS = 5 * 60 * 1000;
 const STUDENT_ENTRY_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const STUDENT_CLASS_SNAPSHOT_CACHE_TTL_MS = 60 * 1000;
 const STUDENT_NUMBER_CACHE_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 const STUDENT_ENTRY_CACHE_KEY = 'furikaeri:studentEntryOptions';
+const STUDENT_CLASS_SNAPSHOT_CACHE_KEY = 'furikaeri:studentClassSnapshot';
+let studentClassSnapshotPreloadBusy = false;
+let studentClassSnapshotPreloadScheduled = false;
 
 function getStudentCacheKey_(kind, suffix){
   return `furikaeri:${kind}:${String(suffix||'')}`;
@@ -620,7 +624,11 @@ function readStudentEntryOptionsCache_(){
     const parsed=JSON.parse(raw);
     if(!parsed || !parsed.savedAt || Date.now()-Number(parsed.savedAt)>STUDENT_ENTRY_CACHE_TTL_MS) return null;
     const payload=parsed.payload;
-    return payload && Array.isArray(payload.students) && payload.students.length ? payload : null;
+    if(!payload || !Array.isArray(payload.students) || !payload.students.length) return null;
+    return {
+      students:payload.students,
+      shell:payload.shell||{},
+    };
   }catch(_err){
     return null;
   }
@@ -631,7 +639,36 @@ function writeStudentEntryOptionsCache_(payload){
     if(!payload || !Array.isArray(payload.students) || !payload.students.length) return;
     localStorage.setItem(STUDENT_ENTRY_CACHE_KEY, JSON.stringify({
       savedAt:Date.now(),
-      payload,
+      payload:{
+        students:payload.students,
+        shell:payload.shell||{},
+      },
+    }));
+  }catch(_err){}
+}
+
+function readStudentClassSnapshotCache_(){
+  try{
+    const raw=localStorage.getItem(STUDENT_CLASS_SNAPSHOT_CACHE_KEY);
+    if(!raw) return null;
+    const parsed=JSON.parse(raw);
+    if(!parsed || !parsed.savedAt || Date.now()-Number(parsed.savedAt)>STUDENT_CLASS_SNAPSHOT_CACHE_TTL_MS){
+      localStorage.removeItem(STUDENT_CLASS_SNAPSHOT_CACHE_KEY);
+      return null;
+    }
+    const snapshot=parsed.payload;
+    return snapshot && typeof snapshot==='object' ? snapshot : null;
+  }catch(_err){
+    return null;
+  }
+}
+
+function writeStudentClassSnapshotCache_(snapshot){
+  try{
+    if(!snapshot || typeof snapshot!=='object' || !snapshot.statesByNumber) return;
+    localStorage.setItem(STUDENT_CLASS_SNAPSHOT_CACHE_KEY, JSON.stringify({
+      savedAt:Date.now(),
+      payload:snapshot,
     }));
   }catch(_err){}
 }
@@ -660,6 +697,7 @@ function getInitialStudentOptions_(){
 function applyStudentBootstrapData_(data, options){
   const opts=options||{};
   const hasStudents=Boolean(data && Array.isArray(data.students) && data.students.length);
+  const hasClassSnapshot=Boolean(data && data.classSnapshot && typeof data.classSnapshot==='object');
   if(data && typeof data==='object'){
     const existingStudents=Array.isArray(bootstrapStudentOptions.students) ? bootstrapStudentOptions.students : [];
     const incoming=Object.assign({}, data);
@@ -679,6 +717,9 @@ function applyStudentBootstrapData_(data, options){
     if(hasStudents || opts.initial !== true){
       writeStudentEntryOptionsCache_(bootstrapStudentOptions);
     }
+    if(hasClassSnapshot){
+      writeStudentClassSnapshotCache_(incoming.classSnapshot);
+    }
   }
   applyStudentShellState_(bootstrapStudentOptions.shell||{});
   const students=getInitialStudentOptions_();
@@ -688,6 +729,9 @@ function applyStudentBootstrapData_(data, options){
   }
   if(opts.skipResume!==true && !initBusy){
     setupRememberedStudentResume_(students);
+  }
+  if(opts.skipClassSnapshotPreload!==true && !hasClassSnapshot && students.length){
+    scheduleStudentClassSnapshotPreload_();
   }
 }
 
@@ -700,8 +744,14 @@ function startStudentApp_(){
 startStudentApp_();
 
 function getBootstrapClassSnapshot_(){
-  const snapshot=bootstrapStudentOptions.classSnapshot;
-  return snapshot && typeof snapshot==='object' ? snapshot : null;
+  const current=bootstrapStudentOptions.classSnapshot;
+  if(current && typeof current==='object') return current;
+  const cached=readStudentClassSnapshotCache_();
+  if(cached){
+    bootstrapStudentOptions.classSnapshot=cached;
+    return cached;
+  }
+  return null;
 }
 
 function getBootstrapStudentSnapshotState_(num){
@@ -721,6 +771,35 @@ function getBootstrapStudentSnapshotState_(num){
     bootstrapTimeline:snapshot.timeline||null,
     bootstrapSource:'classSnapshot',
   });
+}
+
+function scheduleStudentClassSnapshotPreload_(){
+  if(studentClassSnapshotPreloadBusy || studentClassSnapshotPreloadScheduled) return;
+  if(getBootstrapClassSnapshot_()) return;
+  studentClassSnapshotPreloadScheduled=true;
+  const run=()=>{
+    studentClassSnapshotPreloadScheduled=false;
+    if(studentClassSnapshotPreloadBusy || getBootstrapClassSnapshot_()) return;
+    studentClassSnapshotPreloadBusy=true;
+    google.script.run
+      .withSuccessHandler(payload=>{
+        studentClassSnapshotPreloadBusy=false;
+        const snapshot=payload && payload.classSnapshot;
+        if(snapshot && typeof snapshot==='object'){
+          bootstrapStudentOptions.classSnapshot=snapshot;
+          writeStudentClassSnapshotCache_(snapshot);
+        }
+      })
+      .withFailureHandler(()=>{
+        studentClassSnapshotPreloadBusy=false;
+      })
+      .getStudentEntryOptions({ lightweight:false, shell:false });
+  };
+  if(typeof requestAnimationFrame==='function'){
+    requestAnimationFrame(()=>setTimeout(run,100));
+  }else{
+    setTimeout(run,100);
+  }
 }
 
 function getStudentShellLabels_(shell){

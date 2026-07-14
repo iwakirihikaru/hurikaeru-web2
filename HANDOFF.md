@@ -45,7 +45,7 @@
 ## 現在の最新版
 
 - 2026-07-15 時点
-  - 本番 version `376`
+  - 本番 version `378`
   - repo管理 debug deployment version `354`
   - デバッグ昇格版 version `10`
   - 配布テンプレート version `64`
@@ -394,6 +394,47 @@
       - 2026-07-15 に本番 Webアプリへ deploy 済み。
       - 本番 deployment `AKfycbwo3TBXAkqLSx6XYcXxTI5m34DerRMHaB6X13dymilmU_wmc-Fn5F-2jkNofErLevVo7Q` を version `376` へ更新。
       - `cdn/shell-config.json` と `onboarding/admin-app.js` の latest version も `376` へ同期。
+      - `admin.config.json` がない環境のため、配布テンプレート・導入管理・provision 更新は deploy script 上でスキップ。
+  - 2026-07-15 追加前進 2
+    - 先生画面の records 系を「タブを開いてから待つ」寄りから、「初回描画直後に第2陣・第3陣で温める」寄りへ調整。
+    - `src/teacher_script_core.html`
+      - `scheduleTeacherPreload()` を `idle` 依存から外し、初回描画直後に `current lesson` の集約取得を始めるよう変更。
+      - records 系全体の背景取得開始も `700ms + 900ms` 相当の待ちから、`80ms + 180ms` 程度へ短縮。
+    - `src/teacher_script_reports.html`
+      - `scheduleAggregateBackgroundPreload()` の待ちを `4.5秒/idle最大7秒` から `120ms` へ短縮。
+      - scoped 集約取得と full 集約取得の衝突時、再試行を `8秒` ではなく `600ms` で行うよう変更。
+      - `schedulePortfolioBackgroundPreload_()` も `6.5秒/idle最大9秒` から `320ms` へ短縮。
+    - ねらい:
+      - `単元記録` を初回描画直後に温める。
+      - 同じ集約データを使う `評定する` の切替待ちも減らす。
+      - `ポートフォリオ` は full 集約の温まり後すぐキャッシュ生成へ進める。
+    - 確認済み:
+      - `node scripts/build-teacher-legacy.js`
+      - `npm run build:portable`
+      - `src/teacher_script_core_legacy.html` の script 構文確認
+      - `portable/teacher.html` の script 構文確認
+    - deploy:
+      - 2026-07-15 に本番 Webアプリへ deploy 済み。
+      - 本番 deployment `AKfycbwo3TBXAkqLSx6XYcXxTI5m34DerRMHaB6X13dymilmU_wmc-Fn5F-2jkNofErLevVo7Q` を version `377` へ更新。
+      - `cdn/shell-config.json` と `onboarding/admin-app.js` の latest version も `377` へ同期。
+      - `admin.config.json` がない環境のため、配布テンプレート・導入管理・provision 更新は deploy script 上でスキップ。
+  - 2026-07-15 追加前進 3
+    - 児童ページの第2陣取得を、番号一覧表示直後に前倒し。
+    - `src/index.html`
+      - 名簿キャッシュは従来どおり長めに保持しつつ、重い `classSnapshot` は別キーの短命キャッシュへ分離。
+      - `applyStudentBootstrapData_()` 後、`classSnapshot` が未取得なら `requestAnimationFrame + 100ms` で `getStudentEntryOptions({ lightweight:false, shell:false })` を背景取得するよう追加。
+      - 取得できた `classSnapshot` はその場の `bootstrapStudentOptions` と短命キャッシュへ保存し、番号押下時に `studentInit` を待たず `loadMain()` に入りやすくした。
+      - これに合わせて、24時間の名簿キャッシュへ `classSnapshot` を混ぜないように整理した。
+    - ねらい:
+      - 初回の番号一覧表示は軽いまま維持する。
+      - その直後の第2陣で授業中クラス全体の snapshot を温め、番号押下後の待ちを減らす。
+    - 確認済み:
+      - `npm run build:portable`
+      - `portable/student.html` の script 構文確認
+    - deploy:
+      - 2026-07-15 に本番 Webアプリへ deploy 済み。
+      - 本番 deployment `AKfycbwo3TBXAkqLSx6XYcXxTI5m34DerRMHaB6X13dymilmU_wmc-Fn5F-2jkNofErLevVo7Q` を version `378` へ更新。
+      - `cdn/shell-config.json` と `onboarding/admin-app.js` の latest version も `378` へ同期。
       - `admin.config.json` がない環境のため、配布テンプレート・導入管理・provision 更新は deploy script 上でスキップ。
 
 ## Master GAS API v1

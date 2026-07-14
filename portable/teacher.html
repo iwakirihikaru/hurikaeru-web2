@@ -2036,10 +2036,10 @@ function scheduleTeacherPreload() {
         // 名簿は最優先、その他は初期描画後の遅延取得へ回す。
         ensureRosterPreload();
         scheduleTeacherStatusPreload_();
+        if (typeof scheduleTeacherCurrentLessonAggregatePreload === 'function') {
+            scheduleTeacherCurrentLessonAggregatePreload('teacher-preload');
+        }
         setTimeout(function () {
-            if (typeof scheduleTeacherCurrentLessonAggregatePreload === 'function') {
-                scheduleTeacherCurrentLessonAggregatePreload('teacher-preload');
-            }
             ensureEditorPreload();
             ensurePromptPreload();
             preloadTeacherHelpInfo();
@@ -2049,13 +2049,13 @@ function scheduleTeacherPreload() {
             if (typeof scheduleTeacherCurrentLessonAggregatePreload !== 'function' && typeof scheduleAggregateBackgroundPreload === 'function') {
                 scheduleAggregateBackgroundPreload('teacher-preload');
             }
-        }, 900);
+        }, 180);
     };
-    if (typeof requestIdleCallback === 'function') {
-        requestIdleCallback(runner, { timeout: 1500 });
+    if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(function () { return setTimeout(runner, 80); });
     }
     else {
-        setTimeout(runner, 700);
+        setTimeout(runner, 80);
     }
 }
 function normalizeRosterPreload_(payload) {
@@ -5438,12 +5438,15 @@ function scheduleAggregateBackgroundPreload(reason) {
     if (aggregateBackgroundPreloadScheduled)
         return;
     aggregateBackgroundPreloadScheduled = true;
-    var run = function () { return ensureAggregateBackgroundPreload_(reason || 'idle'); };
-    if (typeof requestIdleCallback === 'function') {
-        requestIdleCallback(run, { timeout: 7000 });
+    var run = function () {
+        aggregateBackgroundPreloadScheduled = false;
+        ensureAggregateBackgroundPreload_(reason || 'immediate');
+    };
+    if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(function () { return setTimeout(run, 120); });
     }
     else {
-        setTimeout(run, 4500);
+        setTimeout(run, 120);
     }
 }
 function scheduleTeacherCurrentLessonAggregatePreload(reason) {
@@ -5474,7 +5477,7 @@ function ensureAggregateBackgroundPreload_(reason) {
         return false;
     if (aggregateScopeFetchKey) {
         aggregateBackgroundPreloadScheduled = false;
-        setTimeout(function () { return scheduleAggregateBackgroundPreload('retry-busy'); }, 8000);
+        setTimeout(function () { return scheduleAggregateBackgroundPreload('retry-busy'); }, 600);
         return false;
     }
     aggregateBackgroundPreloadInFlight = true;
@@ -5505,11 +5508,11 @@ function scheduleTeacherRecordsDataPreload(reason) {
 }
 function schedulePortfolioBackgroundPreload_(reason) {
     var run = function () { return preloadPortfolioFromAggregate_(reason || 'idle'); };
-    if (typeof requestIdleCallback === 'function') {
-        requestIdleCallback(run, { timeout: 9000 });
+    if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(function () { return setTimeout(run, 320); });
     }
     else {
-        setTimeout(run, 6500);
+        setTimeout(run, 320);
     }
 }
 function preloadPortfolioFromAggregate_(reason) {

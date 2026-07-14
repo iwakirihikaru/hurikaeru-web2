@@ -52,11 +52,14 @@ function shouldRenderAggregatePreloadResult_(){
 function scheduleAggregateBackgroundPreload(reason){
   if(aggregateBackgroundPreloadScheduled) return;
   aggregateBackgroundPreloadScheduled=true;
-  const run=()=>ensureAggregateBackgroundPreload_(reason||'idle');
-  if(typeof requestIdleCallback==='function'){
-    requestIdleCallback(run,{ timeout:7000 });
+  const run=()=>{
+    aggregateBackgroundPreloadScheduled=false;
+    ensureAggregateBackgroundPreload_(reason||'immediate');
+  };
+  if(typeof requestAnimationFrame==='function'){
+    requestAnimationFrame(()=>setTimeout(run,120));
   }else{
-    setTimeout(run,4500);
+    setTimeout(run,120);
   }
 }
 
@@ -87,7 +90,7 @@ function ensureAggregateBackgroundPreload_(reason){
   if(aggregateBackgroundPreloadInFlight) return false;
   if(aggregateScopeFetchKey){
     aggregateBackgroundPreloadScheduled=false;
-    setTimeout(()=>scheduleAggregateBackgroundPreload('retry-busy'),8000);
+    setTimeout(()=>scheduleAggregateBackgroundPreload('retry-busy'),600);
     return false;
   }
   aggregateBackgroundPreloadInFlight=true;
@@ -119,10 +122,10 @@ function scheduleTeacherRecordsDataPreload(reason){
 
 function schedulePortfolioBackgroundPreload_(reason){
   const run=()=>preloadPortfolioFromAggregate_(reason||'idle');
-  if(typeof requestIdleCallback==='function'){
-    requestIdleCallback(run,{ timeout:9000 });
+  if(typeof requestAnimationFrame==='function'){
+    requestAnimationFrame(()=>setTimeout(run,320));
   }else{
-    setTimeout(run,6500);
+    setTimeout(run,320);
   }
 }
 

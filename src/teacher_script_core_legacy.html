@@ -531,10 +531,10 @@ function scheduleTeacherPreload() {
         // 名簿は最優先、その他は初期描画後の遅延取得へ回す。
         ensureRosterPreload();
         scheduleTeacherStatusPreload_();
+        if (typeof scheduleTeacherCurrentLessonAggregatePreload === 'function') {
+            scheduleTeacherCurrentLessonAggregatePreload('teacher-preload');
+        }
         setTimeout(function () {
-            if (typeof scheduleTeacherCurrentLessonAggregatePreload === 'function') {
-                scheduleTeacherCurrentLessonAggregatePreload('teacher-preload');
-            }
             ensureEditorPreload();
             ensurePromptPreload();
             preloadTeacherHelpInfo();
@@ -544,13 +544,13 @@ function scheduleTeacherPreload() {
             if (typeof scheduleTeacherCurrentLessonAggregatePreload !== 'function' && typeof scheduleAggregateBackgroundPreload === 'function') {
                 scheduleAggregateBackgroundPreload('teacher-preload');
             }
-        }, 900);
+        }, 180);
     };
-    if (typeof requestIdleCallback === 'function') {
-        requestIdleCallback(runner, { timeout: 1500 });
+    if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(function () { return setTimeout(runner, 80); });
     }
     else {
-        setTimeout(runner, 700);
+        setTimeout(runner, 80);
     }
 }
 function normalizeRosterPreload_(payload) {
