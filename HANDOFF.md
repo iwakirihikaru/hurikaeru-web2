@@ -45,7 +45,7 @@
 ## 現在の最新版
 
 - 2026-07-15 時点
-  - 本番 version `381`
+  - 本番 version `382`
   - repo管理 debug deployment version `354`
   - デバッグ昇格版 version `10`
   - 配布テンプレート version `64`
@@ -498,6 +498,23 @@
       - 2026-07-15 に本番 Webアプリへ deploy 済み。
       - 本番 deployment `AKfycbwo3TBXAkqLSx6XYcXxTI5m34DerRMHaB6X13dymilmU_wmc-Fn5F-2jkNofErLevVo7Q` を version `381` へ更新。
       - `cdn/shell-config.json` と `onboarding/admin-app.js` の latest version も `381` へ同期。
+      - `admin.config.json` がない環境のため、配布テンプレート・導入管理・provision 更新は deploy script 上でスキップ。
+  - 2026-07-15 追加前進 7
+    - 児童ページを開き直した時に、保存済み入力が空ボックスに見えることがある問題を修正。
+    - 原因:
+      - `studentInit()` だけが授業時点の `Lessons.fieldsJson` ではなく、現在の `active.fields` / unit fields を使って初期 state を作っていた。
+      - このため、授業固有の項目が後から変わっている場合、保存済み `answersMap` と初期描画の field key がずれて `customs` が空に見え得た。
+    - `src/04_student.js`
+      - `studentInit()` で `getOrCreateLesson_()` + `getLessonFields_()` を使い、`studentLoadState()` と同じ授業時点の fields で初期 state を組み立てるよう変更。
+    - ねらい:
+      - 開き直し直後の最初の描画でも、保存済み回答を正しい授業項目へ戻せるようにする。
+    - 確認済み:
+      - `node --check src/04_student.js`
+      - `npm run build:portable`
+    - deploy:
+      - 2026-07-15 に本番 Webアプリへ deploy 済み。
+      - 本番 deployment `AKfycbwo3TBXAkqLSx6XYcXxTI5m34DerRMHaB6X13dymilmU_wmc-Fn5F-2jkNofErLevVo7Q` を version `382` へ更新。
+      - `cdn/shell-config.json` と `onboarding/admin-app.js` の latest version も `382` へ同期。
       - `admin.config.json` がない環境のため、配布テンプレート・導入管理・provision 更新は deploy script 上でスキップ。
 
 ## Master GAS API v1

@@ -28,7 +28,8 @@ function studentInit(num, periodOverride) {
 
   const rosterStudent = students.find(student => String(student.number) === String(num));
   const studentName = rosterStudent?.name || '';
-  const enabledFields = getEnabledFields_({ fields: active.fields || active.unit?.fields || [] });
+  const lesson = getOrCreateLesson_(active.unit.id, period);
+  const enabledFields = getEnabledFields_({ fields: getLessonFields_(lesson, active.unit) });
   const state = buildStudentState_(active.unit, period, num, studentName, enabledFields, { includePrevReview: false });
 
   return Object.assign({}, state, {
