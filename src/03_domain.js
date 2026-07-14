@@ -2539,15 +2539,18 @@ function deleteUnit(id) {
 // ============================================================
 //  アクティブ授業
 // ============================================================
-function getActiveSetting() {
+function getActiveSetting(options) {
+  const opts = options && typeof options === 'object' ? options : {};
+  const includeUnit = opts.includeUnit !== false;
+  const includeLesson = opts.includeLesson !== false;
   const cfg    = readGlobalConfig();
   const unitId = parseInt(cfg.active_unit) || 0;
   const period = parseInt(cfg.active_period) || 0;
   const timelineFieldKey = String(cfg.active_timeline_field || '');
-  const units  = getAllUnits();
-  const unit   = units.find(u => u.id == unitId) || null;
-  const lesson = unit && period > 0 ? getLessonRecordByUnitPeriod_(unitId, period) : null;
-  const fields = getLessonFields_(lesson, unit);
+  const units  = includeUnit ? getAllUnits() : [];
+  const unit   = includeUnit ? (units.find(u => u.id == unitId) || null) : null;
+  const lesson = includeLesson && unit && period > 0 ? getLessonRecordByUnitPeriod_(unitId, period) : null;
+  const fields = includeUnit || includeLesson ? getLessonFields_(lesson, unit) : [];
   return { unitId, period, unit, units, lesson, fields, timelineFieldKey };
 }
 

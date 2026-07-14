@@ -271,33 +271,28 @@ function loadStatusInit(options){
   const runner=google.script.run
       .withSuccessHandler(d=>{
         if(requestEpoch!==teacherDataEpoch) return;
-        applyTeacherInitData(d, { includeRoster:false, renderUnitList:false, schedulePreload:true, source:'teacherStatusInit' });
-      if(d && d.status){
+        applyTeacherInitData(d, { includeRoster:false, renderUnitList:false, schedulePreload:true, source:'teacherStatusSnapshot' });
+      if(d && d.status && Array.isArray(d.status.students) && d.status.students.length){
         renderStatus(d.status);
       }else{
         const statusSection=document.getElementById('sec-status');
         if(statusSection && statusSection.classList.contains('active')){
-        loadStatus();
+          loadStatus();
         }
       }
       if(opts.startPolling){
-        startStatusPoll(Boolean(d && d.status));
+        startStatusPoll(Boolean(d && d.status && Array.isArray(d.status.students) && d.status.students.length));
       }
       scheduleTeacherUnitProgressRefresh_(d);
     })
     .withFailureHandler(err=>{
       if(requestEpoch!==teacherDataEpoch) return;
-      handleTeacherInitFailure_(err, 'teacherStatusInit');
+      console.warn('teacherStatusSnapshot failed', err);
       if(opts.startPolling){
         startStatusPoll(false);
         }
       })
-  const hasUnitsReadMeta=Boolean(teacherUnitsReadMeta && typeof teacherUnitsReadMeta==='object');
-  if(opts.lightweight !== false && hasUnitsReadMeta && Array.isArray(allUnits) && allUnits.length){
-    runner.teacherStatusSnapshot();
-    return;
-  }
-  runner.teacherStatusInit();
+  runner.teacherStatusSnapshot();
 }
 
 function scheduleTeacherUnitProgressRefresh_(data){

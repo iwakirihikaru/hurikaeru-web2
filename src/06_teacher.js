@@ -163,7 +163,7 @@ function teacherStatusSnapshot() {
   let active = null;
   try {
     const t0 = Date.now();
-    active = getActiveSetting();
+    active = getActiveSetting({ includeUnit: false, includeLesson: false });
     timing.activeMs = Date.now() - t0;
   } catch (err) {
     errors.push(`active: ${err && err.message ? err.message : err}`);
@@ -176,15 +176,6 @@ function teacherStatusSnapshot() {
     },
     students: [],
   };
-  if (active?.unitId && Number(active?.period || 0) > 0) {
-    try {
-      const t0 = Date.now();
-      status = getLessonStatus(active.unitId, active.period);
-      timing.lessonStatusMs = Date.now() - t0;
-    } catch (err) {
-      errors.push(`status: ${err && err.message ? err.message : err}`);
-    }
-  }
   timing.totalMs = Date.now() - startedAt;
   if (status && status.meta) status.meta.serverRequestTiming = timing;
   return {

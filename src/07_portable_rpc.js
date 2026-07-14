@@ -1,5 +1,5 @@
 ﻿const PORTABLE_ACTION_HANDLERS_ = Object.freeze({
-  getStudentEntryOptions: function() { return getStudentEntryOptions(); },
+  getStudentEntryOptions: function(options) { return getStudentEntryOptions(options); },
   studentInit: function(num, periodOverride) { return normalizePortableStudentInitResult_(studentInit(num, periodOverride)); },
   studentLoadState: function(unitId, period, num) { return normalizePortableStudentStateResult_(studentLoadState(unitId, period, num)); },
   getStudentPreviousReview: function(unitId, period, num) { return getStudentPreviousReview(unitId, period, num); },

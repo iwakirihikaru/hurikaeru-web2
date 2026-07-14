@@ -672,8 +672,8 @@ function applyStudentBootstrapData_(data, options){
     }else if(opts.initial===true){
       studentEntryOptionsLoading=true;
     }else{
-      studentEntryOptionsLoaded=true;
-      studentEntryOptionsLoading=false;
+      studentEntryOptionsLoaded=false;
+      studentEntryOptionsLoading=true;
     }
     if(hasStudents || opts.initial !== true){
       writeStudentEntryOptionsCache_(bootstrapStudentOptions);
