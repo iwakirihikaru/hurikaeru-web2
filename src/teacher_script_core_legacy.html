@@ -341,10 +341,10 @@ function scheduleTeacherUnitProgressRefresh_(data) {
             .teacherUnitProgressRefresh();
     };
     if (typeof requestIdleCallback === 'function') {
-        requestIdleCallback(run, { timeout: 4000 });
+        requestIdleCallback(run, { timeout: 1200 });
     }
     else {
-        setTimeout(run, 2500);
+        setTimeout(run, 500);
     }
 }
 function invalidateTeacherDataRequests_() {

@@ -29,7 +29,7 @@ function studentInit(num, periodOverride) {
   const rosterStudent = students.find(student => String(student.number) === String(num));
   const studentName = rosterStudent?.name || '';
   const enabledFields = getEnabledFields_({ fields: active.fields || active.unit?.fields || [] });
-  const state = buildStudentState_(active.unit, period, num, studentName, enabledFields, { includePrevReview: true });
+  const state = buildStudentState_(active.unit, period, num, studentName, enabledFields, { includePrevReview: false });
 
   return Object.assign({}, state, {
     needPeriodSelect: false,
@@ -157,7 +157,7 @@ function studentLoadState(unitId, period, num) {
   const rosterStudent = roster.find(student => String(student.number) === String(num));
   const studentName = rosterStudent?.name || '';
   return buildStudentState_(unit, normalizedPeriod, num, studentName, enabledFields, {
-    includePrevReview: true,
+    includePrevReview: false,
     featureFlags: getAiFeatureFlags_(),
     shell: getLiveTenantMaintenanceState(),
   });

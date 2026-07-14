@@ -45,7 +45,7 @@
 ## 現在の最新版
 
 - 2026-07-14 時点
-  - 本番 version `374`
+  - 本番 version `375`
   - repo管理 debug deployment version `354`
   - デバッグ昇格版 version `10`
   - 配布テンプレート version `64`
@@ -350,6 +350,34 @@
       - 2026-07-14 に本番 Webアプリへ deploy 済み。
       - 本番 deployment `AKfycbwo3TBXAkqLSx6XYcXxTI5m34DerRMHaB6X13dymilmU_wmc-Fn5F-2jkNofErLevVo7Q` を version `374` へ更新。
       - `cdn/shell-config.json` と `onboarding/admin-app.js` の latest version も `374` へ同期。
+      - `admin.config.json` がない環境のため、配布テンプレート・導入管理・provision 更新は deploy script 上でスキップ。
+  - 2026-07-14 追加前進 13
+    - 児童ページの番号押下後ロードと、授業スタートタブの先読みを追加調整。
+    - `src/04_student.js`
+      - `studentInit()` / `studentLoadState()` から前時ふりかえり同期取得を外し、入力画面に必要な本人 state を先に返すよう変更。
+      - 前時ふりかえり・前時の次のめあては、従来どおり画面表示後の `getStudentPreviousReview()` で後追い取得。
+    - `src/index.html`
+      - 名簿 localStorage キャッシュだけ 24 時間に延長し、番号一覧は直近名簿を即表示しやすくした。
+      - bootstrap 更新が空名簿を返しても既存名簿を消さないようにし、初期ロード中の「名簿未設定」誤表示を抑制。
+      - 提出後の他者参照は、教師指定の表示項目よりも「ふりかえり/理解度」系を優先表示するよう変更。
+    - `src/03_domain.js` / `portable-src/runtime-shim.js`
+      - portable の軽量名簿取得では shell 取得を省略可能にし、初期番号表示の背景取得を軽くした。
+      - 名簿更新時に script cache 側の `student_entry_options_v2` も削除するよう変更。
+    - `src/06_teacher.js` / `src/teacher_script_core.html`
+      - 授業スタートタブの「単元選択 -> 次の授業時数」用に、Responses 全件ではなく Lessons だけの軽量単元進捗を初期返却できるようにした。
+      - full 進捗更新の idle 待ちを短縮し、初期表示後の補正を早めた。
+    - 確認済み:
+      - `node --check src/03_domain.js`
+      - `node --check src/04_student.js`
+      - `node --check src/06_teacher.js`
+      - `node --check portable-src/runtime-shim.js`
+      - `node scripts/build-teacher-legacy.js`
+      - `npm run build:portable`
+      - legacy / portable HTML script 構文確認
+    - deploy:
+      - 2026-07-14 に本番 Webアプリへ deploy 済み。
+      - 本番 deployment `AKfycbwo3TBXAkqLSx6XYcXxTI5m34DerRMHaB6X13dymilmU_wmc-Fn5F-2jkNofErLevVo7Q` を version `375` へ更新。
+      - `cdn/shell-config.json` と `onboarding/admin-app.js` の latest version も `375` へ同期。
       - `admin.config.json` がない環境のため、配布テンプレート・導入管理・provision 更新は deploy script 上でスキップ。
 
 ## Master GAS API v1

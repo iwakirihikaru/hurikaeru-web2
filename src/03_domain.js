@@ -757,8 +757,15 @@ function readCachedStudentRow_(studentNumber) {
 }
 
 function invalidateStudentCaches_() {
-  removeDomainCacheKeys_(['roster_entries_active_v1', 'roster_entries_all_v1', 'student_entry_options_v1']);
+  removeDomainCacheKeys_(['roster_entries_active_v1', 'roster_entries_all_v1', 'student_entry_options_v1', 'student_entry_options_v2']);
+  removeStudentEntryOptionsScriptCache_();
   return bumpDomainCacheVersion_('students');
+}
+
+function removeStudentEntryOptionsScriptCache_() {
+  try {
+    CacheService.getScriptCache().remove('student_entry_options_v2');
+  } catch (_err) {}
 }
 
 function getTeacherCommentDraftRowCacheKey_(responseId) {
@@ -999,13 +1006,14 @@ function writeRosterSheetEntries_(entries) {
 function getStudentEntryOptions(options) {
   const opts = options && typeof options === 'object' ? options : {};
   const lightweight = opts.lightweight !== false;
+  const includeShell = opts.shell !== false && opts.includeShell !== false;
   const cache = CacheService.getScriptCache();
   const cached = cache.get('student_entry_options_v2');
   if (cached) {
     try {
       const parsed = JSON.parse(cached);
       if (parsed && Array.isArray(parsed.students)) {
-        const shell = getLiveTenantMaintenanceState();
+        const shell = includeShell ? getLiveTenantMaintenanceState() : {};
         if (lightweight) {
           return {
             students: parsed.students,
@@ -1028,7 +1036,7 @@ function getStudentEntryOptions(options) {
   }
   const students = getRosterEntries_();
   const featureFlags = getAiFeatureFlags_();
-  const shell = getLiveTenantMaintenanceState();
+  const shell = includeShell ? getLiveTenantMaintenanceState() : {};
   const payload = {
     students,
     shell,
@@ -1759,7 +1767,8 @@ function getOrCreateStudent_(number, name) {
       sheet.getRange(cached.rowNumber, 6).setValue(updatedAt);
       cached.values[2] = normalizedName;
       cached.values[5] = updatedAt;
-      removeDomainCacheKeys_(['roster_entries_active_v1', 'roster_entries_all_v1', 'student_entry_options_v1']);
+      removeDomainCacheKeys_(['roster_entries_active_v1', 'roster_entries_all_v1', 'student_entry_options_v1', 'student_entry_options_v2']);
+      removeStudentEntryOptionsScriptCache_();
     }
     return mapStudentDbRow_(cached.values, normalizedName);
   }
@@ -1775,7 +1784,8 @@ function getOrCreateStudent_(number, name) {
         sheet.getRange(i + 2, 6).setValue(updatedAt);
         row[2] = normalizedName;
         row[5] = updatedAt;
-        removeDomainCacheKeys_(['roster_entries_active_v1', 'roster_entries_all_v1', 'student_entry_options_v1']);
+        removeDomainCacheKeys_(['roster_entries_active_v1', 'roster_entries_all_v1', 'student_entry_options_v1', 'student_entry_options_v2']);
+        removeStudentEntryOptionsScriptCache_();
       }
       writeStudentRowCache_(normalizedNumber, i + 2);
       return mapStudentDbRow_(row, normalizedName);

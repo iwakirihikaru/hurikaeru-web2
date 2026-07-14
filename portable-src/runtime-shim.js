@@ -443,7 +443,7 @@
       redirectToSetupIfNeeded();
       return Promise.resolve(readEmptyStudentBootstrap());
     }
-    return callPortableMethod("getStudentEntryOptions", [{ lightweight: true }])
+    return callPortableMethod("getStudentEntryOptions", [{ lightweight: true, shell: false }])
       .then(function (data) {
         return data || readEmptyStudentBootstrap();
       });

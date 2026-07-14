@@ -189,12 +189,45 @@ function getLessonStatusCacheKey_(unitId, period) {
 
 function readTeacherUnitProgressSnapshot_() {
   const cached = getCachedJson_('teacher_unit_progress_v1');
+  return cached && typeof cached === 'object' ? cached : buildTeacherUnitLessonProgressSnapshot_();
+}
+
+function readCachedTeacherUnitProgressSnapshot_() {
+  const cached = getCachedJson_('teacher_unit_progress_v1');
   return cached && typeof cached === 'object' ? cached : {};
+}
+
+function buildTeacherUnitLessonProgressSnapshot_() {
+  const map = {};
+  listLessonRecords_().forEach(lesson => {
+    const unitId = String(lesson.unitId || '');
+    if (!unitId) return;
+    const period = Number(lesson.period || 0);
+    const lessonDate = String(lesson.lessonDate || '');
+    const updatedAt = String(lesson.updatedAt || lesson.createdAt || '');
+    const current = map[unitId] || {
+      maxPeriod: 0,
+      latestActivityAt: '',
+      lessonCount: 0,
+      lastActivityPeriod: 0,
+      latestPeriodHasActivity: false,
+      lightweight: true,
+    };
+    current.maxPeriod = Math.max(current.maxPeriod || 0, period);
+    current.lessonCount += 1;
+    current.lastActivityPeriod = Math.max(current.lastActivityPeriod || 0, period);
+    const candidate = updatedAt || lessonDate;
+    if (String(candidate) > String(current.latestActivityAt || '')) {
+      current.latestActivityAt = candidate;
+    }
+    map[unitId] = current;
+  });
+  return map;
 }
 
 function getTeacherUnitProgress_() {
   const cacheKey = 'teacher_unit_progress_v1';
-  const cached = readTeacherUnitProgressSnapshot_();
+  const cached = readCachedTeacherUnitProgressSnapshot_();
   if (Object.keys(cached).length) return cached;
   const map = {};
   const lessonMetaById = {};

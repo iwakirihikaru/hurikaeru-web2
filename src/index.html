@@ -466,6 +466,7 @@ const POLL_IDLE_MS = 4000;
 const POLL_WAITING_AI_MS = 2500;
 const POLL_DONE_MS = 6000;
 const STUDENT_CACHE_TTL_MS = 5 * 60 * 1000;
+const STUDENT_ENTRY_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const STUDENT_NUMBER_CACHE_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 const STUDENT_ENTRY_CACHE_KEY = 'furikaeri:studentEntryOptions';
 
@@ -616,7 +617,7 @@ function readStudentEntryOptionsCache_(){
     const raw=localStorage.getItem(STUDENT_ENTRY_CACHE_KEY);
     if(!raw) return null;
     const parsed=JSON.parse(raw);
-    if(!parsed || !parsed.savedAt || Date.now()-Number(parsed.savedAt)>STUDENT_CACHE_TTL_MS) return null;
+    if(!parsed || !parsed.savedAt || Date.now()-Number(parsed.savedAt)>STUDENT_ENTRY_CACHE_TTL_MS) return null;
     const payload=parsed.payload;
     return payload && Array.isArray(payload.students) && payload.students.length ? payload : null;
   }catch(_err){
@@ -659,8 +660,13 @@ function applyStudentBootstrapData_(data, options){
   const opts=options||{};
   const hasStudents=Boolean(data && Array.isArray(data.students) && data.students.length);
   if(data && typeof data==='object'){
-    Object.assign(bootstrapStudentOptions, data);
-    if(hasStudents){
+    const existingStudents=Array.isArray(bootstrapStudentOptions.students) ? bootstrapStudentOptions.students : [];
+    const incoming=Object.assign({}, data);
+    if(!hasStudents && existingStudents.length){
+      delete incoming.students;
+    }
+    Object.assign(bootstrapStudentOptions, incoming);
+    if(hasStudents || existingStudents.length){
       studentEntryOptionsLoaded=true;
       studentEntryOptionsLoading=false;
     }else if(opts.initial===true){
@@ -795,7 +801,9 @@ function renderNumberButtons(students){
   const g=document.getElementById('numGrid');
   const list=(students&&students.length)?students:[];
   if(!list.length){
-    const emptyMessage=getStudentShellLabel_('studentRosterLoadingMessage', '名簿を読み込み中です…');
+    const emptyMessage=(studentEntryOptionsLoading || !studentEntryOptionsLoaded)
+      ? '名簿を読み込み中です…'
+      : getStudentShellLabel_('studentRosterLoadingMessage', '名簿を読み込み中です…');
     g.innerHTML=`<div style="grid-column:1/-1;text-align:center;color:#78909C;font-size:14px;">${esc(emptyMessage)}</div>`;
     return;
   }
@@ -1987,6 +1995,13 @@ function compareTimelineRows_(a,b){
 }
 
 function getTimelineVisibleIndexes(focusIdx){
+  if(submitted){
+    const submittedIdxs=myFields
+      .map((field,idx)=>({field,idx}))
+      .filter(({field})=>isReviewField(field)||isUnderstandingField(field))
+      .map(({idx})=>idx);
+    return submittedIdxs.length?submittedIdxs:myFields.map((_,idx)=>idx);
+  }
   const forcedIdx=teacherTimelineFieldKey?myFields.findIndex(f=>String(f.key||'')===String(teacherTimelineFieldKey)): -1;
   if(forcedIdx>=0){
     const forcedField=myFields[forcedIdx]||{};
@@ -1997,13 +2012,6 @@ function getTimelineVisibleIndexes(focusIdx){
       .filter(({field})=>isReviewField(field)||isUnderstandingField(field))
       .map(({idx})=>idx);
     return forcedIdxs.length?forcedIdxs:[forcedIdx];
-  }
-  if(submitted){
-    const submittedIdxs=myFields
-      .map((field,idx)=>({field,idx}))
-      .filter(({field})=>isReviewField(field)||isUnderstandingField(field))
-      .map(({idx})=>idx);
-    return submittedIdxs.length?submittedIdxs:myFields.map((_,idx)=>idx);
   }
   if(focusIdx<0){
     return myFields.map((_,idx)=>idx);
