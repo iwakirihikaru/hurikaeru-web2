@@ -694,6 +694,19 @@ function mergeLessonResponseRowsIntoCache_(rows) {
   });
 }
 
+function refreshLessonResponseCachesForRows_(rows) {
+  const lessonIdSet = {};
+  (Array.isArray(rows) ? rows : []).forEach(row => {
+    const lessonId = String(Array.isArray(row) ? row[1] : row?.lessonId || '').trim();
+    if (lessonId) lessonIdSet[lessonId] = true;
+  });
+  Object.keys(lessonIdSet).forEach(lessonId => {
+    const latest = listMasterResponseRecordsForLesson_(lessonId);
+    cacheLessonResponses_(lessonId, latest);
+    latest.forEach(response => cacheResponseById_(response));
+  });
+}
+
 function invalidateLessonResponseCaches_() {
   return bumpDomainCacheVersion_('responses');
 }
@@ -2022,7 +2035,7 @@ function cacheResponseRows_(rows) {
   const list = (Array.isArray(rows) ? rows : []).filter(row => Array.isArray(row) && row.length);
   if (!list.length) return 0;
   invalidateLessonResponseCaches_();
-  mergeLessonResponseRowsIntoCache_(list);
+  refreshLessonResponseCachesForRows_(list);
   return list.length;
 }
 
@@ -2046,7 +2059,7 @@ function writeResponseSheetRowEntryUpdates_(updates, mirrorSource, mirrorAction,
     writeResponseIdSheetRowNumberCache_(item.values[0], item.rowNumber);
   });
   invalidateLessonResponseCaches_();
-  mergeLessonResponseRowsIntoCache_(list.map(item => item.values).filter(Boolean));
+  refreshLessonResponseCachesForRows_(list.map(item => item.values).filter(Boolean));
   if (mirrorSource) {
     mirrorResponseRowsToMaster_(
       list.map(item => item.values),

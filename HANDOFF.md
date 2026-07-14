@@ -45,7 +45,7 @@
 ## 現在の最新版
 
 - 2026-07-15 時点
-  - 本番 version `378`
+  - 本番 version `379`
   - repo管理 debug deployment version `354`
   - デバッグ昇格版 version `10`
   - 配布テンプレート version `64`
@@ -435,6 +435,25 @@
       - 2026-07-15 に本番 Webアプリへ deploy 済み。
       - 本番 deployment `AKfycbwo3TBXAkqLSx6XYcXxTI5m34DerRMHaB6X13dymilmU_wmc-Fn5F-2jkNofErLevVo7Q` を version `378` へ更新。
       - `cdn/shell-config.json` と `onboarding/admin-app.js` の latest version も `378` へ同期。
+      - `admin.config.json` がない環境のため、配布テンプレート・導入管理・provision 更新は deploy script 上でスキップ。
+  - 2026-07-15 追加前進 4
+    - 提出直後に「その児童だけ提出済み」に見える瞬間不具合を修正。
+    - 原因:
+      - 提出保存後、responses キャッシュ世代を進めた直後に、更新した1件だけで lesson cache を再生成していた。
+      - そのため `getTimeline()` / `getLessonStatus()` が短時間だけ「その授業の responses が1件しかない」状態を読んでいた。
+    - `src/03_domain.js`
+      - `refreshLessonResponseCachesForRows_()` を追加。
+      - 部分更新後は、影響した lessonId ごとに master から最新一覧を再取得して lesson cache / responseId cache を埋め直すよう変更。
+      - `cacheResponseRows_()` と `writeResponseSheetRowEntryUpdates_()` の部分キャッシュ再構築を、この full refresh に差し替えた。
+    - ねらい:
+      - 提出・再提出・AI結果更新の直後でも、教師ページと児童ページの一覧系が単発行だけを見ないようにする。
+    - 確認済み:
+      - `node --check src/03_domain.js`
+      - `npm run build:portable`
+    - deploy:
+      - 2026-07-15 に本番 Webアプリへ deploy 済み。
+      - 本番 deployment `AKfycbwo3TBXAkqLSx6XYcXxTI5m34DerRMHaB6X13dymilmU_wmc-Fn5F-2jkNofErLevVo7Q` を version `379` へ更新。
+      - `cdn/shell-config.json` と `onboarding/admin-app.js` の latest version も `379` へ同期。
       - `admin.config.json` がない環境のため、配布テンプレート・導入管理・provision 更新は deploy script 上でスキップ。
 
 ## Master GAS API v1
