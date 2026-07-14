@@ -44,8 +44,8 @@
 
 ## 現在の最新版
 
-- 2026-07-14 時点
-  - 本番 version `375`
+- 2026-07-15 時点
+  - 本番 version `376`
   - repo管理 debug deployment version `354`
   - デバッグ昇格版 version `10`
   - 配布テンプレート version `64`
@@ -378,6 +378,22 @@
       - 2026-07-14 に本番 Webアプリへ deploy 済み。
       - 本番 deployment `AKfycbwo3TBXAkqLSx6XYcXxTI5m34DerRMHaB6X13dymilmU_wmc-Fn5F-2jkNofErLevVo7Q` を version `375` へ更新。
       - `cdn/shell-config.json` と `onboarding/admin-app.js` の latest version も `375` へ同期。
+      - `admin.config.json` がない環境のため、配布テンプレート・導入管理・provision 更新は deploy script 上でスキップ。
+  - 2026-07-15 追加前進
+    - 児童ページの提出時通信失敗と、提出後タイムライン更新の取りこぼしを修正。
+    - `src/index.html`
+      - `submitReview()` の通信失敗時は1回だけ自動再試行するよう変更。
+      - 再試行後も `Failed to fetch` などの通信エラーが残る場合、即「未提出」に戻さず、提出済み表示を維持して `studentLoadState()` と `getTimeline()` で結果確認するよう変更。
+      - 提出成功後に児童端末から追加で `kickAiNow()` / `queueAiRescueTrigger()` を呼ぶ処理を外した。提出サーバー側で AI トリガー予約済みのため、余分な同時 fetch を減らす目的。
+      - `refreshTimeline({ force:true })` を追加し、既存の timeline 取得中でも提出後の最新取得を後続予約するよう変更。
+      - 提出済み履歴の背景取得を `4.5秒 + idle最大5秒` から `1.2秒 + idle最大1.2秒` に前倒し。
+    - 確認済み:
+      - `npm run build:portable`
+      - `portable/student.html` の script 構文確認
+    - deploy:
+      - 2026-07-15 に本番 Webアプリへ deploy 済み。
+      - 本番 deployment `AKfycbwo3TBXAkqLSx6XYcXxTI5m34DerRMHaB6X13dymilmU_wmc-Fn5F-2jkNofErLevVo7Q` を version `376` へ更新。
+      - `cdn/shell-config.json` と `onboarding/admin-app.js` の latest version も `376` へ同期。
       - `admin.config.json` がない環境のため、配布テンプレート・導入管理・provision 更新は deploy script 上でスキップ。
 
 ## Master GAS API v1

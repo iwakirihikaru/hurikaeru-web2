@@ -436,6 +436,7 @@ let autoTimer  = null;
 let pollTimer  = null;
 let initBusy   = false;
 let pollBusy   = false;
+let timelineRefreshPending = false;
 let lastAiCommentText = '';
 let aiCommentAutoScrolled = false;
 let studentStateReady = false;
@@ -954,6 +955,7 @@ function loadMain(d){
   clearInterval(autoTimer);
   stopPolling();
   pollBusy=false;
+  timelineRefreshPending=false;
   const identity=normalizeStudentIdentity_(d);
   rememberStudentNumber_(identity.num);
   myUnitId  = d.unit?.id   || null;
@@ -1040,8 +1042,13 @@ function loadStudentState(options){
     })
     .withFailureHandler(()=>{
       studentStateReady=true;
-      setFieldInteractivity(true);
-      document.getElementById('submitNote').textContent='';
+      if(submitted){
+        lockSubmitted();
+        document.getElementById('submitNote').textContent='提出結果を確認中です。少し待ってね。';
+      }else{
+        setFieldInteractivity(true);
+        document.getElementById('submitNote').textContent='';
+      }
     })
     .studentLoadState(myUnitId,myPeriod,myNum);
 }
@@ -1533,6 +1540,10 @@ function doSubmit(){
   lockSubmitted();
   document.getElementById('submitNote').textContent='⏳ ていしゅつ中…そのまままっててね';
 
+  runStudentSubmit_(values, 0);
+}
+
+function runStudentSubmit_(values, attempt){
   google.script.run
     .withSuccessHandler(res=>{
       if(!res.ok){
@@ -1543,12 +1554,6 @@ function doSubmit(){
       submitInFlight=false;
       lastKnownAiStatus=res.queuedAi?'pending':'';
       if(res.queuedAi){
-        google.script.run
-          .withFailureHandler(()=>{})
-          .kickAiNow();
-        google.script.run
-          .withFailureHandler(()=>{})
-          .queueAiRescueTrigger();
         showToast('🎉 ていしゅつできたよ！AIのコメントをまっててね✨');
       } else {
         showToast('🎉 ていしゅつできたよ！');
@@ -1558,13 +1563,31 @@ function doSubmit(){
       }
       syncStudentTabState_();
       scheduleStudentHistoryPreload_();
-      refreshTimeline();
+      refreshTimeline({ force:true });
     })
     .withFailureHandler(e=>{
-      unlockAfterSubmitError_();
-      showToast('エラー:'+e);
+      if(attempt<1 && isRetriableSubmitError_(e)){
+        setTimeout(()=>runStudentSubmit_(values, attempt+1), 700);
+        return;
+      }
+      handleSubmitUnknownFailure_(e);
     })
     .submitReview(myUnitId,myPeriod,myNum,values);
+}
+
+function isRetriableSubmitError_(error){
+  const message=String(error&&error.message||error||'');
+  return /Failed to fetch|network|timeout|Request timed out|HTTP 5\d\d/i.test(message);
+}
+
+function handleSubmitUnknownFailure_(error){
+  submitInFlight=false;
+  document.getElementById('submitNote').textContent='提出結果を確認しています…';
+  showToast('通信が切れました。提出できているか確認します。');
+  lockSubmitted();
+  loadStudentState({ skipCachedState:true, skipTimelineRefresh:true });
+  refreshTimeline({ force:true });
+  setTimeout(()=>refreshTimeline({ force:true }), 1800);
 }
 
 function lockSubmitted(){
@@ -1647,9 +1670,13 @@ function unlockAfterSubmitError_(){
 // =====================================
 //  タイムライン
 // =====================================
-function refreshTimeline(){
+function refreshTimeline(options){
+  const opts=options||{};
   if(!myUnitId||!myPeriod) return;
-  if(pollBusy) return;
+  if(pollBusy){
+    if(opts.force) timelineRefreshPending=true;
+    return;
+  }
   pollBusy=true;
   const cacheKey=[myUnitId,myPeriod,myNum].join('_');
   google.script.run
@@ -1657,10 +1684,18 @@ function refreshTimeline(){
       writeStudentCache_('timeline',cacheKey,payload);
       const me=applyTimelinePayload(payload);
       pollBusy=false;
+      if(timelineRefreshPending){
+        timelineRefreshPending=false;
+        setTimeout(()=>refreshTimeline({ force:true }), 120);
+      }
       scheduleNextPoll(resolvePollDelay(me));
     })
     .withFailureHandler(()=>{
       pollBusy=false;
+      if(timelineRefreshPending){
+        timelineRefreshPending=false;
+        setTimeout(()=>refreshTimeline({ force:true }), 800);
+      }
       scheduleNextPoll(POLL_IDLE_MS);
     })
     .getTimeline(myUnitId,myPeriod);
@@ -1743,11 +1778,11 @@ function scheduleStudentHistoryPreload_(){
   };
   studentHistoryPreloadTimer=setTimeout(()=>{
     if(typeof requestIdleCallback==='function'){
-      requestIdleCallback(run,{timeout:5000});
+      requestIdleCallback(run,{timeout:1200});
     }else{
       run();
     }
-  },4500);
+  },1200);
 }
 
 function loadStudentPastRecords_(options){
@@ -1905,6 +1940,7 @@ function changeStudentNumber_(){
   clearInterval(autoTimer);
   initBusy=false;
   pollBusy=false;
+  timelineRefreshPending=false;
   myNum=null;
   currentStudentName='';
   currentStudentCustoms=[];
