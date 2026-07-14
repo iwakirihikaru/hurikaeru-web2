@@ -45,7 +45,7 @@
 ## 現在の最新版
 
 - 2026-07-15 時点
-  - 本番 version `379`
+  - 本番 version `380`
   - repo管理 debug deployment version `354`
   - デバッグ昇格版 version `10`
   - 配布テンプレート version `64`
@@ -454,6 +454,24 @@
       - 2026-07-15 に本番 Webアプリへ deploy 済み。
       - 本番 deployment `AKfycbwo3TBXAkqLSx6XYcXxTI5m34DerRMHaB6X13dymilmU_wmc-Fn5F-2jkNofErLevVo7Q` を version `379` へ更新。
       - `cdn/shell-config.json` と `onboarding/admin-app.js` の latest version も `379` へ同期。
+      - `admin.config.json` がない環境のため、配布テンプレート・導入管理・provision 更新は deploy script 上でスキップ。
+  - 2026-07-15 追加前進 5
+    - 児童ページ初回の番号表示前に、subtitle が古い「名簿未登録」文言へ戻る経路を修正。
+    - 原因:
+      - shell ラベルの `studentSelectSubtitle` が初回ロード中にもそのまま適用され、画面上部だけ旧文言に戻り得た。
+      - 番号グリッド側は loading 表示でも、subtitle 側で「名簿がまだ設定されていません。先生に伝えてね。」が出る端末があった。
+    - `src/index.html`
+      - `getStudentSelectSubtitleText_()` / `updateStudentSelectScreenMessage_()` を追加。
+      - `studentEntryOptionsLoading || !studentEntryOptionsLoaded` の間は、shell 設定より優先して subtitle を `名簿を読み込み中です…` に固定。
+      - 読み込み完了後だけ、通常 subtitle または `studentRosterEmptyMessage` を出すよう整理。
+      - 番号グリッド空表示も、loading 完了後は `studentRosterEmptyMessage` を使うよう修正。
+    - 確認済み:
+      - `npm run build:portable`
+      - `portable/student.html` の script 構文確認
+    - deploy:
+      - 2026-07-15 に本番 Webアプリへ deploy 済み。
+      - 本番 deployment `AKfycbwo3TBXAkqLSx6XYcXxTI5m34DerRMHaB6X13dymilmU_wmc-Fn5F-2jkNofErLevVo7Q` を version `380` へ更新。
+      - `cdn/shell-config.json` と `onboarding/admin-app.js` の latest version も `380` へ同期。
       - `admin.config.json` がない環境のため、配布テンプレート・導入管理・provision 更新は deploy script 上でスキップ。
 
 ## Master GAS API v1

@@ -818,6 +818,22 @@ function setStudentText_(id, value){
   if(el && String(value||'').trim()) el.textContent=String(value||'').trim();
 }
 
+function getStudentSelectSubtitleText_(){
+  if(studentEntryOptionsLoading || !studentEntryOptionsLoaded){
+    return '名簿を読み込み中です…';
+  }
+  const hasStudents=Array.isArray(bootstrapStudentOptions.students) && bootstrapStudentOptions.students.length>0;
+  if(!hasStudents){
+    return getStudentShellLabel_('studentRosterEmptyMessage', '名簿がまだ設定されていません。先生に伝えてね。');
+  }
+  return getStudentShellLabel_('studentSelectSubtitle', 'きみのばんごうをタップしてね');
+}
+
+function updateStudentSelectScreenMessage_(){
+  const subtitle=document.getElementById('studentSelectSubtitle');
+  if(subtitle) subtitle.textContent=getStudentSelectSubtitleText_();
+}
+
 function formatStudentTemplate_(template, values){
   const text=String(template||'').trim();
   if(!text) return '';
@@ -833,7 +849,6 @@ function applyStudentShellState_(shell){
   const notice=state.noticeBanner||{};
   studentMaintenanceMode=maintenanceMode;
   setStudentText_('studentSelectTitle', labels.studentSelectTitle);
-  setStudentText_('studentSelectSubtitle', labels.studentSelectSubtitle);
   setStudentText_('resumeContinueBtn', labels.studentResumeStartLabel);
   setStudentText_('resumeChangeBtn', labels.studentResumeChangeLabel);
   setStudentText_('studentPeriodTitle', labels.studentPeriodTitle);
@@ -875,15 +890,17 @@ function applyStudentShellState_(shell){
   }else if(submitNote && /メンテナンス/.test(String(submitNote.textContent||''))){
     submitNote.textContent='';
   }
+  updateStudentSelectScreenMessage_();
 }
 
 function renderNumberButtons(students){
   const g=document.getElementById('numGrid');
   const list=(students&&students.length)?students:[];
+  updateStudentSelectScreenMessage_();
   if(!list.length){
     const emptyMessage=(studentEntryOptionsLoading || !studentEntryOptionsLoaded)
       ? '名簿を読み込み中です…'
-      : getStudentShellLabel_('studentRosterLoadingMessage', '名簿を読み込み中です…');
+      : getStudentShellLabel_('studentRosterEmptyMessage', '名簿がまだ設定されていません。先生に伝えてね。');
     g.innerHTML=`<div style="grid-column:1/-1;text-align:center;color:#78909C;font-size:14px;">${esc(emptyMessage)}</div>`;
     return;
   }
