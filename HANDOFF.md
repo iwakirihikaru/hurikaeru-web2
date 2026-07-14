@@ -45,7 +45,7 @@
 ## 現在の最新版
 
 - 2026-07-15 時点
-  - 本番 version `380`
+  - 本番 version `381`
   - repo管理 debug deployment version `354`
   - デバッグ昇格版 version `10`
   - 配布テンプレート version `64`
@@ -472,6 +472,32 @@
       - 2026-07-15 に本番 Webアプリへ deploy 済み。
       - 本番 deployment `AKfycbwo3TBXAkqLSx6XYcXxTI5m34DerRMHaB6X13dymilmU_wmc-Fn5F-2jkNofErLevVo7Q` を version `380` へ更新。
       - `cdn/shell-config.json` と `onboarding/admin-app.js` の latest version も `380` へ同期。
+      - `admin.config.json` がない環境のため、配布テンプレート・導入管理・provision 更新は deploy script 上でスキップ。
+  - 2026-07-15 追加前進 6
+    - 児童側・教師側の授業中データ取得を、低リスクな共通 snapshot 方式へ寄せた。
+    - `src/03_domain.js`
+      - `getLessonRuntimeSnapshot_()` を追加。
+      - unit / lesson / fields / reviewField / understandingField / roster / responses / responseMap / responseReadMeta を授業単位でまとめて取得し、短期 cache するようにした。
+    - `src/04_student.js`
+      - `buildStudentEntryClassSnapshot_()` と `getTimeline()` / `buildTimelinePayload_()` が `getLessonRuntimeSnapshot_()` を使うよう変更。
+      - 児童ページの番号押下後 snapshot と他者参照 timeline で、同じ授業データの再読込・再構築を減らした。
+    - `src/06_teacher.js`
+      - `buildLessonStatus_()` が同じ snapshot を使うよう変更。
+      - 教師 status 固有の下書き情報は従来どおり別取得し、返却 payload は維持。
+    - ねらい:
+      - 既存 API の返り値を変えずに、授業中によく使う児童 timeline / 教師 status の読み取りベースを揃える。
+      - 次段の差分取得や status cache 温めを入れやすくする。
+    - 確認済み:
+      - `node --check src/03_domain.js`
+      - `node --check src/04_student.js`
+      - `node --check src/06_teacher.js`
+      - `node scripts/build-teacher-legacy.js`
+      - `npm run build:portable`
+      - `portable/student.html` / `portable/teacher.html` の script 構文確認
+    - deploy:
+      - 2026-07-15 に本番 Webアプリへ deploy 済み。
+      - 本番 deployment `AKfycbwo3TBXAkqLSx6XYcXxTI5m34DerRMHaB6X13dymilmU_wmc-Fn5F-2jkNofErLevVo7Q` を version `381` へ更新。
+      - `cdn/shell-config.json` と `onboarding/admin-app.js` の latest version も `381` へ同期。
       - `admin.config.json` がない環境のため、配布テンプレート・導入管理・provision 更新は deploy script 上でスキップ。
 
 ## Master GAS API v1

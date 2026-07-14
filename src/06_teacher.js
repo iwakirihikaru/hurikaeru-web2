@@ -1197,22 +1197,23 @@ function repairMissingAggregateEntries() {
 function buildLessonStatus_(unitId, period) {
   const startedAt = Date.now();
   const timing = {};
-  const units = getAllUnits();
-  const unit  = units.find(u=>u.id==unitId);
-  timing.unitsLookupMs = Date.now() - startedAt;
-  const lessonStartedAt = Date.now();
-  const lesson = getOrCreateLesson_(unitId, period);
-  timing.lessonLookupMs = Date.now() - lessonStartedAt;
+  const snapshotStartedAt = Date.now();
+  const snapshot = getLessonRuntimeSnapshot_(unitId, period) || {};
+  timing.snapshotMs = Date.now() - snapshotStartedAt;
+  const unit = snapshot.unit || null;
+  const lesson = snapshot.lesson || getOrCreateLesson_(unitId, period);
+  timing.unitsLookupMs = timing.snapshotMs;
+  timing.lessonLookupMs = timing.snapshotMs;
   const fieldStartedAt = Date.now();
-  const lessonConfig = { fields: getLessonFields_(lesson, unit) };
-  const reviewField = getReviewField_(lessonConfig);
-  const understandingField = getUnderstandingField_(lessonConfig);
-  const fields = getEnabledFields_(lessonConfig);
+  const reviewField = snapshot.reviewField || null;
+  const understandingField = snapshot.understandingField || null;
+  const fields = Array.isArray(snapshot.fields) ? snapshot.fields : [];
   const statusFieldCount = fields.filter(field => String(field?.key || '') !== String(understandingField?.key || '')).length;
   timing.fieldSetupMs = Date.now() - fieldStartedAt;
   const responseStartedAt = Date.now();
-  const responses = listResponsesForLesson_(lesson.lessonId).filter(response => !isAiLoadTestResponse_(response));
-  const responseReadMeta = summarizeResponseReadForLesson_(lesson.lessonId, responses);
+  const responses = (Array.isArray(snapshot.responses) ? snapshot.responses : [])
+    .filter(response => !isAiLoadTestResponse_(response));
+  const responseReadMeta = snapshot.responseReadMeta || summarizeResponseReadForLesson_(lesson.lessonId, responses);
   timing.responsesMs = Date.now() - responseStartedAt;
   const responseMap = {};
   const draftMap = {};
@@ -1227,7 +1228,7 @@ function buildLessonStatus_(unitId, period) {
   });
   const teacherAiEnabled = isTeacherAiEnabled_();
   const rosterStartedAt = Date.now();
-  const roster = getRosterEntries_();
+  const roster = Array.isArray(snapshot.roster) ? snapshot.roster : getRosterEntries_();
   timing.rosterMs = Date.now() - rosterStartedAt;
   const buildStartedAt = Date.now();
   const students = roster.map(student => {

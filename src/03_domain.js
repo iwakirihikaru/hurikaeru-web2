@@ -564,6 +564,64 @@ function getResponseByIdCacheKey_(responseId) {
   return `response_by_id_v1:${readDomainCacheVersion_('responses')}:${String(responseId || '').trim()}`;
 }
 
+function getLessonRuntimeSnapshotCacheKey_(unitId, period) {
+  return `lesson_runtime_snapshot_v1:${readDomainCacheVersion_('responses')}:${readDomainCacheVersion_('students')}:${readDomainCacheVersion_('lessons')}:${String(unitId || '').trim()}:${String(period || '').trim()}`;
+}
+
+function buildResponseMapByStudentNumber_(responses) {
+  const map = {};
+  (Array.isArray(responses) ? responses : []).forEach(response => {
+    const key = String(response && response.studentNumber || '').trim();
+    if (key) map[key] = response;
+  });
+  return map;
+}
+
+function getLessonRuntimeSnapshot_(unitId, period, options) {
+  const opts = options || {};
+  const normalizedUnitId = String(unitId || '').trim();
+  const normalizedPeriod = Number(period || 0);
+  if (!normalizedUnitId || normalizedPeriod <= 0) return null;
+  const cacheKey = getLessonRuntimeSnapshotCacheKey_(normalizedUnitId, normalizedPeriod);
+  if (opts.cache !== false) {
+    const cached = getCachedJson_(cacheKey);
+    if (cached && typeof cached === 'object') return cached;
+  }
+  const units = getAllUnits();
+  const unit = units.find(item => String(item.id || '') === normalizedUnitId) || null;
+  const lesson = opts.createLesson === false
+    ? getLessonRecordByUnitPeriod_(normalizedUnitId, normalizedPeriod)
+    : getOrCreateLesson_(normalizedUnitId, normalizedPeriod);
+  const lessonConfig = { fields: lesson ? getLessonFields_(lesson, unit) : (unit && unit.fields || []) };
+  const fields = getEnabledFields_(lessonConfig);
+  const reviewField = getReviewField_(lessonConfig);
+  const understandingField = getUnderstandingField_(lessonConfig);
+  const responses = lesson ? listResponsesForLesson_(lesson.lessonId) : [];
+  const responseReadMeta = lesson ? summarizeResponseReadForLesson_(lesson.lessonId, responses) : {
+    scope: 'lesson',
+    lessonId: '',
+    preferMaster: true,
+    masterCount: 0,
+    mergedCount: 0,
+    mode: 'master_only',
+  };
+  const roster = getRosterEntries_();
+  const snapshot = {
+    unit,
+    lesson,
+    period: normalizedPeriod,
+    fields,
+    reviewField,
+    understandingField,
+    roster,
+    responses,
+    responseMapByStudentNumber: buildResponseMapByStudentNumber_(responses),
+    responseReadMeta,
+    serverNow: nowIso_(),
+  };
+  return opts.cache === false ? snapshot : putCachedJson_(cacheKey, snapshot, 20);
+}
+
 function readCachedLessonResponses_(lessonId) {
   if (!lessonId) return null;
   const cached = getCachedJson_(getLessonResponsesCacheKey_(lessonId));

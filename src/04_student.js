@@ -49,23 +49,13 @@ function buildStudentEntryClassSnapshot_(students, featureFlags, shell) {
   const period = Number(active && active.period || 0);
   if (!unit || period <= 0) return null;
 
-  const enabledFields = getEnabledFields_({ fields: active.fields || unit.fields || [] });
-  const lesson = getLessonRecordByUnitPeriod_(unit.id, period);
-  const responses = lesson ? listResponsesForLesson_(lesson.lessonId) : [];
-  const responseReadMeta = lesson ? summarizeResponseReadForLesson_(lesson.lessonId, responses) : {
-    scope: 'lesson',
-    lessonId: '',
-    masterCount: 0,
-    mergedCount: 0,
-    preferMaster: true,
-    mode: 'master_only',
-  };
-  const responseMap = {};
-  responses.forEach(response => {
-    responseMap[String(response.studentNumber || '')] = response;
-  });
+  const snapshot = getLessonRuntimeSnapshot_(unit.id, period, { createLesson: false }) || {};
+  const enabledFields = Array.isArray(snapshot.fields) && snapshot.fields.length
+    ? snapshot.fields
+    : getEnabledFields_({ fields: active.fields || unit.fields || [] });
+  const responseMap = snapshot.responseMapByStudentNumber || {};
 
-  const roster = Array.isArray(students) ? students : getRosterEntries_();
+  const roster = Array.isArray(students) ? students : (snapshot.roster || getRosterEntries_());
   const rows = roster.map(student => buildStudentSnapshotTimelineRow_(student, enabledFields, responseMap));
   const statesByNumber = {};
   rows.forEach(row => {
@@ -87,7 +77,7 @@ function buildStudentEntryClassSnapshot_(students, featureFlags, shell) {
     studentAiAutoSubmitEnabled: Boolean(featureFlags && featureFlags.studentAiAutoSubmitEnabled),
     shell: shell || getLiveTenantMaintenanceState(),
     fetchedAt: nowIso_(),
-    responseReadMeta,
+    responseReadMeta: snapshot.responseReadMeta || null,
     statesByNumber,
     timeline: {
       rows,
@@ -95,8 +85,8 @@ function buildStudentEntryClassSnapshot_(students, featureFlags, shell) {
       studentAiEnabled: Boolean(featureFlags && featureFlags.studentAiEnabled),
       studentAiAutoSubmitEnabled: Boolean(featureFlags && featureFlags.studentAiAutoSubmitEnabled),
       shell: shell || getLiveTenantMaintenanceState(),
-      responseReadMeta,
-      serverNow: nowIso_(),
+      responseReadMeta: snapshot.responseReadMeta || null,
+      serverNow: snapshot.serverNow || nowIso_(),
     },
   };
 }
@@ -169,11 +159,11 @@ function getEnabledFields_(unit) {
 
 function getTimeline(unitId, period) {
   const active = getActiveSetting();
-  const unit = getAllUnits().find(u => String(u.id) === String(unitId)) || null;
-  const lesson = getOrCreateLesson_(unitId, period);
-  const fields = getEnabledFields_({ fields: getLessonFields_(lesson, unit) });
+  const snapshot = getLessonRuntimeSnapshot_(unitId, period) || {};
+  const unit = snapshot.unit || getAllUnits().find(u => String(u.id) === String(unitId)) || null;
+  const fields = Array.isArray(snapshot.fields) ? snapshot.fields : [];
   return {
-    ...buildTimelinePayload_(unitId, period, unit, fields, active.timelineFieldKey || '', isStudentAiEnabled_()),
+    ...buildTimelinePayload_(unitId, period, unit, fields, active.timelineFieldKey || '', isStudentAiEnabled_(), snapshot),
     shell: getLiveTenantMaintenanceState(),
   };
 }
@@ -374,15 +364,10 @@ function buildStudentState_(unit, period, num, studentName, enabledFields, optio
   };
 }
 
-function buildTimelinePayload_(unitId, period, unit, fields, teacherTimelineFieldKey, studentAiEnabled) {
-  const lesson = getOrCreateLesson_(unitId, period);
-  const responses = listResponsesForLesson_(lesson.lessonId);
-  const responseReadMeta = summarizeResponseReadForLesson_(lesson.lessonId, responses);
-  const responseMap = {};
-  responses.forEach(row => {
-    responseMap[String(row.studentNumber)] = row;
-  });
-  const rows = getRosterEntries_().map(student => {
+function buildTimelinePayload_(unitId, period, unit, fields, teacherTimelineFieldKey, studentAiEnabled, snapshot) {
+  const runtime = snapshot || getLessonRuntimeSnapshot_(unitId, period) || {};
+  const responseMap = runtime.responseMapByStudentNumber || {};
+  const rows = (runtime.roster || getRosterEntries_()).map(student => {
     const response = responseMap[String(student.number)];
     return {
       num: student.number,
@@ -401,8 +386,8 @@ function buildTimelinePayload_(unitId, period, unit, fields, teacherTimelineFiel
   });
   return {
     rows,
-    serverNow: nowIso_(),
-    responseReadMeta,
+    serverNow: runtime.serverNow || nowIso_(),
+    responseReadMeta: runtime.responseReadMeta || null,
     teacherTimelineFieldKey: teacherTimelineFieldKey || '',
     fields: fields.map(field => ({ key: field.key || '', label: field.label || '' })),
     studentAiEnabled: studentAiEnabled === true,
