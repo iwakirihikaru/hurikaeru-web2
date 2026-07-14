@@ -160,6 +160,13 @@ function showToast(message, options) {
 window.alert = function (message) {
     showToast(message);
 };
+document.addEventListener('click', function (event) {
+    var button = event.target && event.target.closest ? event.target.closest('button') : null;
+    if (!button || button.disabled)
+        return;
+    button.classList.add('is-pressed');
+    window.setTimeout(function () { return button.classList.remove('is-pressed'); }, 140);
+});
 // 編集中の項目リスト（単元フォーム用）
 var editingFields = [];
 var subjectEditingFields = [];
@@ -218,19 +225,45 @@ function switchTab(name, el) {
 function loadInit() {
     var requestEpoch = teacherDataEpoch;
     applyEmbeddedTeacherBootstrap_();
-    google.script.run
-        .withSuccessHandler(function (d) {
-        if (requestEpoch !== teacherDataEpoch)
+    var statusLoaded = false;
+    var loadTeacherInit = function () {
+        google.script.run
+            .withSuccessHandler(function (d) {
+            if (requestEpoch !== teacherDataEpoch)
+                return;
+            applyTeacherInitData(d, { includeRoster: true, renderUnitList: true, schedulePreload: true, source: 'teacherInit' });
+            scheduleTeacherUnitProgressRefresh_(d);
+        })
+            .withFailureHandler(function (err) {
+            if (requestEpoch !== teacherDataEpoch)
+                return;
+            handleTeacherInitFailure_(err, 'teacherInit');
+        })
+            .teacherInit();
+    };
+    var loadTeacherStatusFirst = function () {
+        if (statusLoaded)
             return;
-        applyTeacherInitData(d, { includeRoster: true, renderUnitList: true, schedulePreload: true, source: 'teacherInit' });
-        scheduleTeacherUnitProgressRefresh_(d);
-    })
-        .withFailureHandler(function (err) {
-        if (requestEpoch !== teacherDataEpoch)
-            return;
-        handleTeacherInitFailure_(err, 'teacherInit');
-    })
-        .teacherInit();
+        statusLoaded = true;
+        google.script.run
+            .withSuccessHandler(function (d) {
+            if (requestEpoch !== teacherDataEpoch)
+                return;
+            applyTeacherInitData(d, { includeRoster: false, renderUnitList: false, schedulePreload: false, source: 'teacherStatusSnapshot' });
+            if (d && d.status) {
+                renderStatus(d.status);
+            }
+            loadTeacherInit();
+        })
+            .withFailureHandler(function (err) {
+            if (requestEpoch !== teacherDataEpoch)
+                return;
+            handleTeacherInitFailure_(err, 'teacherStatusSnapshot');
+            loadTeacherInit();
+        })
+            .teacherStatusSnapshot();
+    };
+    loadTeacherStatusFirst();
 }
 function loadCurriculumTab() {
     loadInit();
@@ -477,10 +510,16 @@ function scheduleTeacherPreload() {
     var runner = function () {
         ensureRosterPreload();
         setTimeout(function () {
+            if (typeof scheduleTeacherCurrentLessonAggregatePreload === 'function') {
+                scheduleTeacherCurrentLessonAggregatePreload('teacher-preload');
+            }
             ensureEditorPreload();
             ensurePromptPreload();
             preloadTeacherHelpInfo();
-            if (typeof scheduleAggregateBackgroundPreload === 'function') {
+            if (typeof scheduleTeacherRecordsDataPreload === 'function') {
+                scheduleTeacherRecordsDataPreload('teacher-preload');
+            }
+            if (typeof scheduleTeacherCurrentLessonAggregatePreload !== 'function' && typeof scheduleAggregateBackgroundPreload === 'function') {
                 scheduleAggregateBackgroundPreload('teacher-preload');
             }
         }, 900);

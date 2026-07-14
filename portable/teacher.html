@@ -455,9 +455,12 @@ input.inp,select.inp,textarea.inp{
 textarea.inp{resize:vertical;min-height:70px;}
 .btn-primary{padding:9px 18px;border:none;border-radius:8px;
   background:var(--green);color:#fff;font-size:13px;font-weight:bold;cursor:pointer;font-family:var(--font);}
-.btn-primary[disabled],.btn-update[disabled],.btn-cancel[disabled],.btn-jump-add[disabled]{
+.btn-primary[disabled],.btn-update[disabled],.btn-cancel[disabled],.btn-jump-add[disabled],button[disabled]{
   opacity:.65;cursor:wait;
 }
+.btn-del-confirm{padding:8px 18px;border:none;border-radius:8px;background:var(--red);color:#fff;font-size:13px;font-weight:bold;cursor:pointer;font-family:var(--font);}
+button{transition:transform .08s ease,filter .12s ease,opacity .12s ease;}
+button:not([disabled]):active,button.is-pressed{transform:translateY(1px);filter:brightness(.96);}
 .btn-update{padding:9px 18px;border:none;border-radius:8px;
   background:var(--sky);color:#fff;font-size:13px;font-weight:bold;cursor:pointer;font-family:var(--font);}
 .btn-cancel{padding:7px 16px;border:1.5px solid #CFD8DC;border-radius:7px;
@@ -870,6 +873,8 @@ textarea.inp{resize:vertical;min-height:70px;}
                 <option value="text">自由記述</option>
                 <option value="select">選択肢</option>
                 <option value="radio">ラジオ</option>
+                <option value="student_select">児童名簿（1人）</option>
+                <option value="student_multi">児童名簿（複数）</option>
                 <option value="review">ふりかえり</option>
               </select>
               <input class="inp" id="cfEmoji" placeholder="絵文字" value="🆕">
@@ -913,6 +918,8 @@ textarea.inp{resize:vertical;min-height:70px;}
               <option value="text">自由記述</option>
               <option value="select">選択肢</option>
               <option value="radio">ラジオ</option>
+              <option value="student_select">児童名簿（1人）</option>
+              <option value="student_multi">児童名簿（複数）</option>
               <option value="review">ふりかえり</option>
             </select>
             <input class="inp" id="sfEmoji" placeholder="絵文字" value="🆕">
@@ -1315,8 +1322,8 @@ textarea.inp{resize:vertical;min-height:70px;}
     <h3>🗑️ 削除しますか？</h3>
     <p id="delMsg" style="font-size:13px;color:#555;"></p>
     <div class="modal-btns">
-      <button class="btn-cancel" onclick="closeModal()">キャンセル</button>
-      <button style="padding:8px 18px;border:none;border-radius:8px;background:var(--red);color:#fff;font-size:13px;font-weight:bold;cursor:pointer;" onclick="confirmDelete()">削除する</button>
+      <button class="btn-cancel" id="delCancelBtn" onclick="closeModal()">キャンセル</button>
+      <button class="btn-del-confirm" id="delConfirmBtn" onclick="confirmDelete()">削除する</button>
     </div>
   </div>
 </div>
@@ -1658,6 +1665,13 @@ function showToast(message, options) {
 window.alert = function (message) {
     showToast(message);
 };
+document.addEventListener('click', function (event) {
+    var button = event.target && event.target.closest ? event.target.closest('button') : null;
+    if (!button || button.disabled)
+        return;
+    button.classList.add('is-pressed');
+    window.setTimeout(function () { return button.classList.remove('is-pressed'); }, 140);
+});
 // 編集中の項目リスト（単元フォーム用）
 var editingFields = [];
 var subjectEditingFields = [];
@@ -1716,19 +1730,45 @@ function switchTab(name, el) {
 function loadInit() {
     var requestEpoch = teacherDataEpoch;
     applyEmbeddedTeacherBootstrap_();
-    google.script.run
-        .withSuccessHandler(function (d) {
-        if (requestEpoch !== teacherDataEpoch)
+    var statusLoaded = false;
+    var loadTeacherInit = function () {
+        google.script.run
+            .withSuccessHandler(function (d) {
+            if (requestEpoch !== teacherDataEpoch)
+                return;
+            applyTeacherInitData(d, { includeRoster: true, renderUnitList: true, schedulePreload: true, source: 'teacherInit' });
+            scheduleTeacherUnitProgressRefresh_(d);
+        })
+            .withFailureHandler(function (err) {
+            if (requestEpoch !== teacherDataEpoch)
+                return;
+            handleTeacherInitFailure_(err, 'teacherInit');
+        })
+            .teacherInit();
+    };
+    var loadTeacherStatusFirst = function () {
+        if (statusLoaded)
             return;
-        applyTeacherInitData(d, { includeRoster: true, renderUnitList: true, schedulePreload: true, source: 'teacherInit' });
-        scheduleTeacherUnitProgressRefresh_(d);
-    })
-        .withFailureHandler(function (err) {
-        if (requestEpoch !== teacherDataEpoch)
-            return;
-        handleTeacherInitFailure_(err, 'teacherInit');
-    })
-        .teacherInit();
+        statusLoaded = true;
+        google.script.run
+            .withSuccessHandler(function (d) {
+            if (requestEpoch !== teacherDataEpoch)
+                return;
+            applyTeacherInitData(d, { includeRoster: false, renderUnitList: false, schedulePreload: false, source: 'teacherStatusSnapshot' });
+            if (d && d.status) {
+                renderStatus(d.status);
+            }
+            loadTeacherInit();
+        })
+            .withFailureHandler(function (err) {
+            if (requestEpoch !== teacherDataEpoch)
+                return;
+            handleTeacherInitFailure_(err, 'teacherStatusSnapshot');
+            loadTeacherInit();
+        })
+            .teacherStatusSnapshot();
+    };
+    loadTeacherStatusFirst();
 }
 function loadCurriculumTab() {
     loadInit();
@@ -1975,10 +2015,16 @@ function scheduleTeacherPreload() {
     var runner = function () {
         ensureRosterPreload();
         setTimeout(function () {
+            if (typeof scheduleTeacherCurrentLessonAggregatePreload === 'function') {
+                scheduleTeacherCurrentLessonAggregatePreload('teacher-preload');
+            }
             ensureEditorPreload();
             ensurePromptPreload();
             preloadTeacherHelpInfo();
-            if (typeof scheduleAggregateBackgroundPreload === 'function') {
+            if (typeof scheduleTeacherRecordsDataPreload === 'function') {
+                scheduleTeacherRecordsDataPreload('teacher-preload');
+            }
+            if (typeof scheduleTeacherCurrentLessonAggregatePreload !== 'function' && typeof scheduleAggregateBackgroundPreload === 'function') {
                 scheduleAggregateBackgroundPreload('teacher-preload');
             }
         }, 900);
@@ -3880,12 +3926,16 @@ function saveTeacherFeedbackMedalFromRow(select) {
     var row = select.closest('.status-draft-box');
     if (isTeacherDraftRowBusy_(row))
         return;
+    setTeacherDraftRowBusy_(responseId, true, 'メダル保存中');
     google.script.run
         .withSuccessHandler(function () {
         showToast('メダルを保存しました');
         loadStatus();
     })
-        .withFailureHandler(function (err) { showToast(err && err.message || 'メダル保存に失敗しました'); })
+        .withFailureHandler(function (err) {
+        setTeacherDraftRowBusy_(responseId, false);
+        showToast(err && err.message || 'メダル保存に失敗しました');
+    })
         .saveTeacherFeedbackMedal(responseId, select.value || '');
 }
 function returnTeacherFeedbackDraftForRow(responseId) {
@@ -3895,16 +3945,21 @@ function returnTeacherFeedbackDraftForRow(responseId) {
     if (isTeacherDraftRowBusy_(row))
         return;
     flushTeacherFeedbackDrafts_([responseId], function () {
+        setTeacherDraftRowBusy_(responseId, true, '返却中');
         google.script.run
             .withSuccessHandler(function (res) {
             if (!(res && res.ok)) {
+                setTeacherDraftRowBusy_(responseId, false);
                 showToast(res && res.error || '返却に失敗しました');
                 return;
             }
             showToast('返却しました');
             loadStatus();
         })
-            .withFailureHandler(function (err) { showToast(err && err.message || '返却に失敗しました'); })
+            .withFailureHandler(function (err) {
+            setTeacherDraftRowBusy_(responseId, false);
+            showToast(err && err.message || '返却に失敗しました');
+        })
             .returnTeacherFeedbackDrafts(activeUnitId, activePeriod, [responseId]);
     }, function (err) {
         showToast(err && err.message || '返却前の保存に失敗しました');
@@ -3917,9 +3972,13 @@ function clearTeacherFeedbackDraftForRow(responseId) {
     if (isTeacherDraftRowBusy_(row))
         return;
     delete teacherDraftLocalState[String(responseId || '').trim()];
+    setTeacherDraftRowBusy_(responseId, true, '下書き削除中');
     google.script.run
         .withSuccessHandler(function () { showToast('下書きを消しました'); loadStatus(); })
-        .withFailureHandler(function (err) { showToast(err && err.message || '下書きクリアに失敗しました'); })
+        .withFailureHandler(function (err) {
+        setTeacherDraftRowBusy_(responseId, false);
+        showToast(err && err.message || '下書きクリアに失敗しました');
+    })
         .clearTeacherFeedbackDrafts(activeUnitId, activePeriod, [responseId]);
 }
 function formatStatusTimestamp(value) {
@@ -4195,7 +4254,15 @@ function renderFieldList() {
     list.innerHTML = editingFields.map(function (f, i) { return "\n    <div class=\"field-item ".concat(f.enabled !== false ? 'enabled' : '', "\" data-i=\"").concat(i, "\">\n      <span class=\"drag-handle\" title=\"\u4E26\u3073\u66FF\u3048\u30CF\u30F3\u30C9\u30EB\">\u283F</span>\n      <span class=\"f-emoji\">").concat(f.emoji || '📌', "</span>\n      <div style=\"flex:1;min-width:0;\">\n        <div class=\"f-label\">").concat(esc(f.label), "</div>\n        <div class=\"f-type\">").concat(typeLabel(f.type)).concat(formatFieldCategorySuffix(f), "</div>\n      </div>\n      <div class=\"field-order-actions\">\n        <button class=\"btn-move\" type=\"button\" onclick=\"moveField(").concat(i, ",-1)\" ").concat(i === 0 ? 'disabled' : '', " title=\"\u4E0A\u3078\">\u25B2</button>\n        <button class=\"btn-move\" type=\"button\" onclick=\"moveField(").concat(i, ",1)\" ").concat(i === editingFields.length - 1 ? 'disabled' : '', " title=\"\u4E0B\u3078\">\u25BC</button>\n      </div>\n      <button class=\"btn-edit-field\" type=\"button\" onclick=\"startEditCustomField(").concat(i, ")\">\u7DE8\u96C6</button>\n      <button class=\"toggle-btn ").concat(f.enabled !== false ? 'toggle-on' : 'toggle-off', "\"\n        onclick=\"toggleField(").concat(i, ")\">\n        ").concat(f.enabled !== false ? 'ON' : 'OFF', "</button>\n      <button class=\"btn-remove\" onclick=\"removeField(").concat(i, ")\">\u2715</button>\n    </div>"); }).join('');
 }
 function typeLabel(t) {
-    return { text: '自由記述', select: '選択肢', radio: 'ラジオ', review: 'ふりかえり（ヒント付き）', number: '数値' }[t] || t;
+    return {
+        text: '自由記述',
+        select: '選択肢',
+        radio: 'ラジオ',
+        review: 'ふりかえり（ヒント付き）',
+        number: '数値',
+        student_select: '児童名簿（1人）',
+        student_multi: '児童名簿（複数）',
+    }[t] || t;
 }
 function toggleField(i) {
     editingFields[i].enabled = !editingFields[i].enabled;
@@ -4250,7 +4317,8 @@ function createCustomFieldFromInputs(prefix, existingFields, options) {
     var label = document.getElementById(prefix + 'Label').value.trim();
     var type = document.getElementById(prefix + 'Type').value;
     var emoji = document.getElementById(prefix + 'Emoji').value.trim() || '🆕';
-    var fieldOptions = parseFieldOptionsInput(document.getElementById(prefix + 'Options').value);
+    var isRosterChoice = type === 'student_select' || type === 'student_multi';
+    var fieldOptions = isRosterChoice ? '' : parseFieldOptionsInput(document.getElementById(prefix + 'Options').value);
     var placeholder = document.getElementById(prefix + 'Placeholder').value.trim();
     var categories = getCheckedCategories(prefix);
     if (!label) {
@@ -4273,7 +4341,7 @@ function createCustomFieldFromInputs(prefix, existingFields, options) {
         label: label,
         emoji: emoji,
         type: type,
-        placeholder: placeholder,
+        placeholder: placeholder || (isRosterChoice ? '名簿からえらんでね' : ''),
         options: fieldOptions,
         hints: type === 'review' ? 'がんばったこと,やり方,わかったこと,次にしたいこと' : '',
         categories: categories,
@@ -4541,11 +4609,40 @@ function applySavedUnitLocally_(savedUnit) {
         allUnits[idx] = savedUnit;
     else
         allUnits.unshift(savedUnit);
-    if (preloadCache.init) {
-        preloadCache.init.units = allUnits.slice();
-        persistTeacherPreloadCache_();
-    }
+    if (preloadCache.aggregate)
+        preloadCache.aggregate = null;
+    if (preloadCache.status)
+        clearTeacherStatusPreloadCache_(true);
+    persistTeacherPreloadCache_();
     refreshUnitUiAfterMutation_();
+}
+function invalidateUnitRelatedClientState_(unitId) {
+    var normalized = String(unitId || '').trim();
+    if (normalized && unitProgressByUnitId && typeof unitProgressByUnitId === 'object') {
+        delete unitProgressByUnitId[normalized];
+    }
+    if (preloadCache.aggregate)
+        preloadCache.aggregate = null;
+    if (preloadCache.portfolio)
+        preloadCache.portfolio = null;
+    if (String(activeUnitId || '') === normalized) {
+        activeUnitId = null;
+        activePeriod = 0;
+        latestStatusRows = [];
+        latestStatusMeta = {};
+        teacherDraftLocalState = {};
+        clearTeacherStatusPreloadCache_(true);
+    }
+    else if (preloadCache.status) {
+        clearTeacherStatusPreloadCache_(true);
+    }
+    if (Array.isArray(allAggData) && normalized) {
+        allAggData = allAggData.filter(function (row) { return String(row.unitId || '') !== normalized; });
+    }
+    if (typeof allAggMeta === 'object' && allAggMeta) {
+        allAggMeta = { scope: 'unknown', fetchedAt: 0, unitId: '', subject: '' };
+    }
+    persistTeacherPreloadCache_();
 }
 function removeUnitLocally_(unitId) {
     var normalized = String(unitId || '').trim();
@@ -4556,10 +4653,7 @@ function removeUnitLocally_(unitId) {
     if (!removed)
         return false;
     allUnits = nextUnits;
-    if (preloadCache.init) {
-        preloadCache.init.units = allUnits.slice();
-        persistTeacherPreloadCache_();
-    }
+    invalidateUnitRelatedClientState_(normalized);
     if (String(document.getElementById('editUnitId').value || '') === normalized) {
         cancelEdit();
     }
@@ -4569,6 +4663,8 @@ function removeUnitLocally_(unitId) {
 function refreshUnitUiAfterMutation_() {
     renderUnitList();
     populateUnitSelects();
+    if (typeof populateGradingSelects === 'function')
+        populateGradingSelects();
     var startUnit = document.getElementById('startUnit');
     if (startUnit) {
         var currentValue_1 = String(startUnit.value || '').trim();
@@ -4684,17 +4780,33 @@ function saveUnit(startAfterSave) {
 }
 function askDelete(id, name) {
     delTargetId = id;
+    setDeleteModalBusy_(false);
     document.getElementById('delMsg').textContent = "\u300C".concat(name, "\u300D\u3092\u524A\u9664\u3057\u307E\u3059\u3002\u6388\u696D\u30C7\u30FC\u30BF\u306F\u6B8B\u308A\u307E\u3059\u3002");
     document.getElementById('delModal').classList.add('show');
+}
+function setDeleteModalBusy_(busy) {
+    var confirmBtn = document.getElementById('delConfirmBtn');
+    var cancelBtn = document.getElementById('delCancelBtn');
+    if (confirmBtn) {
+        if (!confirmBtn.dataset.defaultLabel)
+            confirmBtn.dataset.defaultLabel = confirmBtn.textContent || '削除する';
+        confirmBtn.disabled = Boolean(busy);
+        confirmBtn.textContent = busy ? '削除中…' : confirmBtn.dataset.defaultLabel;
+    }
+    if (cancelBtn)
+        cancelBtn.disabled = Boolean(busy);
 }
 function confirmDelete() {
     var targetId = String(delTargetId || '').trim();
     if (!targetId)
         return;
+    setDeleteModalBusy_(true);
+    setUnitSaveMeta('単元を削除しています…', 'busy');
     google.script.run
         .withSuccessHandler(function (res) {
         if (!(res && res.ok)) {
             var msg = '単元の削除に失敗しました。';
+            setDeleteModalBusy_(false);
             setUnitSaveMeta(msg, 'error');
             showToast(msg);
             return;
@@ -4708,12 +4820,16 @@ function confirmDelete() {
     })
         .withFailureHandler(function (err) {
         var msg = err && err.message || '単元の削除に失敗しました。';
+        setDeleteModalBusy_(false);
         setUnitSaveMeta(msg, 'error');
         showToast(msg);
     })
         .deleteUnit(targetId);
 }
-function closeModal() { document.getElementById('delModal').classList.remove('show'); }
+function closeModal() {
+    setDeleteModalBusy_(false);
+    document.getElementById('delModal').classList.remove('show');
+}
 </script>
 
 <script>
@@ -4905,7 +5021,15 @@ function removeSubjectCustomField(index) {
     renderSubjectFieldEditor(currentSubject);
 }
 function typeLabel(t) {
-    return { text: '自由記述', select: '選択肢', radio: 'ラジオ', review: 'ふりかえり', number: '数値' }[t] || t;
+    return {
+        text: '自由記述',
+        select: '選択肢',
+        radio: 'ラジオ',
+        review: 'ふりかえり',
+        number: '数値',
+        student_select: '児童名簿（1人）',
+        student_multi: '児童名簿（複数）',
+    }[t] || t;
 }
 // =====================================
 //  プロンプト
@@ -5222,6 +5346,27 @@ function scheduleAggregateBackgroundPreload(reason) {
         setTimeout(run, 4500);
     }
 }
+function scheduleTeacherCurrentLessonAggregatePreload(reason) {
+    var scope = buildTeacherCurrentLessonAggregateScope_();
+    if (!scope) {
+        scheduleAggregateBackgroundPreload(reason || 'teacher-preload');
+        return false;
+    }
+    if (hasFreshAggregateScopeFor_(scope)) {
+        scheduleAggregateBackgroundPreload(reason || 'teacher-preload-fresh');
+        return false;
+    }
+    var started = requestAggregateScope_(scope, {
+        onParseError: function () { },
+        onError: function () { },
+        onFailure: function () { },
+    });
+    if (!started) {
+        scheduleAggregateBackgroundPreload(reason || 'teacher-preload-busy');
+        return false;
+    }
+    return true;
+}
 function ensureAggregateBackgroundPreload_(reason) {
     if (readAggregatePreloadCacheEntry_())
         return false;
@@ -5240,6 +5385,7 @@ function ensureAggregateBackgroundPreload_(reason) {
         onSuccess: function (rows) {
             aggregateBackgroundPreloadInFlight = false;
             writeAggregatePreloadCache_(rows);
+            preloadPortfolioFromAggregate_(reason || 'aggregate-background-success');
             if (!Array.isArray(rows) || !rows.length)
                 return;
             if (shouldRenderAggregatePreloadResult_() && !hasFreshAggregateData_()) {
@@ -5248,6 +5394,52 @@ function ensureAggregateBackgroundPreload_(reason) {
         },
     });
     return true;
+}
+function scheduleTeacherRecordsDataPreload(reason) {
+    ensureReportTabInitData_({
+        onSuccess: function () { },
+        onFailure: function () { },
+    });
+    scheduleAggregateBackgroundPreload(reason || 'records-preload');
+    schedulePortfolioBackgroundPreload_(reason || 'records-preload');
+}
+function schedulePortfolioBackgroundPreload_(reason) {
+    var run = function () { return preloadPortfolioFromAggregate_(reason || 'idle'); };
+    if (typeof requestIdleCallback === 'function') {
+        requestIdleCallback(run, { timeout: 9000 });
+    }
+    else {
+        setTimeout(run, 6500);
+    }
+}
+function preloadPortfolioFromAggregate_(reason) {
+    if (!Array.isArray(rosterEntries) || !rosterEntries.length)
+        return false;
+    var entry = readAggregatePreloadCacheEntry_();
+    var rows = Array.isArray(allAggData) && allAggData.length
+        ? allAggData
+        : (entry && Array.isArray(entry.rows) ? entry.rows : []);
+    if (!rows.length) {
+        scheduleAggregateBackgroundPreload(reason || 'portfolio-waiting-aggregate');
+        return false;
+    }
+    var firstStudent = rosterEntries.find(function (row) { return String(row && row.number || '').trim(); });
+    if (!firstStudent)
+        return false;
+    var studentNumber = String(firstStudent.number || '').trim();
+    var currentUnitId = String(activeUnitId || '').trim();
+    writePortfolioCache_(studentNumber, '', buildPortfolioRowsFromAggregate_(rows, studentNumber, ''));
+    if (currentUnitId) {
+        writePortfolioCache_(studentNumber, currentUnitId, buildPortfolioRowsFromAggregate_(rows, studentNumber, currentUnitId));
+    }
+    return true;
+}
+function buildTeacherCurrentLessonAggregateScope_() {
+    var unitId = String(activeUnitId || '').trim();
+    var period = Number(activePeriod || 0);
+    if (!unitId || period <= 0)
+        return null;
+    return { unitId: unitId };
 }
 function isAggregateRecordPaneActive_() {
     var pane = document.getElementById('record-pane-aggregate');

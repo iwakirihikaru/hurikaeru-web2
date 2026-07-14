@@ -45,7 +45,7 @@
 ## 現在の最新版
 
 - 2026-07-14 時点
-  - 本番 version `361`
+  - 本番 version `368`
   - repo管理 debug deployment version `354`
   - デバッグ昇格版 version `10`
   - 配布テンプレート version `64`
@@ -200,17 +200,73 @@
         - 2026-07-14 に本番 Webアプリへ deploy 済み。
         - 本番 deployment `AKfycbwo3TBXAkqLSx6XYcXxTI5m34DerRMHaB6X13dymilmU_wmc-Fn5F-2jkNofErLevVo7Q` を version `361` へ更新。
         - `admin.config.json` がない環境のため、導入管理 Webアプリ自体の再デプロイは引き続きスキップ。
-  - まだ残る主な検討点
-    - `src/07_portable_rpc.js` の `rpc` 互換受理をどこまで縮められるか。
-    - `scripts/build-static-port.ps1` を残置するか、運用上 retire できるか。
-    - `teacher_script_*_legacy.html` / `build-teacher-legacy.js` を改名テーマに切るか現状維持にするか。
-    - 薄いGAS依存をどこまで固定API化で減らすか。
+    - まだ残る主な検討点
+      - `src/07_portable_rpc.js` の `rpc` 互換受理をどこまで縮められるか。
+      - `scripts/build-static-port.ps1` を残置するか、運用上 retire できるか。
+      - `teacher_script_*_legacy.html` / `build-teacher-legacy.js` を改名テーマに切るか現状維持にするか。
+      - 薄いGAS依存をどこまで固定API化で減らすか。
       - 方針は `1 + 2` を本命にする。
       - `1`: 薄いGASの公開APIを固定契約に寄せ、返り値の破壊的変更を避ける。
       - `2`: `portable` 側で古い返り値を正規化し、既定値補完で互換吸収する。
       - 主対象は `teacherInit` / `teacherStatusSnapshot` / `studentInit` / `studentLoadState` と `src/07_portable_rpc.js`。
       - ねらいは「新機能追加や初期ロード最適化のたびに薄いGASを更新しなくてよい状態」に近づけること。
       - デメリットとして、クライアント側の吸収ロジック増加、APIの肥大化、テスト観点増加は受け入れる前提。
+  - 2026-07-14 追加前進 3
+    - 薄いGAS依存を減らす固定契約化の第一弾。
+    - `src/07_portable_rpc.js`
+      - portable 経由の `teacherInit` / `teacherStatusSnapshot` / `studentInit` / `studentLoadState` を固定契約 `portableContractVersion: 1` に寄せる正規化ラッパーを追加。
+      - 配列、状態オブジェクト、AIフラグ、shell、errors、status.meta などを既定値補完し、内部関数の返り値差分が portable に漏れにくい形へ変更。
+    - `portable-src/runtime-shim.js`
+      - portable 側でも同じ4 APIの返り値を正規化。
+      - direct action と旧 `action:"rpc"` / `payload.method` の両方で、画面へ渡す直前に古い返り値を吸収する。
+    - `npm run build:portable` 実行済み。
+    - 確認済み:
+      - `node --check src/07_portable_rpc.js`
+      - `node --check portable-src/runtime-shim.js`
+      - `node --check portable/runtime-shim.js`
+    - 未実施:
+      - 本番 deploy は未実施。AGENTS.md の deploy ルールにより、ユーザーが明示的に求めた場合だけ実行する。
+  - 2026-07-14 追加前進 4
+    - 教師ページ初期ロードの記録プリロード順を調整。
+    - `src/teacher_script_core.html`
+      - `scheduleTeacherPreload()` で、補助プリロードより先に本時の記録スコープ取得を開始するよう変更。
+    - `src/teacher_script_reports.html`
+      - `scheduleTeacherCurrentLessonAggregatePreload()` を追加し、`activeUnitId` / `activePeriod` がある場合は `unitId` スコープの記録を先に取得してから `full` 背景取得へ進むようにした。
+    - 目的:
+      - `full` 記録取得とほぼ同時に走っていた初期取得を分け、本時の授業記録を優先する。
+  - 2026-07-14 追加前進 5
+    - 教師ページ初回ロードで「現在何の授業をしているか」を最優先化。
+    - `src/teacher_script_core.html`
+      - `loadInit()` を変更し、初回は `teacherStatusSnapshot()` を先に呼んで current lesson を先行取得してから `teacherInit()` を呼ぶようにした。
+      - これで初期読み込み時に、授業中の単元・時間を先に確定しやすくした。
+    - 反映:
+      - `src/teacher_script_core_legacy.html` も再生成済み。
+  - 2026-07-14 追加前進 6
+    - 児童ページ初回ロードの優先順位を修正。
+    - `src/03_domain.js`
+      - `getStudentEntryOptions()` を軽量デフォルトにして、初回は在籍児童一覧を先に返し、`classSnapshot` は必要時だけ付けるように変更。
+    - `src/index.html`
+      - 初回未読込時は「名簿を確認中…」ではなく「読み込み中です…」を出すよう変更。
+      - 初回の `applyStudentBootstrapData_()` では、名簿がまだ来ていない状態を loaded 扱いにしないよう修正。
+    - `portable-src/runtime-shim.js`
+      - `bootstrapStudentAsync()` も軽量取得に合わせた。
+    - 目的:
+      - 番号表示の前に記録取得が走りにくいようにし、初回の未登録誤表示を防ぐ。
+  - 2026-07-14 追加前進 7
+    - 教師フィードバック下書き削除、単元削除、ボタン操作感、名簿選択カスタム項目を修正。
+    - `src/06_teacher.js`
+      - 下書き `cleared` の場合、返却済みコメントを下書き欄へ再表示しないようにした。
+    - `src/teacher_script_units.html`
+      - 行ごとの下書き削除・返却・メダル保存に busy 表示を追加。
+      - 単元削除後に単元一覧、進捗、記録キャッシュ、選択状態を即時無効化するよう変更。
+    - `src/teacher_section_curriculum.html` / `src/index.html`
+      - カスタム項目に `student_select` / `student_multi` を追加し、児童画面で名簿から 1人または複数人を選べるようにした。
+    - `src/teacher_styles.html` / `src/teacher_script_core.html`
+      - 教師ページ全体のボタン押下時の反応と disabled 表示を追加。
+    - 反映:
+      - `node scripts/build-teacher-legacy.js` と `npm run build:portable` 実行済み。
+      - 2026-07-14 に本番 Webアプリへ deploy 済み。
+      - 本番 deployment `AKfycbwo3TBXAkqLSx6XYcXxTI5m34DerRMHaB6X13dymilmU_wmc-Fn5F-2jkNofErLevVo7Q` を version `368` へ更新。
 
 ## Master GAS API v1
 

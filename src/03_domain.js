@@ -980,7 +980,9 @@ function writeRosterSheetEntries_(entries) {
   sheet.getRange(1, 1, entries.length, 2).setValues(entries.map(entry => [entry.number, entry.name || '']));
 }
 
-function getStudentEntryOptions() {
+function getStudentEntryOptions(options) {
+  const opts = options && typeof options === 'object' ? options : {};
+  const lightweight = opts.lightweight !== false;
   const cache = CacheService.getScriptCache();
   const cached = cache.get('student_entry_options_v2');
   if (cached) {
@@ -988,11 +990,21 @@ function getStudentEntryOptions() {
       const parsed = JSON.parse(cached);
       if (parsed && Array.isArray(parsed.students)) {
         const shell = getLiveTenantMaintenanceState();
-        if (parsed.classSnapshot && typeof parsed.classSnapshot === 'object') {
-          parsed.classSnapshot.shell = shell;
+        if (lightweight) {
+          return {
+            students: parsed.students,
+            shell,
+          };
+        }
+        const classSnapshot = parsed.classSnapshot && typeof parsed.classSnapshot === 'object'
+          ? parsed.classSnapshot
+          : buildStudentEntryClassSnapshot_(parsed.students, getAiFeatureFlags_(), shell);
+        if (classSnapshot && typeof classSnapshot === 'object') {
+          classSnapshot.shell = shell;
         }
         return {
           ...parsed,
+          classSnapshot,
           shell,
         };
       }
@@ -1003,9 +1015,11 @@ function getStudentEntryOptions() {
   const shell = getLiveTenantMaintenanceState();
   const payload = {
     students,
-    classSnapshot: buildStudentEntryClassSnapshot_(students, featureFlags, shell),
     shell,
   };
+  if (!lightweight) {
+    payload.classSnapshot = buildStudentEntryClassSnapshot_(students, featureFlags, shell);
+  }
   cache.put('student_entry_options_v2', JSON.stringify(payload), 5);
   return payload;
 }

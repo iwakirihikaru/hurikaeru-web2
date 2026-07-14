@@ -212,7 +212,15 @@ function removeSubjectCustomField(index){
 }
 
 function typeLabel(t){
-  return {text:'自由記述',select:'選択肢',radio:'ラジオ',review:'ふりかえり',number:'数値'}[t]||t;
+  return {
+    text:'自由記述',
+    select:'選択肢',
+    radio:'ラジオ',
+    review:'ふりかえり',
+    number:'数値',
+    student_select:'児童名簿（1人）',
+    student_multi:'児童名簿（複数）',
+  }[t]||t;
 }
 
 // =====================================

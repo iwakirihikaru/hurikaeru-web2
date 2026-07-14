@@ -4,8 +4,8 @@
     <h3>🗑️ 削除しますか？</h3>
     <p id="delMsg" style="font-size:13px;color:#555;"></p>
     <div class="modal-btns">
-      <button class="btn-cancel" onclick="closeModal()">キャンセル</button>
-      <button style="padding:8px 18px;border:none;border-radius:8px;background:var(--red);color:#fff;font-size:13px;font-weight:bold;cursor:pointer;" onclick="confirmDelete()">削除する</button>
+      <button class="btn-cancel" id="delCancelBtn" onclick="closeModal()">キャンセル</button>
+      <button class="btn-del-confirm" id="delConfirmBtn" onclick="confirmDelete()">削除する</button>
     </div>
   </div>
 </div>

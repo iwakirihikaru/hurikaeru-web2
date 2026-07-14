@@ -457,6 +457,9 @@ let studentHistoryLoading = false;
 let studentMaintenanceMode = false;
 let currentStudentShellState = {};
 let currentStudentUnitInfo = null;
+let currentStudentName = '';
+let currentStudentCustoms = [];
+let currentStudentStateKey = '';
 const AUTO_SAVE_MS = 30000;
 const POLL_IDLE_MS = 4000;
 const POLL_WAITING_AI_MS = 2500;
@@ -547,6 +550,60 @@ function rememberStudentNumber_(num){
   }catch(e){}
 }
 
+function formatStudentIdentity_(num, name){
+  const normalizedNum=String(num==null?'':num).trim();
+  const normalizedName=String(name||'').trim();
+  if(normalizedNum && normalizedName) return `${normalizedNum}ばん ${normalizedName} さん`;
+  if(normalizedNum) return `${normalizedNum}ばん`;
+  if(normalizedName) return normalizedName;
+  return '';
+}
+
+function findRosterNameForNumber_(num){
+  const target=String(num||'').trim();
+  if(!target || !Array.isArray(bootstrapStudentOptions.students)) return '';
+  const match=bootstrapStudentOptions.students.find(student=>String(student&&student.number||'').trim()===target);
+  return match ? String(match.name||'').trim() : '';
+}
+
+function normalizeStudentIdentity_(state){
+  const d=state&&typeof state==='object'?state:{};
+  const num=String(d.num==null?'':d.num).trim() || String(myNum||'').trim();
+  const name=String(d.name==null?'':d.name).trim()
+    || currentStudentName
+    || findRosterNameForNumber_(num);
+  if(num) myNum=num;
+  if(name) currentStudentName=name;
+  return { num, name };
+}
+
+function getCurrentStudentStateKey_(){
+  return [myUnitId,myPeriod,myNum].join('_');
+}
+
+function hasMeaningfulCustoms_(values){
+  return Array.isArray(values) && values.some(value=>String(value||'').trim());
+}
+
+function normalizeStudentCustoms_(values){
+  const incoming=Array.isArray(values)?values:[];
+  const fieldCount=Array.isArray(myFields)?myFields.length:0;
+  const normalized=incoming.slice(0,fieldCount);
+  while(normalized.length<fieldCount) normalized.push('');
+
+  const stateKey=getCurrentStudentStateKey_();
+  const sameState=stateKey && stateKey===currentStudentStateKey;
+  const screenValues=sameState ? getCustomValues() : [];
+  const fallback=hasMeaningfulCustoms_(screenValues) ? screenValues : currentStudentCustoms;
+  const result=(!hasMeaningfulCustoms_(normalized) && sameState && hasMeaningfulCustoms_(fallback))
+    ? fallback.slice(0,fieldCount)
+    : normalized;
+  while(result.length<fieldCount) result.push('');
+  currentStudentStateKey=stateKey;
+  currentStudentCustoms=result.slice();
+  return result;
+}
+
 function forgetRememberedStudent_(){
   try{ localStorage.removeItem('furikaeri:rememberedStudentNumber'); }catch(e){}
   const box=document.getElementById('resumeBox');
@@ -582,6 +639,7 @@ function writeStudentEntryOptionsCache_(payload){
 const bootstrapStudentOptions = <?!= JSON.stringify(typeof bootstrapStudentOptions !== 'undefined' ? bootstrapStudentOptions : {students:[]}) ?>;
 let studentAppBootStarted=false;
 let studentEntryOptionsLoaded=Array.isArray(bootstrapStudentOptions.students) && bootstrapStudentOptions.students.length>0;
+let studentEntryOptionsLoading=!studentEntryOptionsLoaded;
 
 function getInitialStudentOptions_(){
   if(Array.isArray(bootstrapStudentOptions.students) && bootstrapStudentOptions.students.length){
@@ -598,10 +656,21 @@ function getInitialStudentOptions_(){
 
 function applyStudentBootstrapData_(data, options){
   const opts=options||{};
+  const hasStudents=Boolean(data && Array.isArray(data.students) && data.students.length);
   if(data && typeof data==='object'){
     Object.assign(bootstrapStudentOptions, data);
-    studentEntryOptionsLoaded=true;
-    writeStudentEntryOptionsCache_(bootstrapStudentOptions);
+    if(hasStudents){
+      studentEntryOptionsLoaded=true;
+      studentEntryOptionsLoading=false;
+    }else if(opts.initial===true){
+      studentEntryOptionsLoading=true;
+    }else{
+      studentEntryOptionsLoaded=true;
+      studentEntryOptionsLoading=false;
+    }
+    if(hasStudents || opts.initial !== true){
+      writeStudentEntryOptionsCache_(bootstrapStudentOptions);
+    }
   }
   applyStudentShellState_(bootstrapStudentOptions.shell||{});
   const students=getInitialStudentOptions_();
@@ -617,7 +686,7 @@ function applyStudentBootstrapData_(data, options){
 function startStudentApp_(){
   if(studentAppBootStarted) return;
   studentAppBootStarted=true;
-  applyStudentBootstrapData_(bootstrapStudentOptions);
+  applyStudentBootstrapData_(bootstrapStudentOptions,{ initial:true, skipResume:true });
 }
 
 startStudentApp_();
@@ -725,7 +794,9 @@ function renderNumberButtons(students){
   const g=document.getElementById('numGrid');
   const list=(students&&students.length)?students:[];
   if(!list.length){
-    const emptyMessage=studentEntryOptionsLoaded
+    const emptyMessage=studentEntryOptionsLoading
+      ? '読み込み中です…'
+      : studentEntryOptionsLoaded
       ? getStudentShellLabel_('studentRosterEmptyMessage', '名簿がまだ設定されていません。先生に伝えてね。')
       : '名簿を確認中…';
     g.innerHTML=`<div style="grid-column:1/-1;text-align:center;color:#78909C;font-size:14px;">${esc(emptyMessage)}</div>`;
@@ -870,7 +941,8 @@ function loadMain(d){
   clearInterval(autoTimer);
   stopPolling();
   pollBusy=false;
-  rememberStudentNumber_(d.num);
+  const identity=normalizeStudentIdentity_(d);
+  rememberStudentNumber_(identity.num);
   myUnitId  = d.unit?.id   || null;
   myPeriod  = d.period      || null;
   myFields  = d.fields      || [];
@@ -904,8 +976,9 @@ function loadMain(d){
   document.getElementById('submitBtn').textContent=getStudentShellLabel_('studentSubmitLabel', '🚀 ていしゅつ');
   document.getElementById('hdrUnit').textContent=
     currentStudentUnitInfo?`【${currentStudentUnitInfo.subject}】${currentStudentUnitInfo.name}・${d.period}じかんめ`:'';
-  document.getElementById('hdrMeta').textContent=`${d.num}ばん ${d.name||''} さん`;
-  document.getElementById('myNameLabel').textContent=`${d.num}ばん ${d.name||''} さん`;
+  const identityLabel=formatStudentIdentity_(identity.num, identity.name);
+  document.getElementById('hdrMeta').textContent=identityLabel;
+  document.getElementById('myNameLabel').textContent=identityLabel;
   document.getElementById('changeStudentBtn').style.display='inline-block';
 
   activeStudentTab='current';
@@ -940,8 +1013,10 @@ function loadStudentState(options){
   }
   google.script.run
     .withSuccessHandler(payload=>{
-      writeStudentCache_('state',cacheKey,payload);
-      applyStudentState(payload);
+      const identity=normalizeStudentIdentity_(payload);
+      const normalizedPayload=Object.assign({}, payload||{}, { num: identity.num, name: identity.name });
+      writeStudentCache_('state',cacheKey,normalizedPayload);
+      applyStudentState(normalizedPayload);
       refreshTimeline();
     })
     .withFailureHandler(()=>{
@@ -1016,12 +1091,15 @@ function applyStudentState(d){
   myFields=d.fields||myFields;
   if(typeof d.studentAiEnabled!=='undefined') studentAiEnabled=Boolean(d.studentAiEnabled);
   if(typeof d.studentAiAutoSubmitEnabled!=='undefined') studentAiAutoSubmitEnabled=Boolean(d.studentAiAutoSubmitEnabled);
-  document.getElementById('hdrMeta').textContent=`${d.num}ばん ${d.name||''} さん`;
-  document.getElementById('myNameLabel').textContent=`${d.num}ばん ${d.name||''} さん`;
-  buildFields(myFields, d.customs||[]);
+  const identity=normalizeStudentIdentity_(d);
+  const identityLabel=formatStudentIdentity_(identity.num, identity.name);
+  document.getElementById('hdrMeta').textContent=identityLabel;
+  document.getElementById('myNameLabel').textContent=identityLabel;
+  const customs=normalizeStudentCustoms_(d.customs);
+  buildFields(myFields, customs);
   writeStudentCache_('state',[myUnitId,myPeriod,myNum].join('_'),{
-    num:d.num,
-    name:d.name,
+    num:identity.num,
+    name:identity.name,
     unitId:myUnitId,
     period:myPeriod,
     unit:currentStudentUnitInfo ? {
@@ -1030,7 +1108,7 @@ function applyStudentState(d){
       name:currentStudentUnitInfo.name||''
     } : null,
     fields:myFields,
-    customs:d.customs||[],
+    customs:customs,
     submitted:Boolean(d.submitted),
     comment:d.comment||'',
     rank:d.rank||'',
@@ -1142,6 +1220,28 @@ function buildFields(fields, values){
         <div class="understanding-group">${buttonHtml}</div>
         <input type="hidden" class="field-inp" data-idx="${i}" value="${esc(cur)}">`;
 
+    } else if(f.type==='student_select'){
+      const rosterChoices=getStudentRosterChoiceOptions_();
+      const cur=values[i]||'';
+      const optHtml=rosterChoices.map(choice=>
+        `<option value="${esc(choice.value)}" ${cur===choice.value?'selected':''}>${esc(choice.label)}</option>`
+      ).join('');
+      wrap.innerHTML=`${lbl}
+        <select class="f field-inp" data-idx="${i}" onfocus="setFocus('${f.key}')">
+          <option value="">えらんでね</option>${optHtml}
+        </select>`;
+
+    } else if(f.type==='student_multi'){
+      const rosterChoices=getStudentRosterChoiceOptions_();
+      const selected=new Set(splitStudentRosterMultiValue_(values[i]||''));
+      const choiceHtml=rosterChoices.map(choice=>
+        `<div class="choice-btn ${selected.has(choice.value)?'selected':''}" data-val="${esc(choice.value)}"
+          onclick="toggleStudentRosterMultiChoice(this,${i})">${esc(choice.label)}</div>`
+      ).join('');
+      wrap.innerHTML=`${lbl}
+        <div class="choice-group" data-idx="${i}">${choiceHtml || '<div style="grid-column:1/-1;color:#78909C;font-size:13px;">名簿を読み込み中です…</div>'}</div>
+        <input type="hidden" class="field-inp" data-idx="${i}" value="${esc(Array.from(selected).join('、'))}">`;
+
     } else if(f.type==='select'){
       const opts=(f.options||'').split(',').map(o=>o.trim()).filter(Boolean);
       const optHtml=opts.map(o=>
@@ -1185,7 +1285,7 @@ function handleFieldValueChanged_(){
 
 function setFieldInteractivity(enabled){
   document.querySelectorAll('.field-inp').forEach(el=>{ el.disabled=!enabled; });
-  document.querySelectorAll('.understanding-btn,.radio-btn,.hint-tag').forEach(el=>{
+  document.querySelectorAll('.understanding-btn,.radio-btn,.choice-btn,.hint-tag').forEach(el=>{
     el.style.pointerEvents=enabled?'':'none';
     el.style.opacity=enabled?'1':'0.55';
   });
@@ -1217,6 +1317,39 @@ function selectRadio(el, idx, val){
   el.classList.add('selected');
   document.querySelector(`.field-inp[data-idx="${idx}"][type="hidden"]`).value=val;
   setFocus(el.closest('.field-wrap').dataset.key);
+  handleFieldValueChanged_();
+}
+
+function getStudentRosterChoiceOptions_(){
+  const students=getInitialStudentOptions_();
+  return (Array.isArray(students)?students:[])
+    .filter(student=>student && student.fallback!==true)
+    .map(student=>{
+      const number=String(student.number||'').trim();
+      const name=String(student.name||'').trim();
+      const label=name ? `${number}ばん ${name}` : `${number}ばん`;
+      return { value:label, label };
+    })
+    .filter(choice=>choice.value.trim());
+}
+
+function splitStudentRosterMultiValue_(value){
+  return String(value||'')
+    .split(/[、,]/)
+    .map(item=>item.trim())
+    .filter(Boolean);
+}
+
+function toggleStudentRosterMultiChoice(el, idx){
+  const wrap=el.closest('.field-wrap');
+  const hidden=wrap ? wrap.querySelector(`.field-inp[data-idx="${idx}"][type="hidden"]`) : null;
+  if(!hidden) return;
+  el.classList.toggle('selected');
+  const values=Array.from(wrap.querySelectorAll('.choice-btn.selected'))
+    .map(btn=>String(btn.dataset.val||'').trim())
+    .filter(Boolean);
+  hidden.value=values.join('、');
+  setFocus(wrap.dataset.key);
   handleFieldValueChanged_();
 }
 
@@ -1417,7 +1550,7 @@ function doSubmit(){
 
 function lockSubmitted(){
   document.querySelectorAll('.field-inp').forEach(el=>el.disabled=true);
-  document.querySelectorAll('.understanding-btn,.radio-btn').forEach(el=>el.style.pointerEvents='none');
+  document.querySelectorAll('.understanding-btn,.radio-btn,.choice-btn').forEach(el=>el.style.pointerEvents='none');
   document.querySelectorAll('.hint-tag').forEach(el=>el.style.pointerEvents='none');
   document.getElementById('submitBtn').disabled=true;
   document.getElementById('rewriteRow').style.display='block';
@@ -1443,7 +1576,7 @@ function doRewrite(evt){
   lastAiArrivalBannerKey='';
   hideAiArrivalBanner_();
   document.querySelectorAll('.field-inp').forEach(el=>el.disabled=false);
-  document.querySelectorAll('.understanding-btn,.radio-btn').forEach(el=>el.style.pointerEvents='');
+  document.querySelectorAll('.understanding-btn,.radio-btn,.choice-btn').forEach(el=>el.style.pointerEvents='');
   document.querySelectorAll('.hint-tag').forEach(el=>el.style.pointerEvents='');
   document.getElementById('submitBtn').disabled=false;
   document.getElementById('submitBtn').textContent='🚀 さいていしゅつ';
@@ -1472,7 +1605,7 @@ function unlockAfterSubmitError_(){
   lastAiArrivalBannerKey='';
   hideAiArrivalBanner_();
   document.querySelectorAll('.field-inp').forEach(el=>el.disabled=false);
-  document.querySelectorAll('.understanding-btn,.radio-btn').forEach(el=>el.style.pointerEvents='');
+  document.querySelectorAll('.understanding-btn,.radio-btn,.choice-btn').forEach(el=>el.style.pointerEvents='');
   document.querySelectorAll('.hint-tag').forEach(el=>el.style.pointerEvents='');
   document.getElementById('submitBtn').disabled=false;
   document.getElementById('submitBtn').textContent=getStudentShellLabel_('studentSubmitLabel', '🚀 ていしゅつ');
@@ -1744,6 +1877,9 @@ function changeStudentNumber_(){
   initBusy=false;
   pollBusy=false;
   myNum=null;
+  currentStudentName='';
+  currentStudentCustoms=[];
+  currentStudentStateKey='';
   myUnitId=null;
   myPeriod=null;
   submitted=false;

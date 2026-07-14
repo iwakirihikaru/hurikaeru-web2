@@ -674,12 +674,16 @@ function saveTeacherFeedbackMedalFromRow(select){
   if(!responseId) return;
   const row=select.closest('.status-draft-box');
   if(isTeacherDraftRowBusy_(row)) return;
+  setTeacherDraftRowBusy_(responseId,true,'メダル保存中');
   google.script.run
     .withSuccessHandler(()=>{
       showToast('メダルを保存しました');
       loadStatus();
     })
-    .withFailureHandler(err=>{ showToast(err && err.message || 'メダル保存に失敗しました'); })
+    .withFailureHandler(err=>{
+      setTeacherDraftRowBusy_(responseId,false);
+      showToast(err && err.message || 'メダル保存に失敗しました');
+    })
     .saveTeacherFeedbackMedal(responseId, select.value||'');
 }
 
@@ -688,13 +692,21 @@ function returnTeacherFeedbackDraftForRow(responseId){
   const row=findTeacherDraftRow_(responseId);
   if(isTeacherDraftRowBusy_(row)) return;
   flushTeacherFeedbackDrafts_([responseId],()=>{
+    setTeacherDraftRowBusy_(responseId,true,'返却中');
     google.script.run
       .withSuccessHandler(res=>{
-        if(!(res && res.ok)){ showToast(res && res.error || '返却に失敗しました'); return; }
+        if(!(res && res.ok)){
+          setTeacherDraftRowBusy_(responseId,false);
+          showToast(res && res.error || '返却に失敗しました');
+          return;
+        }
         showToast('返却しました');
         loadStatus();
       })
-      .withFailureHandler(err=>{ showToast(err && err.message || '返却に失敗しました'); })
+      .withFailureHandler(err=>{
+        setTeacherDraftRowBusy_(responseId,false);
+        showToast(err && err.message || '返却に失敗しました');
+      })
       .returnTeacherFeedbackDrafts(activeUnitId,activePeriod,[responseId]);
   },err=>{
     showToast(err && err.message || '返却前の保存に失敗しました');
@@ -706,9 +718,13 @@ function clearTeacherFeedbackDraftForRow(responseId){
   const row=findTeacherDraftRow_(responseId);
   if(isTeacherDraftRowBusy_(row)) return;
   delete teacherDraftLocalState[String(responseId||'').trim()];
+  setTeacherDraftRowBusy_(responseId,true,'下書き削除中');
   google.script.run
     .withSuccessHandler(()=>{ showToast('下書きを消しました'); loadStatus(); })
-    .withFailureHandler(err=>{ showToast(err && err.message || '下書きクリアに失敗しました'); })
+    .withFailureHandler(err=>{
+      setTeacherDraftRowBusy_(responseId,false);
+      showToast(err && err.message || '下書きクリアに失敗しました');
+    })
     .clearTeacherFeedbackDrafts(activeUnitId,activePeriod,[responseId]);
 }
 
@@ -1024,7 +1040,15 @@ function renderFieldList(){
 }
 
 function typeLabel(t){
-  return {text:'自由記述',select:'選択肢',radio:'ラジオ',review:'ふりかえり（ヒント付き）',number:'数値'}[t]||t;
+  return {
+    text:'自由記述',
+    select:'選択肢',
+    radio:'ラジオ',
+    review:'ふりかえり（ヒント付き）',
+    number:'数値',
+    student_select:'児童名簿（1人）',
+    student_multi:'児童名簿（複数）',
+  }[t]||t;
 }
 
 function toggleField(i){
@@ -1078,7 +1102,8 @@ function createCustomFieldFromInputs(prefix, existingFields, options){
   const label=document.getElementById(prefix+'Label').value.trim();
   const type=document.getElementById(prefix+'Type').value;
   const emoji=document.getElementById(prefix+'Emoji').value.trim()||'🆕';
-  const fieldOptions=parseFieldOptionsInput(document.getElementById(prefix+'Options').value);
+  const isRosterChoice=type==='student_select'||type==='student_multi';
+  const fieldOptions=isRosterChoice ? '' : parseFieldOptionsInput(document.getElementById(prefix+'Options').value);
   const placeholder=document.getElementById(prefix+'Placeholder').value.trim();
   const categories=getCheckedCategories(prefix);
   if(!label){alert('項目名を入力してください');return null;}
@@ -1098,7 +1123,7 @@ function createCustomFieldFromInputs(prefix, existingFields, options){
     label,
     emoji,
     type,
-    placeholder,
+    placeholder:placeholder || (isRosterChoice ? '名簿からえらんでね' : ''),
     options:fieldOptions,
     hints:type==='review'?'がんばったこと,やり方,わかったこと,次にしたいこと':'',
     categories,
@@ -1358,11 +1383,36 @@ function applySavedUnitLocally_(savedUnit){
   const idx=allUnits.findIndex(unit=>String(unit.id)===String(savedUnit.id));
   if(idx>=0) allUnits[idx]=savedUnit;
   else allUnits.unshift(savedUnit);
-  if(preloadCache.init){
-    preloadCache.init.units=allUnits.slice();
-    persistTeacherPreloadCache_();
-  }
+  if(preloadCache.aggregate) preloadCache.aggregate=null;
+  if(preloadCache.status) clearTeacherStatusPreloadCache_(true);
+  persistTeacherPreloadCache_();
   refreshUnitUiAfterMutation_();
+}
+
+function invalidateUnitRelatedClientState_(unitId){
+  const normalized=String(unitId||'').trim();
+  if(normalized && unitProgressByUnitId && typeof unitProgressByUnitId==='object'){
+    delete unitProgressByUnitId[normalized];
+  }
+  if(preloadCache.aggregate) preloadCache.aggregate=null;
+  if(preloadCache.portfolio) preloadCache.portfolio=null;
+  if(String(activeUnitId||'')===normalized){
+    activeUnitId=null;
+    activePeriod=0;
+    latestStatusRows=[];
+    latestStatusMeta={};
+    teacherDraftLocalState={};
+    clearTeacherStatusPreloadCache_(true);
+  }else if(preloadCache.status){
+    clearTeacherStatusPreloadCache_(true);
+  }
+  if(Array.isArray(allAggData) && normalized){
+    allAggData=allAggData.filter(row=>String(row.unitId||'')!==normalized);
+  }
+  if(typeof allAggMeta==='object' && allAggMeta){
+    allAggMeta={ scope:'unknown', fetchedAt:0, unitId:'', subject:'' };
+  }
+  persistTeacherPreloadCache_();
 }
 
 function removeUnitLocally_(unitId){
@@ -1372,10 +1422,7 @@ function removeUnitLocally_(unitId){
   const removed=nextUnits.length!==allUnits.length;
   if(!removed) return false;
   allUnits=nextUnits;
-  if(preloadCache.init){
-    preloadCache.init.units=allUnits.slice();
-    persistTeacherPreloadCache_();
-  }
+  invalidateUnitRelatedClientState_(normalized);
   if(String(document.getElementById('editUnitId').value||'')===normalized){
     cancelEdit();
   }
@@ -1386,6 +1433,7 @@ function removeUnitLocally_(unitId){
 function refreshUnitUiAfterMutation_(){
   renderUnitList();
   populateUnitSelects();
+  if(typeof populateGradingSelects==='function') populateGradingSelects();
   const startUnit=document.getElementById('startUnit');
   if(startUnit){
     const currentValue=String(startUnit.value||'').trim();
@@ -1502,16 +1550,30 @@ function saveUnit(startAfterSave){
 
 function askDelete(id,name){
   delTargetId=id;
+  setDeleteModalBusy_(false);
   document.getElementById('delMsg').textContent=`「${name}」を削除します。授業データは残ります。`;
   document.getElementById('delModal').classList.add('show');
+}
+function setDeleteModalBusy_(busy){
+  const confirmBtn=document.getElementById('delConfirmBtn');
+  const cancelBtn=document.getElementById('delCancelBtn');
+  if(confirmBtn){
+    if(!confirmBtn.dataset.defaultLabel) confirmBtn.dataset.defaultLabel=confirmBtn.textContent||'削除する';
+    confirmBtn.disabled=Boolean(busy);
+    confirmBtn.textContent=busy?'削除中…':confirmBtn.dataset.defaultLabel;
+  }
+  if(cancelBtn) cancelBtn.disabled=Boolean(busy);
 }
 function confirmDelete(){
   const targetId=String(delTargetId||'').trim();
   if(!targetId) return;
+  setDeleteModalBusy_(true);
+  setUnitSaveMeta('単元を削除しています…','busy');
   google.script.run
     .withSuccessHandler(res=>{
       if(!(res && res.ok)){
         const msg='単元の削除に失敗しました。';
+        setDeleteModalBusy_(false);
         setUnitSaveMeta(msg,'error');
         showToast(msg);
         return;
@@ -1525,11 +1587,15 @@ function confirmDelete(){
     })
     .withFailureHandler(err=>{
       const msg=err && err.message || '単元の削除に失敗しました。';
+      setDeleteModalBusy_(false);
       setUnitSaveMeta(msg,'error');
       showToast(msg);
     })
     .deleteUnit(targetId);
 }
-function closeModal(){document.getElementById('delModal').classList.remove('show');}
+function closeModal(){
+  setDeleteModalBusy_(false);
+  document.getElementById('delModal').classList.remove('show');
+}
 </script>
 

@@ -448,9 +448,12 @@ input.inp,select.inp,textarea.inp{
 textarea.inp{resize:vertical;min-height:70px;}
 .btn-primary{padding:9px 18px;border:none;border-radius:8px;
   background:var(--green);color:#fff;font-size:13px;font-weight:bold;cursor:pointer;font-family:var(--font);}
-.btn-primary[disabled],.btn-update[disabled],.btn-cancel[disabled],.btn-jump-add[disabled]{
+.btn-primary[disabled],.btn-update[disabled],.btn-cancel[disabled],.btn-jump-add[disabled],button[disabled]{
   opacity:.65;cursor:wait;
 }
+.btn-del-confirm{padding:8px 18px;border:none;border-radius:8px;background:var(--red);color:#fff;font-size:13px;font-weight:bold;cursor:pointer;font-family:var(--font);}
+button{transition:transform .08s ease,filter .12s ease,opacity .12s ease;}
+button:not([disabled]):active,button.is-pressed{transform:translateY(1px);filter:brightness(.96);}
 .btn-update{padding:9px 18px;border:none;border-radius:8px;
   background:var(--sky);color:#fff;font-size:13px;font-weight:bold;cursor:pointer;font-family:var(--font);}
 .btn-cancel{padding:7px 16px;border:1.5px solid #CFD8DC;border-radius:7px;

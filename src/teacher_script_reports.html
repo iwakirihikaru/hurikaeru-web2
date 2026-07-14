@@ -60,6 +60,28 @@ function scheduleAggregateBackgroundPreload(reason){
   }
 }
 
+function scheduleTeacherCurrentLessonAggregatePreload(reason){
+  const scope=buildTeacherCurrentLessonAggregateScope_();
+  if(!scope){
+    scheduleAggregateBackgroundPreload(reason||'teacher-preload');
+    return false;
+  }
+  if(hasFreshAggregateScopeFor_(scope)){
+    scheduleAggregateBackgroundPreload(reason||'teacher-preload-fresh');
+    return false;
+  }
+  const started=requestAggregateScope_(scope,{
+    onParseError:()=>{},
+    onError:()=>{},
+    onFailure:()=>{},
+  });
+  if(!started){
+    scheduleAggregateBackgroundPreload(reason||'teacher-preload-busy');
+    return false;
+  }
+  return true;
+}
+
 function ensureAggregateBackgroundPreload_(reason){
   if(readAggregatePreloadCacheEntry_()) return false;
   if(aggregateBackgroundPreloadInFlight) return false;
@@ -76,6 +98,7 @@ function ensureAggregateBackgroundPreload_(reason){
     onSuccess:rows=>{
       aggregateBackgroundPreloadInFlight=false;
       writeAggregatePreloadCache_(rows);
+      preloadPortfolioFromAggregate_(reason||'aggregate-background-success');
       if(!Array.isArray(rows) || !rows.length) return;
       if(shouldRenderAggregatePreloadResult_() && !hasFreshAggregateData_()){
         renderAggregateDataSet_(rows,{ scope:'full', fetchedAt:Date.now() });
@@ -83,6 +106,52 @@ function ensureAggregateBackgroundPreload_(reason){
     },
   });
   return true;
+}
+
+function scheduleTeacherRecordsDataPreload(reason){
+  ensureReportTabInitData_({
+    onSuccess:()=>{},
+    onFailure:()=>{},
+  });
+  scheduleAggregateBackgroundPreload(reason||'records-preload');
+  schedulePortfolioBackgroundPreload_(reason||'records-preload');
+}
+
+function schedulePortfolioBackgroundPreload_(reason){
+  const run=()=>preloadPortfolioFromAggregate_(reason||'idle');
+  if(typeof requestIdleCallback==='function'){
+    requestIdleCallback(run,{ timeout:9000 });
+  }else{
+    setTimeout(run,6500);
+  }
+}
+
+function preloadPortfolioFromAggregate_(reason){
+  if(!Array.isArray(rosterEntries) || !rosterEntries.length) return false;
+  const entry=readAggregatePreloadCacheEntry_();
+  const rows=Array.isArray(allAggData) && allAggData.length
+    ? allAggData
+    : (entry && Array.isArray(entry.rows) ? entry.rows : []);
+  if(!rows.length){
+    scheduleAggregateBackgroundPreload(reason||'portfolio-waiting-aggregate');
+    return false;
+  }
+  const firstStudent=rosterEntries.find(row=>String(row&&row.number||'').trim());
+  if(!firstStudent) return false;
+  const studentNumber=String(firstStudent.number||'').trim();
+  const currentUnitId=String(activeUnitId||'').trim();
+  writePortfolioCache_(studentNumber,'',buildPortfolioRowsFromAggregate_(rows,studentNumber,''));
+  if(currentUnitId){
+    writePortfolioCache_(studentNumber,currentUnitId,buildPortfolioRowsFromAggregate_(rows,studentNumber,currentUnitId));
+  }
+  return true;
+}
+
+function buildTeacherCurrentLessonAggregateScope_(){
+  const unitId=String(activeUnitId||'').trim();
+  const period=Number(activePeriod||0);
+  if(!unitId || period<=0) return null;
+  return { unitId };
 }
 
 function isAggregateRecordPaneActive_(){

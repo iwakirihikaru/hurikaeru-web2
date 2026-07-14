@@ -103,6 +103,131 @@
     return false;
   }
 
+  function normalizeArray(value) {
+    return Array.isArray(value) ? value : [];
+  }
+
+  function normalizeObject(value) {
+    return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  }
+
+  function normalizeString(value) {
+    return String(value == null ? "" : value);
+  }
+
+  function normalizeNumber(value, fallback) {
+    var num = Number(value);
+    return Number.isFinite(num) ? num : fallback;
+  }
+
+  function normalizeErrors(value) {
+    if (Array.isArray(value)) {
+      return value.map(function (item) { return normalizeString(item); }).filter(Boolean);
+    }
+    var text = normalizeString(value).trim();
+    return text ? [text] : [];
+  }
+
+  function normalizeStatusPayload(value) {
+    var status = normalizeObject(value);
+    var meta = normalizeObject(status.meta);
+    var next = Object.assign({}, status);
+    next.meta = Object.assign({
+      teacherAiEnabled: false,
+      draftCount: 0,
+      returnedCount: 0
+    }, meta);
+    next.students = normalizeArray(status.students);
+    return next;
+  }
+
+  function normalizeTeacherInitPayload(data) {
+    var payload = normalizeObject(data);
+    return Object.assign({}, payload, {
+      portableContractVersion: normalizeNumber(payload.portableContractVersion, 1),
+      units: normalizeArray(payload.units),
+      unitsReadMeta: payload.unitsReadMeta && typeof payload.unitsReadMeta === "object" ? payload.unitsReadMeta : null,
+      active: payload.active === undefined ? null : payload.active,
+      roster: normalizeArray(payload.roster),
+      unitProgress: normalizeObject(payload.unitProgress),
+      progressNeedsRefresh: payload.progressNeedsRefresh !== false,
+      build: normalizeString(payload.build),
+      deploymentVersion: normalizeNumber(payload.deploymentVersion, 0),
+      deploymentCreatedAt: normalizeString(payload.deploymentCreatedAt).trim(),
+      deploymentDescription: normalizeString(payload.deploymentDescription).trim(),
+      errors: normalizeErrors(payload.errors)
+    });
+  }
+
+  function normalizeTeacherStatusSnapshotPayload(data) {
+    var payload = normalizeObject(data);
+    return Object.assign({}, payload, {
+      portableContractVersion: normalizeNumber(payload.portableContractVersion, 1),
+      active: payload.active === undefined ? null : payload.active,
+      build: normalizeString(payload.build),
+      status: normalizeStatusPayload(payload.status),
+      timing: normalizeObject(payload.timing),
+      errors: normalizeErrors(payload.errors)
+    });
+  }
+
+  function normalizeStudentStatePayload(data) {
+    var payload = normalizeObject(data);
+    var fields = normalizeArray(payload.fields);
+    var customs = normalizeArray(payload.customs);
+    while (customs.length < fields.length) customs.push("");
+    return Object.assign({}, payload, {
+      portableContractVersion: normalizeNumber(payload.portableContractVersion, 1),
+      fields: fields,
+      num: payload.num == null ? "" : payload.num,
+      name: normalizeString(payload.name),
+      customs: customs,
+      comment: normalizeString(payload.comment),
+      rank: normalizeString(payload.rank),
+      medal: normalizeString(payload.medal),
+      medalColor: normalizeString(payload.medalColor),
+      submitted: payload.submitted === true,
+      aiStatus: normalizeString(payload.aiStatus),
+      prevReview: normalizeString(payload.prevReview),
+      previousNextGoal: normalizeString(payload.previousNextGoal),
+      responseReadMeta: normalizeObject(payload.responseReadMeta),
+      studentAiEnabled: payload.studentAiEnabled === true,
+      studentAiAutoSubmitEnabled: payload.studentAiAutoSubmitEnabled === true,
+      shell: normalizeObject(payload.shell)
+    });
+  }
+
+  function normalizeStudentInitPayload(data) {
+    var payload = normalizeObject(data);
+    var normalized = normalizeStudentStatePayload(payload);
+    return Object.assign({}, normalized, {
+      needPeriodSelect: payload.needPeriodSelect === true,
+      unit: payload.unit === undefined ? null : payload.unit,
+      units: normalizeArray(payload.units),
+      period: normalizeNumber(payload.period, 0),
+      presets: normalizeArray(payload.presets),
+      students: normalizeArray(payload.students),
+      teacherSetPeriod: payload.teacherSetPeriod === true,
+      teacherTimelineFieldKey: normalizeString(payload.teacherTimelineFieldKey).trim()
+    });
+  }
+
+  function normalizePortableContractData(action, data) {
+    var name = normalizeString(action).trim();
+    if (name === "teacherInit") return normalizeTeacherInitPayload(data);
+    if (name === "teacherStatusSnapshot") return normalizeTeacherStatusSnapshotPayload(data);
+    if (name === "studentInit") return normalizeStudentInitPayload(data);
+    if (name === "studentLoadState") return normalizeStudentStatePayload(data);
+    return data;
+  }
+
+  function resolvePortableContractActionName(action, payload) {
+    var name = normalizeString(action).trim();
+    if (name && name !== "rpc") return name;
+    var body = payload && typeof payload === "object" ? payload : {};
+    return normalizeString(body.method || "").trim();
+  }
+
   function readJsonCache(cacheKey) {
     try {
       var raw = window.localStorage.getItem(cacheKey);
@@ -279,7 +404,7 @@
     if (!result.ok) {
       throw new Error(getErrorMessage(result.error));
     }
-    return result.data;
+    return normalizePortableContractData(resolvePortableContractActionName(action, payload), result.data);
   }
 
   function postActionSync(action, payload) {
@@ -294,7 +419,7 @@
     if (!result.ok) {
       throw new Error(getErrorMessage(result.error));
     }
-    return result.data;
+    return normalizePortableContractData(resolvePortableContractActionName(action, payload), result.data);
   }
 
   function callPortableMethod(method, args) {
@@ -318,7 +443,7 @@
       redirectToSetupIfNeeded();
       return Promise.resolve(readEmptyStudentBootstrap());
     }
-    return callPortableMethod("getStudentEntryOptions", [])
+    return callPortableMethod("getStudentEntryOptions", [{ lightweight: true }])
       .then(function (data) {
         return data || readEmptyStudentBootstrap();
       });

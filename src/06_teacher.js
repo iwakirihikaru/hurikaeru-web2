@@ -1213,6 +1213,8 @@ function buildLessonStatus_(unitId, period) {
   const students = roster.map(student => {
     const response = responseMap[String(student.number)];
     const draft = response ? draftMap[String(response.responseId || '')] : null;
+    const draftStatus = String(draft?.status || '').trim();
+    const draftCleared = draftStatus === 'cleared';
     const review = response
       ? (reviewField ? String(response.answersMap[reviewField.key] || response.reviewText || '') : response.reviewText || '')
       : '';
@@ -1239,12 +1241,12 @@ function buildLessonStatus_(unitId, period) {
       medal: response?.medal || '',
       medalColor: getMedalColor_(response?.medal || ''),
       comment: response?.comment || '',
-      draftComment: draft?.draftComment || response?.comment || '',
-      draftRank: draft?.draftRank || response?.rank || '',
-      draftScore: Number(draft?.draftScore || 0),
-      draftStatus: draft?.status || ((response?.comment || response?.rank) ? 'returned' : ''),
-      draftUpdatedAt: draft?.updatedAt || response?.updatedAt || '',
-      draftReturnedAt: draft?.returnedAt || response?.updatedAt || '',
+      draftComment: draftCleared ? '' : (draft?.draftComment || response?.comment || ''),
+      draftRank: draftCleared ? '' : (draft?.draftRank || response?.rank || ''),
+      draftScore: draftCleared ? 0 : Number(draft?.draftScore || 0),
+      draftStatus: draftCleared ? 'cleared' : (draftStatus || ((response?.comment || response?.rank) ? 'returned' : '')),
+      draftUpdatedAt: draftCleared ? (draft?.updatedAt || '') : (draft?.updatedAt || response?.updatedAt || ''),
+      draftReturnedAt: draftCleared ? '' : (draft?.returnedAt || response?.updatedAt || ''),
       submitted: response?.submitted === true,
       responseUpdatedAt: response?.updatedAt || '',
       score: response?.score || 0,
