@@ -4,7 +4,7 @@
   var REDIRECT_FLAG_KEY = "__portable_setup_redirecting__";
   var TEACHER_BOOTSTRAP_CACHE_KEY = "jibun-matome-teacher-bootstrap-fast";
   var TEACHER_BOOTSTRAP_TTL_MS = 60 * 1000;
-  var PORTABLE_FETCH_TIMEOUT_MS = 45000;
+  var PORTABLE_FETCH_TIMEOUT_MS = 90000;
   var PORTABLE_FETCH_RETRY_COUNT = 0;
 
   function readApiUrlFromQuery() {

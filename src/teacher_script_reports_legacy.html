@@ -184,6 +184,35 @@ function renderAggregateDataSet_(rows, meta) {
     filterAgg();
     filterGrading();
 }
+function expandCompactAggregateRows_(payload) {
+    if (!(payload && Number(payload.compactVersion || 0) === 1 && Array.isArray(payload.rowsCompact)))
+        return null;
+    var fieldSets = payload.fieldSets && typeof payload.fieldSets === 'object' ? payload.fieldSets : {};
+    var schema = Array.isArray(payload.rowSchema) && payload.rowSchema.length
+        ? payload.rowSchema
+        : ['unitName', 'subject', 'period', 'num', 'name', 'date', 'review', 'rank', 'comment', 'unitId', 'answersMap', 'fieldSetKey', 'teacherAssessment'];
+    var indexByName = {};
+    schema.forEach(function (name, index) { indexByName[String(name || '')] = index; });
+    var valueOf = function (row, name, fallback) {
+        var index = indexByName[name];
+        return Number.isInteger(index) ? row[index] : fallback;
+    };
+    return payload.rowsCompact.map(function (row) { return ({
+        unitName: valueOf(row, 'unitName', '') || '',
+        subject: valueOf(row, 'subject', '') || '',
+        period: valueOf(row, 'period', '') || '',
+        num: valueOf(row, 'num', '') || '',
+        name: valueOf(row, 'name', '') || '',
+        date: valueOf(row, 'date', '') || '',
+        review: valueOf(row, 'review', '') || '',
+        rank: valueOf(row, 'rank', '') || '',
+        comment: valueOf(row, 'comment', '') || '',
+        unitId: valueOf(row, 'unitId', '') || '',
+        answersMap: valueOf(row, 'answersMap', {}) && typeof valueOf(row, 'answersMap', {}) === 'object' ? valueOf(row, 'answersMap', {}) : {},
+        fields: Array.isArray(fieldSets[valueOf(row, 'fieldSetKey', '')]) ? fieldSets[valueOf(row, 'fieldSetKey', '')] : [],
+        teacherAssessment: valueOf(row, 'teacherAssessment', null) || null,
+    }); });
+}
 function fetchAggregateDataSet_(options) {
     var opts = options || {};
     var unitId = opts.unitId || null;
@@ -207,7 +236,7 @@ function fetchAggregateDataSet_(options) {
                 opts.onError(res.error);
             return;
         }
-        var rows = res && res.rows || [];
+        var rows = expandCompactAggregateRows_(res) || (res && res.rows) || [];
         if (typeof opts.onSuccess === 'function')
             opts.onSuccess(rows, res || {});
     })
@@ -217,7 +246,7 @@ function fetchAggregateDataSet_(options) {
         if (typeof opts.onFailure === 'function')
             opts.onFailure(err);
     })
-        .getAggregateDataJson(unitId, subject ? JSON.stringify({ subject: subject }) : '');
+        .getAggregateDataJson(unitId, JSON.stringify({ subject: subject, compact: true }));
 }
 function getInitialAggregateFetchOptions_(renderedImmediate) {
     var currentAggUnitId = (document.getElementById('aggUnit') || {}).value || '';

@@ -1,6 +1,7 @@
 <script>
 let latestStatusRows=[];
 let latestStatusMeta={};
+let teacherStatusRequestSeq=0;
 let teacherFeedbackResultTimer=null;
 let unitSaveState={ busy:false, requestToken:'' };
 let lessonFieldEditState={ mode:'unit', unitId:'', period:0 };
@@ -117,11 +118,33 @@ function bindTeacherFeedbackPrefs_(){
 function loadStatus(){
   bindTeacherFeedbackPrefs_();
   if(!activeUnitId||!activePeriod) return;
-  google.script.run.withSuccessHandler(renderStatus).getLessonStatus(activeUnitId,activePeriod);
+  if(preloadCache.statusLoading) return;
+  preloadCache.statusLoading=true;
+  const requestSeq=++teacherStatusRequestSeq;
+  const requestUnitId=String(activeUnitId||'');
+  const requestPeriod=Number(activePeriod||0);
+  google.script.run
+    .withSuccessHandler(d=>{
+      preloadCache.statusLoading=false;
+      if(requestSeq!==teacherStatusRequestSeq) return;
+      if(String(activeUnitId||'')!==requestUnitId || Number(activePeriod||0)!==requestPeriod) return;
+      const meta=d && d.meta || {};
+      const responseUnitId=String(meta.unitId||requestUnitId);
+      const responsePeriod=Number(meta.period||requestPeriod);
+      if(responseUnitId!==requestUnitId || responsePeriod!==requestPeriod) return;
+      renderStatus(d);
+    })
+    .withFailureHandler(()=>{
+      preloadCache.statusLoading=false;
+    })
+    .getLessonStatus(requestUnitId,requestPeriod);
 }
 function renderStatus(d){
   latestStatusRows=Array.isArray(d && d.students)?d.students:[];
   latestStatusMeta=d && d.meta || {};
+  if(!latestStatusRows.length && !(latestStatusMeta && (latestStatusMeta.unitId || latestStatusMeta.lessonId))){
+    return;
+  }
   writeTeacherStatusPreloadCache_({
     meta:latestStatusMeta,
     students:latestStatusRows,
@@ -549,9 +572,11 @@ function generateTeacherFeedbackDraftForRow(responseId){
 function returnTeacherFeedbackDraftsFromStatus(){
   if(!activeUnitId||!activePeriod){ showToast('単元と時間目を選択してください'); return; }
   const medalMode=getTeacherFeedbackMedalMode();
+  const targetResponseIds=getTeacherFeedbackReturnTargetIds_();
+  if(!targetResponseIds.length){ showToast('返却できる下書きがありません'); return; }
   const btn=setActionButtonBusy_('teacherFeedbackReturnBtn', '⏳ 一括返却中…');
   showToast(medalMode==='auto_award'?'AI下書きを返却してメダルを処理しています…':'AI下書きを返却しています…');
-  flushTeacherFeedbackDrafts_(latestStatusRows.map(row=>row.responseId),()=>{
+  flushTeacherFeedbackDrafts_(targetResponseIds,()=>{
     google.script.run
       .withSuccessHandler(res=>{
         if(!(res && res.ok)){ resetActionButton_(btn); showToast(res && res.error || '返却に失敗しました'); return; }
@@ -565,7 +590,7 @@ function returnTeacherFeedbackDraftsFromStatus(){
         resetActionButton_(btn);
         showToast(err && err.message || '返却に失敗しました');
       })
-      .returnTeacherFeedbackDrafts(activeUnitId,activePeriod,[],medalMode);
+      .returnTeacherFeedbackDrafts(activeUnitId,activePeriod,targetResponseIds,medalMode,{ source:'teacher_bulk_return', skipEventLogs:true });
   },err=>{
     resetActionButton_(btn);
     showToast(err && err.message || '返却前の保存に失敗しました');
@@ -589,6 +614,13 @@ function clearTeacherFeedbackDraftsFromStatus(){
       showToast(err && err.message || '下書きクリアに失敗しました');
     })
     .clearTeacherFeedbackDrafts(activeUnitId,activePeriod,[]);
+}
+
+function getTeacherFeedbackReturnTargetIds_(){
+  return (Array.isArray(latestStatusRows)?latestStatusRows:[])
+    .map(row=>String(row && row.responseId || '').trim())
+    .filter(Boolean)
+    .filter((value,index,array)=>array.indexOf(value)===index);
 }
 
 function persistTeacherFeedbackDraftForRow_(responseId, options){
@@ -654,19 +686,54 @@ function flushTeacherFeedbackDrafts_(responseIds, onSuccess, onFailure){
       const entry=getTeacherDraftState_(value);
       return Boolean(entry && (entry.commentDirty||entry.rankDirty));
     });
-  const next=()=>{
-    const responseId=queue.shift();
-    if(!responseId){
-      if(typeof onSuccess==='function') onSuccess();
-      return;
-    }
-    persistTeacherFeedbackDraftForRow_(responseId,{
-      busyLabel:'返却前に保存中',
-      onSuccess:()=>next(),
-      onFailure:onFailure,
-    });
-  };
-  next();
+  if(!queue.length){
+    if(typeof onSuccess==='function') onSuccess();
+    return;
+  }
+  const payload=queue.map(responseId=>{
+    const row=findTeacherDraftRow_(responseId);
+    const values=collectTeacherDraftValues_(responseId,row);
+    setTeacherDraftRowBusy_(responseId,true,'返却前に保存中');
+    return {
+      responseId,
+      draftComment:values.comment||'',
+      draftRank:values.rank||'',
+    };
+  });
+  google.script.run
+    .withSuccessHandler(res=>{
+      queue.forEach(responseId=>setTeacherDraftRowBusy_(responseId,false));
+      if(!(res && res.ok)){
+        if(typeof onFailure==='function') onFailure({ message:res && res.error || '返却前の保存に失敗しました' });
+        return;
+      }
+      const savedMap={};
+      (Array.isArray(res.drafts)?res.drafts:[]).forEach(draft=>{
+        const responseId=String(draft && draft.responseId || '').trim();
+        if(responseId) savedMap[responseId]=draft;
+      });
+      queue.forEach(responseId=>{
+        const entry=getTeacherDraftState_(responseId);
+        const row=findTeacherDraftRow_(responseId);
+        const values=collectTeacherDraftValues_(responseId,row);
+        const saved=savedMap[responseId]||{};
+        if(entry){
+          entry.comment=String(saved.draftComment != null ? saved.draftComment : values.comment || '');
+          entry.rank=String(saved.draftRank != null ? saved.draftRank : values.rank || '');
+          entry.commentDirty=false;
+          entry.rankDirty=false;
+        }
+        const status=row ? row.querySelector('.status-draft-status') : null;
+        if(status) status.textContent='保存済み';
+        syncTeacherDraftDirtyUi_(responseId);
+      });
+      if(typeof onSuccess==='function') onSuccess(res);
+    })
+    .withFailureHandler(err=>{
+      queue.forEach(responseId=>setTeacherDraftRowBusy_(responseId,false));
+      if(typeof onFailure==='function') onFailure(err);
+    })
+    .saveTeacherFeedbackDraftsBulk(payload);
 }
 
 function saveTeacherFeedbackMedalFromRow(select){

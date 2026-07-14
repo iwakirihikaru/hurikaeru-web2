@@ -179,6 +179,7 @@ const preloadCache = {
   rosterLoading:false,
   editorLoading:false,
   promptsLoading:false,
+  statusLoading:false,
   started:false,
 };
 const TEACHER_PRELOAD_CACHE_KEY = 'jibun-matome-teacher-preload';
@@ -210,6 +211,7 @@ function loadInit(){
   const requestEpoch=teacherDataEpoch;
   applyEmbeddedTeacherBootstrap_();
   let statusLoaded=false;
+  // まず現在授業のポインタだけ軽く取り、その後に shell bootstrap を続ける。
   const loadTeacherInit=()=>{
     google.script.run
       .withSuccessHandler(d=>{
@@ -230,7 +232,7 @@ function loadInit(){
       .withSuccessHandler(d=>{
         if(requestEpoch!==teacherDataEpoch) return;
         applyTeacherInitData(d, { includeRoster:false, renderUnitList:false, schedulePreload:false, source:'teacherStatusSnapshot' });
-        if(d && d.status){
+        if(d && d.status && Array.isArray(d.status.students) && d.status.students.length){
           renderStatus(d.status);
         }
         loadTeacherInit();
@@ -265,6 +267,7 @@ function loadStatusInit(options){
   const requestEpoch=teacherDataEpoch;
   applyEmbeddedTeacherBootstrap_();
   const cachedStatus=readTeacherStatusPreloadCache_();
+  let statusRefreshStarted=false;
   if(cachedStatus){
     renderStatus(cachedStatus);
   }
@@ -278,10 +281,11 @@ function loadStatusInit(options){
         const statusSection=document.getElementById('sec-status');
         if(statusSection && statusSection.classList.contains('active')){
           loadStatus();
+          statusRefreshStarted=true;
         }
       }
       if(opts.startPolling){
-        startStatusPoll(Boolean(d && d.status && Array.isArray(d.status.students) && d.status.students.length));
+        startStatusPoll(statusRefreshStarted || Boolean(d && d.status && Array.isArray(d.status.students) && d.status.students.length));
       }
       scheduleTeacherUnitProgressRefresh_(d);
     })
@@ -473,11 +477,30 @@ function persistPortableTeacherBootstrap_(){
   window.__portableGas.cacheTeacherBootstrap(payload);
 }
 
+function scheduleTeacherStatusPreload_(){
+  if(!activeUnitId || !activePeriod) return;
+  if(readTeacherStatusPreloadCache_()) return;
+  if(preloadCache.statusLoading) return;
+  const run=()=>{
+    if(!activeUnitId || !activePeriod || readTeacherStatusPreloadCache_()) return;
+    if(typeof loadStatus==='function'){
+      loadStatus();
+    }
+  };
+  if(typeof requestIdleCallback==='function'){
+    requestIdleCallback(run,{ timeout:2500 });
+  }else{
+    setTimeout(run,1200);
+  }
+}
+
 function scheduleTeacherPreload(){
   if(preloadCache.started) return;
   preloadCache.started = true;
   const runner = ()=> {
+    // 名簿は最優先、その他は初期描画後の遅延取得へ回す。
     ensureRosterPreload();
+    scheduleTeacherStatusPreload_();
     setTimeout(()=>{
       if(typeof scheduleTeacherCurrentLessonAggregatePreload==='function'){
         scheduleTeacherCurrentLessonAggregatePreload('teacher-preload');

@@ -181,6 +181,7 @@ function saveTeacherAssessment(unitId, studentNumber, patch) {
     after: next,
     actor: 'teacher',
   });
+  bumpDomainCacheVersion_('assessments');
   return { ok: true, assessment: next };
 }
 
@@ -256,6 +257,7 @@ function upsertTeacherAssessments_(items) {
     sheet.getRange(sheet.getLastRow() + 1, 1, appends.length, ASSESS_HEADERS.length).setValues(appends);
   }
   writeAuditLogs_(auditLogs);
+  bumpDomainCacheVersion_('assessments');
   return saved;
 }
 
@@ -554,6 +556,14 @@ function getAllResponsesCacheKey_() {
   return `all_responses_v1:${readDomainCacheVersion_('responses')}:${readDomainCacheVersion_('lessons')}`;
 }
 
+function getStudentResponsesCacheKey_(studentNumber) {
+  return `student_responses_v1:${readDomainCacheVersion_('responses')}:${readDomainCacheVersion_('lessons')}:${String(studentNumber || '').trim()}`;
+}
+
+function getResponseByIdCacheKey_(responseId) {
+  return `response_by_id_v1:${readDomainCacheVersion_('responses')}:${String(responseId || '').trim()}`;
+}
+
 function readCachedLessonResponses_(lessonId) {
   if (!lessonId) return null;
   const cached = getCachedJson_(getLessonResponsesCacheKey_(lessonId));
@@ -564,6 +574,12 @@ function cacheLessonResponses_(lessonId, responses) {
   const normalizedLessonId = String(lessonId || '').trim();
   if (!normalizedLessonId) return Array.isArray(responses) ? responses : [];
   return putCachedJson_(getLessonResponsesCacheKey_(normalizedLessonId), Array.isArray(responses) ? responses : [], 20);
+}
+
+function cacheResponseById_(response) {
+  const responseId = String(response && response.responseId || '').trim();
+  if (!responseId) return response || null;
+  return putCachedJson_(getResponseByIdCacheKey_(responseId), response, 20);
 }
 
 function getLessonResponseRowIndexKey_(lessonId) {
@@ -1296,6 +1312,16 @@ function listMasterResponseRecordsForLessonViaContract_(lessonId) {
   return Array.isArray(snapshot && snapshot.items) ? snapshot.items : [];
 }
 
+function listMasterResponseRecordsForStudentNumberViaContract_(studentNumber) {
+  const snapshot = getMasterGasApiRecordSnapshot_(MASTER_GAS_API_APP_ID, {
+    recordType: MASTER_RESPONSE_RECORD_TYPE,
+    studentNo: String(studentNumber || '').trim(),
+    includeDeleted: true,
+    limit: MASTER_GAS_API_MAX_LIMIT,
+  });
+  return Array.isArray(snapshot && snapshot.items) ? snapshot.items : [];
+}
+
 function listMasterResponseRecordsForAllViaContract_() {
   const snapshot = getMasterGasApiRecordSnapshot_(MASTER_GAS_API_APP_ID, {
     recordType: MASTER_RESPONSE_RECORD_TYPE,
@@ -1355,6 +1381,25 @@ function listMasterResponseRecordsForLesson_(lessonId) {
   }
   const grouped = collectLatestMasterResponsesByLesson_(items, normalizedLessonId);
   return grouped[normalizedLessonId] || [];
+}
+
+function listMasterResponseRecordsForStudentNumber_(studentNumber) {
+  const normalizedStudentNumber = String(studentNumber || '').trim();
+  if (!normalizedStudentNumber) return [];
+  let items = [];
+  try {
+    items = listMasterResponseRecordsForStudentNumberViaContract_(normalizedStudentNumber);
+  } catch (_err) {
+    items = readMasterGasApiRows_(MASTER_GAS_API_SHEETS.RECORDS, MASTER_GAS_API_HEADERS.Records)
+      .map(mapMasterGasApiRecordRow_)
+      .filter(item => item.appId === MASTER_GAS_API_APP_ID)
+      .filter(item => item.recordType === MASTER_RESPONSE_RECORD_TYPE)
+      .filter(item => String(item.studentNo || '').trim() === normalizedStudentNumber);
+  }
+  const grouped = collectLatestMasterResponsesByLesson_(items);
+  return sortLessonResponsesForCache_(
+    Object.keys(grouped).reduce((list, currentLessonId) => list.concat(grouped[currentLessonId] || []), [])
+  );
 }
 
 function listMasterResponseRecordsForAll_() {
@@ -1529,8 +1574,11 @@ function getResponseRecordByStudentNumber_(lessonId, studentNumber) {
 function getResponseRecordByResponseId_(responseId) {
   const normalizedResponseId = String(responseId || '').trim();
   if (!normalizedResponseId) return null;
+  const cached = getCachedJson_(getResponseByIdCacheKey_(normalizedResponseId));
+  if (cached && String(cached.responseId || '').trim() === normalizedResponseId) return cached;
   const responses = listAllResponses_();
-  return responses.find(item => String(item.responseId || '').trim() === normalizedResponseId) || null;
+  const found = responses.find(item => String(item.responseId || '').trim() === normalizedResponseId) || null;
+  return found ? cacheResponseById_(found) : null;
 }
 
 function listResponsesForLesson_(lessonId) {
@@ -1539,6 +1587,29 @@ function listResponsesForLesson_(lessonId) {
   const cached = readCachedLessonResponses_(normalizedLessonId);
   if (cached) return cached;
   return cacheLessonResponses_(normalizedLessonId, listMasterResponseRecordsForLesson_(normalizedLessonId));
+}
+
+function listResponsesForStudent_(studentNumber, lessonIds) {
+  const normalizedStudentNumber = String(studentNumber || '').trim();
+  if (!normalizedStudentNumber) return [];
+  const lessonIdList = Array.isArray(lessonIds)
+    ? lessonIds.map(item => String(item || '').trim()).filter(Boolean)
+    : [];
+  const lessonIdSet = {};
+  lessonIdList.forEach(lessonId => {
+    lessonIdSet[lessonId] = true;
+  });
+  const cacheKey = getStudentResponsesCacheKey_(normalizedStudentNumber);
+  const cached = getCachedJson_(cacheKey);
+  if (Array.isArray(cached)) {
+    return lessonIdList.length
+      ? cached.filter(item => lessonIdSet[String(item && item.lessonId || '').trim()] === true)
+      : cached;
+  }
+  const responses = listMasterResponseRecordsForStudentNumber_(normalizedStudentNumber);
+  responses.forEach(response => cacheResponseById_(response));
+  return putCachedJson_(cacheKey, responses, 20)
+    .filter(item => !lessonIdList.length || lessonIdSet[String(item && item.lessonId || '').trim()] === true);
 }
 
 function listAllResponses_() {
@@ -1565,6 +1636,7 @@ function listAllResponses_() {
   Object.keys(grouped).forEach(lessonId => {
     cacheLessonResponses_(lessonId, grouped[lessonId]);
   });
+  allResponses.forEach(response => cacheResponseById_(response));
   return putCachedJson_(getAllResponsesCacheKey_(), sortLessonResponsesForCache_(allResponses), 20);
 }
 

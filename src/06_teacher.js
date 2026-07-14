@@ -1,6 +1,9 @@
 // ============================================================
 //  先生向け API
 // ============================================================
+// teacherInit:
+// 教師画面の初期 shell を立ち上げるための bootstrap。
+// status 行一覧や重い集約取得は含めない。
 function teacherInit() {
   const errors = [];
   let units = [];
@@ -156,6 +159,9 @@ function buildTeacherDeploymentDisplayInfo_(versionControl, options) {
   }
 }
 
+// teacherStatusSnapshot:
+// 初期表示や軽い再同期で「いま何の授業か」を確認するための軽量 API。
+// 単元一覧・名簿・詳細 status はここに寄せない。
 function teacherStatusSnapshot() {
   const startedAt = Date.now();
   const timing = {};
@@ -168,20 +174,10 @@ function teacherStatusSnapshot() {
   } catch (err) {
     errors.push(`active: ${err && err.message ? err.message : err}`);
   }
-  let status = {
-    meta: {
-      teacherAiEnabled: isTeacherAiEnabled_(),
-      draftCount: 0,
-      returnedCount: 0,
-    },
-    students: [],
-  };
   timing.totalMs = Date.now() - startedAt;
-  if (status && status.meta) status.meta.serverRequestTiming = timing;
   return {
     active,
     build: APP_BUILD,
-    status,
     timing,
     errors,
   };
@@ -1259,6 +1255,9 @@ function buildLessonStatus_(unitId, period) {
   timing.totalMs = Date.now() - startedAt;
   return {
     meta: {
+      unitId: String(unitId || ''),
+      period: Number(period || 0),
+      lessonId: String(lesson.lessonId || ''),
       teacherAiEnabled,
       responseReadMeta,
       draftCount: drafts.filter(draft => String(draft.status || '') === 'draft' && (String(draft.draftComment || '').trim() || String(draft.draftRank || '').trim())).length,
@@ -1269,6 +1268,8 @@ function buildLessonStatus_(unitId, period) {
   };
 }
 
+// getLessonStatus:
+// status タブ専用の授業状況本体。初期 bootstrap と責務を分ける。
 function getLessonStatus(unitId, period) {
   const cacheKey = getLessonStatusCacheKey_(unitId, period);
   const cached = getCachedJson_(cacheKey);
@@ -1520,6 +1521,46 @@ function saveTeacherFeedbackDraft(responseId, draftComment, draftRank) {
   return { ok:true, draft: saved[0] || null };
 }
 
+function saveTeacherFeedbackDraftsBulk(items) {
+  const list = Array.isArray(items) ? items : [];
+  if (!list.length) return { ok:true, savedCount: 0, drafts: [] };
+  const responseIdSet = new Set(list.map(item => String(item && item.responseId || '').trim()).filter(Boolean));
+  if (!responseIdSet.size) return { ok:false, error:'保存する下書きがありません。' };
+  const responseMap = {};
+  listAllResponses_().forEach(response => {
+    const responseId = String(response && response.responseId || '').trim();
+    if (responseIdSet.has(responseId)) responseMap[responseId] = response;
+  });
+  const draftItems = [];
+  list.forEach(item => {
+    const responseId = String(item && item.responseId || '').trim();
+    const existing = responseMap[responseId];
+    if (!existing) return;
+    const nextComment = String(item && item.draftComment || '').trim();
+    const nextRank = normalizeStudentRank_(item && item.draftRank);
+    const nextScore = nextRank ? studentRankToScore_(nextRank) : 0;
+    draftItems.push({
+      responseId: existing.responseId || '',
+      lessonId: existing.lessonId || '',
+      unitId: existing.unitId || '',
+      studentId: existing.studentId || '',
+      studentNumber: existing.studentNumber || '',
+      draftComment: nextComment,
+      draftRank: nextRank,
+      draftScore: nextScore,
+      status: (nextComment || nextRank) ? 'draft' : 'cleared',
+      returnedAt: '',
+    });
+  });
+  if (!draftItems.length) return { ok:false, error:'対象の提出が見つかりません。' };
+  const saved = upsertTeacherCommentDrafts_(draftItems, 'teacher-bulk');
+  return {
+    ok: true,
+    savedCount: saved.length,
+    drafts: saved,
+  };
+}
+
 function saveTeacherFeedbackMedal(responseId, medal) {
   const existing = getResponseRecordByResponseId_(responseId);
   if (!existing) return { ok:false, error:'対象の提出が見つかりません。' };
@@ -1547,7 +1588,7 @@ function saveTeacherFeedbackMedal(responseId, medal) {
   };
 }
 
-function returnTeacherFeedbackDrafts(unitId, period, responseIds, medalMode) {
+function returnTeacherFeedbackDrafts(unitId, period, responseIds, medalMode, options) {
   const normalizedUnitId = String(unitId || '').trim();
   const normalizedPeriod = String(period || '').trim();
   if (!normalizedUnitId || !normalizedPeriod) return { ok:false, error:'単元と時間目を選択してください。' };
@@ -1561,8 +1602,9 @@ function returnTeacherFeedbackDrafts(unitId, period, responseIds, medalMode) {
   if (!selected.length) return { ok:false, error:'返却できる下書きがありません。' };
   return applyTeacherFeedbackDrafts_(lesson.lessonId, selected, {
     batchId: makeId_('teacherreturn'),
-    source: 'teacher_manual_return',
+    source: options && options.source ? String(options.source) : 'teacher_manual_return',
     medalMode,
+    skipEventLogs: options && options.skipEventLogs === true,
   });
 }
 
@@ -1723,12 +1765,14 @@ function applyTeacherFeedbackDrafts_(lessonId, drafts, options) {
   selectedDrafts.forEach(draft => {
     draftMap[String(draft.responseId || '').trim()] = draft;
   });
-  writeAiEventLogs_(buildTeacherFeedbackEvents_(selectedDrafts, 'teacher_feedback_return_started', {
-    batchId,
-    aiStatus: 'processing',
-    detail: `source=${String(meta.source || 'teacher_return')}`,
-    timestamp: nowIso_(),
-  }));
+  if (meta.skipEventLogs !== true) {
+    writeAiEventLogs_(buildTeacherFeedbackEvents_(selectedDrafts, 'teacher_feedback_return_started', {
+      batchId,
+      aiStatus: 'processing',
+      detail: `source=${String(meta.source || 'teacher_return')}`,
+      timestamp: nowIso_(),
+    }));
+  }
   let returnedCount = 0;
   const returnedDrafts = [];
   let medalAwarded = false;
@@ -1825,13 +1869,15 @@ function applyTeacherFeedbackDrafts_(lessonId, drafts, options) {
     draftSaveMs = Date.now() - draftSaveStartedAt;
   }
   aggregateMs = 0;
-  writeAiEventLogs_(buildTeacherFeedbackEvents_(returnedDrafts, 'teacher_feedback_returned', {
-    batchId,
-    aiStatus: 'done',
-    detail: `source=${String(meta.source || 'teacher_return')} responseWriteMs=${responseWriteMs} draftSaveMs=${draftSaveMs} aggregateMs=${aggregateMs}`,
-    timestamp: returnedAt,
-    latencyMs: Date.now() - returnStartedAtMs,
-  }));
+  if (meta.skipEventLogs !== true) {
+    writeAiEventLogs_(buildTeacherFeedbackEvents_(returnedDrafts, 'teacher_feedback_returned', {
+      batchId,
+      aiStatus: 'done',
+      detail: `source=${String(meta.source || 'teacher_return')} responseWriteMs=${responseWriteMs} draftSaveMs=${draftSaveMs} aggregateMs=${aggregateMs}`,
+      timestamp: returnedAt,
+      latencyMs: Date.now() - returnStartedAtMs,
+    }));
+  }
   return { ok:true, returnedCount, medalAwarded };
 }
 
@@ -1859,6 +1905,34 @@ function normalizeAggregateFilterOptions_(options) {
   };
 }
 
+function getAggregateDataJsonCacheKey_(unitId, filters, useCompact) {
+  return [
+    'aggregate_json_v1',
+    readDomainCacheVersion_('responses'),
+    readDomainCacheVersion_('lessons'),
+    readDomainCacheVersion_('units'),
+    readDomainCacheVersion_('assessments'),
+    String(unitId || '').trim() || 'all',
+    String(filters && filters.subject || '').trim() || 'all',
+    useCompact ? 'compact' : 'full',
+  ].join(':');
+}
+
+function readCachedAggregateDataJson_(unitId, filters, useCompact) {
+  try {
+    return getDomainCache_().get(getAggregateDataJsonCacheKey_(unitId, filters, useCompact)) || '';
+  } catch (_err) {
+    return '';
+  }
+}
+
+function writeCachedAggregateDataJson_(unitId, filters, useCompact, payload) {
+  try {
+    getDomainCache_().put(getAggregateDataJsonCacheKey_(unitId, filters, useCompact), String(payload || ''), 20);
+  } catch (_err) {}
+  return payload;
+}
+
 function logTeacherPerf_(name, payload) {
   try {
     console.log('[teacher_perf] ' + JSON.stringify({
@@ -1872,6 +1946,7 @@ function readTeacherRecordSource_(options) {
   const opts = options && typeof options === 'object' ? options : {};
   const filterUnitId = String(opts.unitId || '').trim();
   const filterSubject = String(opts.subject || '').trim();
+  const filterStudentNumber = String(opts.studentNumber || '').trim();
   const timing = {};
   const counts = {};
   const startedAt = Date.now();
@@ -1906,17 +1981,25 @@ function readTeacherRecordSource_(options) {
       }
       return true;
     });
-    targetLessons.forEach(lesson => {
-      const lessonId = String(lesson.lessonId || '').trim();
-      if (!lessonId) return;
-      allResponses = allResponses.concat(listResponsesForLesson_(lessonId));
-    });
+    if (filterStudentNumber) {
+      const targetLessonIds = targetLessons.map(lesson => String(lesson.lessonId || '').trim()).filter(Boolean);
+      allResponses = listResponsesForStudent_(filterStudentNumber, targetLessonIds);
+    } else {
+      targetLessons.forEach(lesson => {
+        const lessonId = String(lesson.lessonId || '').trim();
+        if (!lessonId) return;
+        allResponses = allResponses.concat(listResponsesForLesson_(lessonId));
+      });
+    }
     counts.scopedLessonCount = targetLessons.length;
+  } else if (filterStudentNumber) {
+    allResponses = listResponsesForStudent_(filterStudentNumber);
   } else {
     allResponses = listAllResponses_();
   }
   timing.responsesMs = Date.now() - t0;
   counts.rawResponseCount = allResponses.length;
+  counts.studentScoped = filterStudentNumber ? 1 : 0;
 
   t0 = Date.now();
   const responseReadMeta = summarizeResponseReadForAll_(allResponses);
@@ -2018,6 +2101,102 @@ function getAggregateData(unitId, options) {
   });
   return rows;
 }
+
+function getCompactAggregateRowSchema_() {
+  return [
+    'unitName',
+    'subject',
+    'period',
+    'num',
+    'name',
+    'date',
+    'review',
+    'rank',
+    'comment',
+    'unitId',
+    'answersMap',
+    'fieldSetKey',
+    'teacherAssessment',
+  ];
+}
+
+function normalizeAggregateFieldForPayload_(field) {
+  if (!field || typeof field !== 'object') return null;
+  const next = {
+    key: String(field.key || ''),
+    label: String(field.label || field.key || ''),
+    emoji: String(field.emoji || ''),
+    type: String(field.type || 'text'),
+    categories: Array.isArray(field.categories) ? field.categories.filter(Boolean) : [],
+    source: field.source || '',
+  };
+  const hints = String(field.hints || '').trim();
+  if (hints) next.hints = hints;
+  if (field.enabled === false) next.enabled = false;
+  return next.key ? next : null;
+}
+
+function normalizeAggregateFieldsForPayload_(fields) {
+  return (Array.isArray(fields) ? fields : [])
+    .map(normalizeAggregateFieldForPayload_)
+    .filter(Boolean);
+}
+
+function compactAggregateAnswersMap_(answersMap) {
+  const source = answersMap && typeof answersMap === 'object' ? answersMap : {};
+  const compact = {};
+  Object.keys(source).forEach(key => {
+    const value = source[key];
+    if (value === null || value === undefined) return;
+    if (Array.isArray(value)) {
+      const list = value.map(item => String(item || '').trim()).filter(Boolean);
+      if (list.length) compact[key] = list;
+      return;
+    }
+    const text = String(value).trim();
+    if (text) compact[key] = value;
+  });
+  return compact;
+}
+
+function buildCompactAggregatePayload_(rows) {
+  const schema = getCompactAggregateRowSchema_();
+  const fieldSetIndex = {};
+  const fieldSets = {};
+  let fieldSetSeq = 0;
+  const compactRows = (Array.isArray(rows) ? rows : []).map(row => {
+    const fields = normalizeAggregateFieldsForPayload_(row && row.fields);
+    const fieldSignature = JSON.stringify(fields);
+    let fieldSetKey = fieldSetIndex[fieldSignature];
+    if (!fieldSetKey) {
+      fieldSetKey = `f${fieldSetSeq++}`;
+      fieldSetIndex[fieldSignature] = fieldSetKey;
+      fieldSets[fieldSetKey] = fields;
+    }
+    return [
+      row.unitName || '',
+      row.subject || '',
+      row.period || '',
+      row.num || '',
+      row.name || '',
+      row.date || '',
+      row.review || '',
+      row.rank || '',
+      row.comment || '',
+      row.unitId || '',
+      compactAggregateAnswersMap_(row.answersMap),
+      fieldSetKey,
+      row.teacherAssessment || null,
+    ];
+  });
+  return {
+    compactVersion: 1,
+    rowSchema: schema,
+    fieldSets,
+    rowsCompact: compactRows,
+  };
+}
+
 function getAggregateDataJson(unitId, optionsJson) {
   const startedAt = Date.now();
   try {
@@ -2025,18 +2204,31 @@ function getAggregateDataJson(unitId, optionsJson) {
     if (optionsJson && String(optionsJson).trim()) {
       options = JSON.parse(String(optionsJson));
     }
+    const filters = normalizeAggregateFilterOptions_(options);
+    const useCompact = options && options.compact === true;
+    const cachedPayload = readCachedAggregateDataJson_(unitId, filters, useCompact);
+    if (cachedPayload) {
+      logTeacherPerf_('getAggregateDataJson', {
+        unitFilter: String(unitId || ''),
+        subjectFilter: filters.subject,
+        compact: useCompact,
+        cacheHit: true,
+        totalMs: Date.now() - startedAt,
+      });
+      return cachedPayload;
+    }
     const dataStartedAt = Date.now();
     const rows = getAggregateData(unitId, options);
     const dataMs = Date.now() - dataStartedAt;
-    const filters = normalizeAggregateFilterOptions_(options);
     const jsonStartedAt = Date.now();
-    const payload = JSON.stringify({
+    const basePayload = {
       ok: true,
       build: APP_BUILD,
       debug: {
         unitId: String(unitId || ''),
         subject: filters.subject,
         rowCount: rows.length,
+        compact: useCompact,
         responseReadMeta: rows.responseReadMeta || null,
         performanceMeta: rows.performanceMeta || null,
         sampleRows: rows.slice(0, 5).map(row => ({
@@ -2046,19 +2238,22 @@ function getAggregateDataJson(unitId, optionsJson) {
           num: row.num || '',
           date: row.date || '',
           preview: String(row.review || '').slice(0, 40),
-        })),
-      },
-      rows,
-    });
+          })),
+        },
+    };
+    const payload = JSON.stringify(useCompact
+      ? Object.assign(basePayload, buildCompactAggregatePayload_(rows))
+      : Object.assign(basePayload, { rows }));
     logTeacherPerf_('getAggregateDataJson', {
       unitFilter: String(unitId || ''),
       subjectFilter: filters.subject,
+      compact: useCompact,
       dataMs,
       jsonMs: Date.now() - jsonStartedAt,
       totalMs: Date.now() - startedAt,
       resultCount: rows.length,
     });
-    return payload;
+    return writeCachedAggregateDataJson_(unitId, filters, useCompact, payload);
   } catch (e) {
     return JSON.stringify({
       ok: false,
@@ -2113,7 +2308,11 @@ function getStudentPortfolioData(studentNumber, unitId) {
   const cached = getCachedJson_(cacheKey);
   if (cached && Array.isArray(cached.rows)) return cached;
   const startedAt = Date.now();
-  const source = readTeacherRecordSource_({ includeRoster: true });
+  const source = readTeacherRecordSource_({
+    includeRoster: true,
+    studentNumber,
+    unitId,
+  });
   const selectedUnit = source.units.find(item => String(item.id) === String(unitId));
   const roster = Array.isArray(source.roster) ? source.roster : [];
   const student = roster.find(item => String(item.number) === String(studentNumber));
@@ -2138,12 +2337,31 @@ function getStudentPortfolioData(studentNumber, unitId) {
     sampleMatchedRows: [],
   };
   const matchStartedAt = Date.now();
-  const matchedStudentRows = source.responses.filter(row => {
+  let matchedStudentRows = source.responses.filter(row => {
     if (String(row.studentNumber) === String(studentNumber)) return true;
     if (row.studentId && studentIdSet[String(row.studentId)]) return true;
     if (row.studentName && studentNameSet[String(row.studentName)]) return true;
     return false;
   });
+  if (!matchedStudentRows.length && (Object.keys(studentIdSet).length || Object.keys(studentNameSet).length)) {
+    // 古いデータで出席番号が欠けている場合だけ、従来の全件探索へ戻す。
+    const fallbackSource = readTeacherRecordSource_({ includeRoster: false, unitId });
+    source.responses = fallbackSource.responses;
+    source.responseReadMeta = fallbackSource.responseReadMeta;
+    source.timing = Object.assign({}, source.timing, {
+      fallbackResponsesMs: fallbackSource.timing && fallbackSource.timing.responsesMs || 0,
+      fallbackTotalReadMs: fallbackSource.timing && fallbackSource.timing.totalReadMs || 0,
+    });
+    source.counts = Object.assign({}, source.counts, {
+      fallbackRawResponseCount: fallbackSource.counts && fallbackSource.counts.rawResponseCount || 0,
+    });
+    matchedStudentRows = source.responses.filter(row => {
+      if (String(row.studentNumber) === String(studentNumber)) return true;
+      if (row.studentId && studentIdSet[String(row.studentId)]) return true;
+      if (row.studentName && studentNameSet[String(row.studentName)]) return true;
+      return false;
+    });
+  }
   debug.matchedStudentCount = matchedStudentRows.length;
   const rows = matchedStudentRows
     .filter(row => {

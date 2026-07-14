@@ -1,6 +1,9 @@
 // ============================================================
 //  児童向け API
 // ============================================================
+// studentInit:
+// 入口選択後の最初の1画面を成立させる最小データを返す。
+// 背景取得専用データや履歴系はここに寄せない。
 function studentInit(num, periodOverride) {
   const active = getActiveSetting();
   const period = active.period > 0 ? active.period
@@ -141,6 +144,9 @@ function buildStudentSnapshotState_(row, fields, featureFlags, shell) {
   };
 }
 
+// studentLoadState:
+// current lesson に対する児童本人の最新 state 再取得専用。
+// 入口情報や名簿一覧は返さない前提で保つ。
 function studentLoadState(unitId, period, num) {
   const normalizedPeriod = parseInt(period, 10) || 0;
   const units = getAllUnits();
@@ -334,7 +340,14 @@ function buildStudentState_(unit, period, num, studentName, enabledFields, optio
   const unitId = unit?.id || '';
   const lesson = getOrCreateLesson_(unitId, period);
   const response = getResponseRecordByStudentNumber_(lesson.lessonId, num);
-  const responseReadMeta = summarizeResponseReadForLesson_(lesson.lessonId, response ? [response] : []);
+  const responseReadMeta = {
+    scope: 'lesson',
+    lessonId: String(lesson.lessonId || ''),
+    preferMaster: true,
+    masterCount: response ? 1 : 0,
+    mergedCount: response ? 1 : 0,
+    mode: 'master_only',
+  };
   const customs = response
     ? mapAnswersToCustoms_(enabledFields, response.answersMap)
     : Array(enabledFields.length).fill('');

@@ -45,7 +45,7 @@
 ## 現在の最新版
 
 - 2026-07-14 時点
-  - 本番 version `368`
+  - 本番 version `374`
   - repo管理 debug deployment version `354`
   - デバッグ昇格版 version `10`
   - 配布テンプレート version `64`
@@ -267,6 +267,90 @@
       - `node scripts/build-teacher-legacy.js` と `npm run build:portable` 実行済み。
       - 2026-07-14 に本番 Webアプリへ deploy 済み。
       - 本番 deployment `AKfycbwo3TBXAkqLSx6XYcXxTI5m34DerRMHaB6X13dymilmU_wmc-Fn5F-2jkNofErLevVo7Q` を version `368` へ更新。
+  - 2026-07-14 追加前進 8
+    - 初期ロード契約・自動更新・背景取得優先順位の棚卸しメモを追加。
+    - `INITIAL_LOAD_CONTRACT_REVIEW.md`
+      - `teacherInit` / `teacherStatusSnapshot` / `getLessonStatus` / `studentInit` / `studentLoadState` の責務境界を整理。
+      - 背景取得を `初期必須` / `遅延取得` / `タブ表示時のみ` の3段階で定義。
+      - 自動更新を stream 単位で扱い、`epoch` / `requestSeq` / token による古いレスポンス破棄方針を明文化。
+    - このメモは、次の最小差分実装の基準として使う。
+    - まだコード本体の責務分離は未着手。
+  - 2026-07-14 追加前進 9
+    - ページごとの必要性・使用頻度を前提に、タブを開いた時の空待ちを減らす方針へ整理。
+    - `INITIAL_LOAD_CONTRACT_REVIEW.md`
+      - 教師ページ / 児童ページごとの使用頻度と取得方針を追記。
+      - 「よく使うページはタブを開く前に裏で温める」「タブ表示時はキャッシュ即表示 + 最新化」を基本方針にした。
+    - `src/teacher_script_core.html`
+      - `scheduleTeacherPreload()` で現在授業の status cache を先読みする `scheduleTeacherStatusPreload_()` を追加。
+      - `loadStatusInit()` で `loadStatus()` が二重に走り得る状態を避けるよう調整。
+    - `src/teacher_script_units.html`
+      - `loadStatus()` に `preloadCache.statusLoading` による in-flight 制御と failure handler を追加。
+    - 目的:
+      - 既定表示かつ高頻度の「授業状況」を、タブを開いた瞬間の待ちにしない。
+      - 同じ status 取得を同時に複数回走らせない。
+  - 2026-07-14 追加前進 10
+    - 授業記録の通信量を減らす compact payload を追加。
+    - `src/06_teacher.js`
+      - `getAggregateDataJson()` で `options.compact === true` の場合、各行に重複していた `fields` を field set 辞書へ分離。
+      - `rowsCompact` は短い配列形式で返し、`rowSchema` で列名も一緒に返す。旧 `rows` 形式も互換として残す。
+      - compact 時の `fields` は表示・評定で使う属性だけに絞り、`answersMap` は空値を落として送る。
+    - `src/teacher_script_reports.html`
+      - `fetchAggregateDataSet_()` が `{ compact:true }` を渡すよう変更。
+      - `expandCompactAggregateRows_()` で `rowSchema` を見ながら compact payload を従来の rows に展開し、既存描画処理は維持。
+    - ねらい:
+      - 授業記録で同じ項目定義を児童数分・時間数分繰り返し送る無駄を削る。
+      - まず通信 payload を軽くし、次段で用途別に不要列を送らない設計へ進める。
+    - deploy:
+      - 2026-07-14 に本番 Webアプリへ deploy 済み。
+      - 本番 deployment `AKfycbwo3TBXAkqLSx6XYcXxTI5m34DerRMHaB6X13dymilmU_wmc-Fn5F-2jkNofErLevVo7Q` を version `372` へ更新。
+      - `cdn/shell-config.json` と `onboarding/admin-app.js` の latest version も `372` へ同期。
+      - `admin.config.json` がない環境のため、配布テンプレート・導入管理・provision 更新は deploy script 上でスキップ。
+  - 2026-07-14 追加前進 11
+    - 教師画面の授業状況が空表示と実データ表示で交互に見えることがある問題を修正。
+    - 原因:
+      - `teacherStatusSnapshot()` が軽量APIなのに空の `status.students: []` を返していた。
+      - 初期ロード側がその空 status を本物の授業状況として `renderStatus()` し、status cache にも保存し得た。
+    - `src/06_teacher.js`
+      - `teacherStatusSnapshot()` から空 status を返さないよう変更。
+    - `src/teacher_script_core.html`
+      - 初期ロードで snapshot 由来の status は、students がある場合だけ描画。
+    - `src/teacher_script_units.html`
+      - `renderStatus()` で `unitId` / `lessonId` を持たない空 status は描画・キャッシュしない。
+    - deploy:
+      - 2026-07-14 に本番 Webアプリへ deploy 済み。
+      - 本番 deployment `AKfycbwo3TBXAkqLSx6XYcXxTI5m34DerRMHaB6X13dymilmU_wmc-Fn5F-2jkNofErLevVo7Q` を version `373` へ更新。
+      - `cdn/shell-config.json` と `onboarding/admin-app.js` の latest version も `373` へ同期。
+    - Pages:
+      - `npm run build:portable` で `portable/` は再生成済み。
+      - ただし、この作業では commit / push はしていないため、GitHub Pages / Cloudflare Pages 側の公開更新は未実施。
+  - 2026-07-14 追加前進 12
+    - 読み書きの追加高速化。
+    - `src/03_domain.js`
+      - `studentNumber` 指定の Responses 読み込み経路を追加。
+      - `getResponseRecordByResponseId_()` に短期 responseId キャッシュを追加。
+      - `listAllResponses_()` で responseId キャッシュも温めるよう変更。
+      - 評定保存時に `assessments` キャッシュ世代を進めるよう変更。
+    - `src/06_teacher.js`
+      - `readTeacherRecordSource_()` に `studentNumber` スコープを追加。
+      - `getStudentPortfolioData()` が1人分を見るだけで全記録を読む状態を避けるよう変更。
+      - 出席番号欠けの古いデータだけ、従来の全件探索へ fallback する。
+      - `getAggregateDataJson()` に短時間の完成済みJSONキャッシュを追加。
+    - ねらい:
+      - 児童履歴・教師ポートフォリオの読み込みを軽くする。
+      - コメント保存・メダル保存など responseId 指定の単発操作で、全件探索に落ちる頻度を減らす。
+      - 記録タブの背景取得・再表示で同じ圧縮JSONを短時間再利用する。
+    - 確認済み:
+      - `node --check src/03_domain.js`
+      - `node --check src/04_student.js`
+      - `node --check src/06_teacher.js`
+      - `node scripts/build-teacher-legacy.js`
+      - `npm run build:portable`
+      - legacy / portable HTML script 構文確認
+    - deploy:
+      - 2026-07-14 に本番 Webアプリへ deploy 済み。
+      - 本番 deployment `AKfycbwo3TBXAkqLSx6XYcXxTI5m34DerRMHaB6X13dymilmU_wmc-Fn5F-2jkNofErLevVo7Q` を version `374` へ更新。
+      - `cdn/shell-config.json` と `onboarding/admin-app.js` の latest version も `374` へ同期。
+      - `admin.config.json` がない環境のため、配布テンプレート・導入管理・provision 更新は deploy script 上でスキップ。
 
 ## Master GAS API v1
 
@@ -356,6 +440,7 @@
 - `portable-publish/` をどの互換用途まで残すかは未整理。
 - Cloudflare Pages の production branch は `main` を正とし、preview branch 直pushを本番運用にしない。
 - Phase F で残る fallback / 互換資産の扱いをどこまで狭めるか未決定。
+- 初期ロードと自動更新は最適化差分が積み重なっており、`teacherStatusSnapshot -> teacherInit -> preload` と `studentInit -> studentLoadState -> background fetch` の責務境界を次段で実装整理する必要がある。
 
 ## 次にやる候補
 
@@ -364,6 +449,8 @@
 - `main` 一本化後に preview branch 運用をどこまで減らせるか確認する。
 - 薄いGASの固定契約にする最小APIセットを整理する。
 - `portable` 側で古い返り値を吸収する正規化層の候補を洗い出す。
+- `INITIAL_LOAD_CONTRACT_REVIEW.md` を基準に、status / timeline の古いレスポンス破棄方法を先にそろえる。
+- `teacherInit` と `studentInit` の「初期必須」と「背景取得」の境界をコメントと軽いコード整理で固定する。
 - 実行テストは未実施なので、必要になった段階で別途行う。
 
 ## 次スレで十分な依頼文

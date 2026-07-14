@@ -454,6 +454,7 @@ let studentHistoryRows = [];
 let studentHistoryIndex = 0;
 let studentHistoryLoaded = false;
 let studentHistoryLoading = false;
+let studentHistoryPreloadTimer = null;
 let studentMaintenanceMode = false;
 let currentStudentShellState = {};
 let currentStudentUnitInfo = null;
@@ -794,11 +795,7 @@ function renderNumberButtons(students){
   const g=document.getElementById('numGrid');
   const list=(students&&students.length)?students:[];
   if(!list.length){
-    const emptyMessage=studentEntryOptionsLoading
-      ? '読み込み中です…'
-      : studentEntryOptionsLoaded
-      ? getStudentShellLabel_('studentRosterEmptyMessage', '名簿がまだ設定されていません。先生に伝えてね。')
-      : '名簿を確認中…';
+    const emptyMessage=getStudentShellLabel_('studentRosterLoadingMessage', '名簿を読み込み中です…');
     g.innerHTML=`<div style="grid-column:1/-1;text-align:center;color:#78909C;font-size:14px;">${esc(emptyMessage)}</div>`;
     return;
   }
@@ -988,6 +985,10 @@ function loadMain(d){
   studentHistoryIndex=0;
   studentHistoryLoaded=false;
   studentHistoryLoading=false;
+  if(studentHistoryPreloadTimer){
+    clearTimeout(studentHistoryPreloadTimer);
+    studentHistoryPreloadTimer=null;
+  }
   showStudentTab('current');
   setFieldInteractivity(false);
   document.getElementById('submitNote').textContent=d.cacheOnly ? 'さいしんじょうほうをよみこみ中…' : 'よみこみ中…';
@@ -999,7 +1000,9 @@ function loadMain(d){
       skipCachedTimeline:skipLocalFallback,
       skipPreviousReview:Boolean(d.prevReview||d.previousNextGoal),
     });
-    loadStudentState({ skipCachedState:skipLocalFallback });
+    if(d.bootstrapSource==='classSnapshot'){
+      loadStudentState({ skipCachedState:skipLocalFallback, skipTimelineRefresh:true });
+    }
   }
   resetAutoSave();
 }
@@ -1017,7 +1020,7 @@ function loadStudentState(options){
       const normalizedPayload=Object.assign({}, payload||{}, { num: identity.num, name: identity.name });
       writeStudentCache_('state',cacheKey,normalizedPayload);
       applyStudentState(normalizedPayload);
-      refreshTimeline();
+      if(opts.skipTimelineRefresh!==true) refreshTimeline();
     })
     .withFailureHandler(()=>{
       studentStateReady=true;
@@ -1716,13 +1719,19 @@ function showStudentTab(tabName){
 }
 
 function scheduleStudentHistoryPreload_(){
-  if(!submitted||!myNum||studentHistoryLoaded||studentHistoryLoading) return;
-  const run=()=>loadStudentPastRecords_({ background:true });
-  if(typeof requestIdleCallback==='function'){
-    requestIdleCallback(run,{timeout:3000});
-  }else{
-    setTimeout(run,1200);
-  }
+  if(!submitted||!myNum||studentHistoryLoaded||studentHistoryLoading||studentHistoryPreloadTimer) return;
+  const run=()=>{
+    studentHistoryPreloadTimer=null;
+    if(!submitted||!myNum||studentHistoryLoaded||studentHistoryLoading) return;
+    loadStudentPastRecords_({ background:true });
+  };
+  studentHistoryPreloadTimer=setTimeout(()=>{
+    if(typeof requestIdleCallback==='function'){
+      requestIdleCallback(run,{timeout:5000});
+    }else{
+      run();
+    }
+  },4500);
 }
 
 function loadStudentPastRecords_(options){
@@ -1734,18 +1743,22 @@ function loadStudentPastRecords_(options){
   if(list && !opts.background) list.innerHTML='<div class="history-empty"><span class="spinner"></span> よみこみ中…</div>';
   const cacheKey=[myNum,myUnitId].join('_');
   const cached=readStudentCache_('history',cacheKey);
-  if(cached) renderStudentPastRecords_(cached);
+  if(cached && (!opts.background || activeStudentTab==='history')) renderStudentPastRecords_(cached);
   google.script.run
     .withSuccessHandler(res=>{
       studentHistoryLoading=false;
-      studentHistoryLoaded=true;
+      studentHistoryLoaded=!opts.background || activeStudentTab==='history';
       writeStudentCache_('history',cacheKey,res||{groups:[]});
-      renderStudentPastRecords_(res||{groups:[]});
+      if(!opts.background || activeStudentTab==='history'){
+        renderStudentPastRecords_(res||{groups:[]});
+      }
     })
     .withFailureHandler(()=>{
       studentHistoryLoading=false;
-      studentHistoryLoaded=true;
-      renderStudentPastRecords_({groups:[]});
+      studentHistoryLoaded=!opts.background || activeStudentTab==='history';
+      if(!opts.background || activeStudentTab==='history'){
+        renderStudentPastRecords_({groups:[]});
+      }
     })
     .getStudentPastRecords(myNum,myUnitId,6);
 }
@@ -1984,6 +1997,13 @@ function getTimelineVisibleIndexes(focusIdx){
       .filter(({field})=>isReviewField(field)||isUnderstandingField(field))
       .map(({idx})=>idx);
     return forcedIdxs.length?forcedIdxs:[forcedIdx];
+  }
+  if(submitted){
+    const submittedIdxs=myFields
+      .map((field,idx)=>({field,idx}))
+      .filter(({field})=>isReviewField(field)||isUnderstandingField(field))
+      .map(({idx})=>idx);
+    return submittedIdxs.length?submittedIdxs:myFields.map((_,idx)=>idx);
   }
   if(focusIdx<0){
     return myFields.map((_,idx)=>idx);

@@ -177,6 +177,35 @@ function renderAggregateDataSet_(rows, meta){
   filterGrading();
 }
 
+function expandCompactAggregateRows_(payload){
+  if(!(payload && Number(payload.compactVersion||0)===1 && Array.isArray(payload.rowsCompact))) return null;
+  const fieldSets=payload.fieldSets && typeof payload.fieldSets==='object' ? payload.fieldSets : {};
+  const schema=Array.isArray(payload.rowSchema) && payload.rowSchema.length
+    ? payload.rowSchema
+    : ['unitName','subject','period','num','name','date','review','rank','comment','unitId','answersMap','fieldSetKey','teacherAssessment'];
+  const indexByName={};
+  schema.forEach((name,index)=>{ indexByName[String(name||'')]=index; });
+  const valueOf=(row,name,fallback)=>{
+    const index=indexByName[name];
+    return Number.isInteger(index) ? row[index] : fallback;
+  };
+  return payload.rowsCompact.map(row=>({
+    unitName:valueOf(row,'unitName','')||'',
+    subject:valueOf(row,'subject','')||'',
+    period:valueOf(row,'period','')||'',
+    num:valueOf(row,'num','')||'',
+    name:valueOf(row,'name','')||'',
+    date:valueOf(row,'date','')||'',
+    review:valueOf(row,'review','')||'',
+    rank:valueOf(row,'rank','')||'',
+    comment:valueOf(row,'comment','')||'',
+    unitId:valueOf(row,'unitId','')||'',
+    answersMap:valueOf(row,'answersMap',{})&&typeof valueOf(row,'answersMap',{})==='object' ? valueOf(row,'answersMap',{}) : {},
+    fields:Array.isArray(fieldSets[valueOf(row,'fieldSetKey','')]) ? fieldSets[valueOf(row,'fieldSetKey','')] : [],
+    teacherAssessment:valueOf(row,'teacherAssessment',null)||null,
+  }));
+}
+
 function fetchAggregateDataSet_(options){
   const opts=options||{};
   const unitId=opts.unitId||null;
@@ -196,14 +225,14 @@ function fetchAggregateDataSet_(options){
         if(typeof opts.onError==='function') opts.onError(res.error);
         return;
       }
-      const rows=res && res.rows || [];
+      const rows=expandCompactAggregateRows_(res) || (res && res.rows) || [];
       if(typeof opts.onSuccess==='function') opts.onSuccess(rows, res||{});
     })
     .withFailureHandler(err=>{
       if(requestSeq && requestSeq!==aggregateLoadRequestSeq) return;
       if(typeof opts.onFailure==='function') opts.onFailure(err);
     })
-    .getAggregateDataJson(unitId, subject ? JSON.stringify({ subject }) : '');
+    .getAggregateDataJson(unitId, JSON.stringify({ subject, compact:true }));
 }
 
 function getInitialAggregateFetchOptions_(renderedImmediate){
