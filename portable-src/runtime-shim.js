@@ -3,9 +3,9 @@
   var memoryApiUrl = "";
   var REDIRECT_FLAG_KEY = "__portable_setup_redirecting__";
   var TEACHER_BOOTSTRAP_CACHE_KEY = "jibun-matome-teacher-bootstrap-fast";
-  var TEACHER_BOOTSTRAP_TTL_MS = 60 * 1000;
-  var PORTABLE_FETCH_TIMEOUT_MS = 90000;
-  var PORTABLE_FETCH_RETRY_COUNT = 0;
+  var TEACHER_BOOTSTRAP_TTL_MS = 5 * 60 * 1000;
+  var PORTABLE_FETCH_TIMEOUT_MS = 20000;
+  var PORTABLE_FETCH_RETRY_COUNT = 1;
 
   function readApiUrlFromQuery() {
     try {
@@ -443,9 +443,10 @@
       redirectToSetupIfNeeded();
       return Promise.resolve(readEmptyStudentBootstrap());
     }
-    return callPortableMethod("getStudentEntryOptions", [{ lightweight: true, shell: false }])
+    return callPortableMethod("getStudentEntrySummary", [{ shell: false }])
       .then(function (data) {
-        return data || readEmptyStudentBootstrap();
+        if (!data || typeof data !== "object") return readEmptyStudentBootstrap();
+        return data;
       });
   }
 

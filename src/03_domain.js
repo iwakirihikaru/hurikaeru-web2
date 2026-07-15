@@ -806,8 +806,15 @@ function mapStudentDbRow_(row, fallbackName) {
   return {
     studentId: row[0] || '',
     number: row[1],
-    name: fallbackName || row[2] || '',
+    name: sanitizeStudentName_(fallbackName) || sanitizeStudentName_(row[2]),
   };
+}
+
+function sanitizeStudentName_(value) {
+  const text = String(value == null ? '' : value).trim();
+  if (!text) return '';
+  if (/^(unknown|unkonwn|undefined|null|nan)$/i.test(text)) return '';
+  return text;
 }
 
 function readCachedStudentRow_(studentNumber) {
@@ -828,7 +835,7 @@ function readCachedStudentRow_(studentNumber) {
 }
 
 function invalidateStudentCaches_() {
-  removeDomainCacheKeys_(['roster_entries_active_v1', 'roster_entries_all_v1', 'student_entry_options_v1', 'student_entry_options_v2']);
+  removeDomainCacheKeys_(['roster_entries_active_v1', 'roster_entries_all_v1', 'student_entry_options_v1', 'student_entry_options_v2', 'student_number_list_v1']);
   removeStudentEntryOptionsScriptCache_();
   return bumpDomainCacheVersion_('students');
 }
@@ -836,6 +843,7 @@ function invalidateStudentCaches_() {
 function removeStudentEntryOptionsScriptCache_() {
   try {
     CacheService.getScriptCache().remove('student_entry_options_v2');
+    CacheService.getScriptCache().remove('student_entry_summary_v1');
   } catch (_err) {}
 }
 
@@ -1017,6 +1025,31 @@ function readRosterSheetEntries_() {
   return buildDefaultRosterEntries_();
 }
 
+function getStudentNumberList_() {
+  const cached = getCachedJson_('student_number_list_v1');
+  if (Array.isArray(cached) && cached.length) return cached;
+  const roster = getTenantSpreadsheet_().getSheetByName('名簿');
+  if (roster) {
+    const lastRow = Math.max(roster.getLastRow(), 1);
+    const values = roster.getRange(1, 1, lastRow, 1).getValues();
+    const numbers = Array.from(new Set(values
+      .map(row => Number(row[0]) || 0)
+      .filter(number => number > 0)))
+      .sort((a, b) => a - b);
+    if (numbers.length) return putCachedJson_('student_number_list_v1', numbers, 20);
+  }
+  const studentsSheet = getStudentsDbSheet_();
+  const lastRow = studentsSheet.getLastRow();
+  const studentRows = lastRow > 1 ? studentsSheet.getRange(2, 2, lastRow - 1, 2).getValues() : [];
+  const numbers = Array.from(new Set(studentRows
+    .filter(row => row[1] !== false)
+    .map(row => Number(row[0]) || 0)
+    .filter(number => number > 0)))
+    .sort((a, b) => a - b);
+  if (numbers.length) return putCachedJson_('student_number_list_v1', numbers, 20);
+  return buildDefaultRosterEntries_().map(entry => entry.number);
+}
+
 function buildDefaultRosterEntries_() {
   const entries = [];
   for (let i = 1; i <= MAX_STUDENTS; i++) {
@@ -1116,6 +1149,36 @@ function getStudentEntryOptions(options) {
     payload.classSnapshot = buildStudentEntryClassSnapshot_(students, featureFlags, shell);
   }
   cache.put('student_entry_options_v2', JSON.stringify(payload), 5);
+  return payload;
+}
+
+function getStudentEntrySummary(options) {
+  const opts = options && typeof options === 'object' ? options : {};
+  const includeShell = opts.shell !== false && opts.includeShell !== false;
+  const cache = CacheService.getScriptCache();
+  const cached = cache.get('student_entry_summary_v1');
+  if (cached) {
+    try {
+      const parsed = JSON.parse(cached);
+      if (parsed && Array.isArray(parsed.numberList) && parsed.numberList.length) {
+        return {
+          numberList: parsed.numberList,
+          maxNumber: Number(parsed.maxNumber || parsed.numberList[parsed.numberList.length - 1] || 0),
+          shell: includeShell ? getLiveTenantMaintenanceState() : {},
+        };
+      }
+    } catch (_err) {}
+  }
+  const numberList = getStudentNumberList_();
+  const payload = {
+    numberList,
+    maxNumber: Number(numberList[numberList.length - 1] || 0),
+    shell: includeShell ? getLiveTenantMaintenanceState() : {},
+  };
+  cache.put('student_entry_summary_v1', JSON.stringify({
+    numberList: payload.numberList,
+    maxNumber: payload.maxNumber,
+  }), 5);
   return payload;
 }
 
@@ -1225,7 +1288,7 @@ function saveResponseSnapshotToDb_(unitId, period, num, studentName, fields, cus
     unitId,
     studentId: student.studentId,
     studentNumber: num,
-    studentName: studentName || student.name || '',
+    studentName: sanitizeStudentName_(studentName) || sanitizeStudentName_(student.name),
     answersMap,
     reviewText,
     submitted,
@@ -1294,7 +1357,7 @@ function mapMasterRecordToResponse_(record) {
     unitId: String(payload.unitId || ''),
     studentId: String(payload.studentId || record.studentId || ''),
     studentNumber: String(payload.studentNumber || record.studentNo || ''),
-    studentName: String(payload.studentName || ''),
+    studentName: sanitizeStudentName_(payload.studentName),
     answersJson: JSON.stringify(payload.answersMap || {}),
     answersMap: payload.answersMap && typeof payload.answersMap === 'object' ? payload.answersMap : {},
     reviewText: String(payload.reviewText || ''),
@@ -1349,7 +1412,7 @@ function buildMasterResponseMirrorPayload_(response, source) {
       unitId: mapped.unitId || '',
       studentId: mapped.studentId || '',
       studentNumber: mapped.studentNumber || '',
-      studentName: mapped.studentName || '',
+      studentName: sanitizeStudentName_(mapped.studentName),
       answersMap: mapped.answersMap || {},
       reviewText: mapped.reviewText || '',
       submitted: mapped.submitted === true,
@@ -1401,6 +1464,17 @@ function listMasterResponseRecordsForStudentNumberViaContract_(studentNumber) {
   return Array.isArray(snapshot && snapshot.items) ? snapshot.items : [];
 }
 
+function listMasterResponseRecordsForStudentNumberLessonViaContract_(studentNumber, lessonId) {
+  const snapshot = getMasterGasApiRecordSnapshot_(MASTER_GAS_API_APP_ID, {
+    recordType: MASTER_RESPONSE_RECORD_TYPE,
+    studentNo: String(studentNumber || '').trim(),
+    lessonId: String(lessonId || '').trim(),
+    includeDeleted: true,
+    limit: MASTER_GAS_API_MAX_LIMIT,
+  });
+  return Array.isArray(snapshot && snapshot.items) ? snapshot.items : [];
+}
+
 function listMasterResponseRecordsForAllViaContract_() {
   const snapshot = getMasterGasApiRecordSnapshot_(MASTER_GAS_API_APP_ID, {
     recordType: MASTER_RESPONSE_RECORD_TYPE,
@@ -1419,7 +1493,9 @@ function collectLatestMasterResponsesByLesson_(items, lessonId) {
     const currentLessonId = String(mapped.lessonId || '').trim();
     if (!currentLessonId) return;
     if (normalizedLessonId && currentLessonId !== normalizedLessonId) return;
-    const studentKey = String(mapped.studentId || '').trim() || `num:${String(mapped.studentNumber || '').trim()}`;
+    const studentNumberKey = String(mapped.studentNumber || '').trim();
+    const studentIdKey = String(mapped.studentId || '').trim();
+    const studentKey = studentNumberKey ? `num:${studentNumberKey}` : (studentIdKey ? `id:${studentIdKey}` : '');
     if (!studentKey) return;
     const compositeKey = `${currentLessonId}::${studentKey}`;
     const current = latestByKey[compositeKey];
@@ -1479,6 +1555,25 @@ function listMasterResponseRecordsForStudentNumber_(studentNumber) {
   return sortLessonResponsesForCache_(
     Object.keys(grouped).reduce((list, currentLessonId) => list.concat(grouped[currentLessonId] || []), [])
   );
+}
+
+function listMasterResponseRecordsForStudentNumberLesson_(studentNumber, lessonId) {
+  const normalizedStudentNumber = String(studentNumber || '').trim();
+  const normalizedLessonId = String(lessonId || '').trim();
+  if (!normalizedStudentNumber || !normalizedLessonId) return [];
+  let items = [];
+  try {
+    items = listMasterResponseRecordsForStudentNumberLessonViaContract_(normalizedStudentNumber, normalizedLessonId);
+  } catch (_err) {
+    items = readMasterGasApiRows_(MASTER_GAS_API_SHEETS.RECORDS, MASTER_GAS_API_HEADERS.Records)
+      .map(mapMasterGasApiRecordRow_)
+      .filter(item => item.appId === MASTER_GAS_API_APP_ID)
+      .filter(item => item.recordType === MASTER_RESPONSE_RECORD_TYPE)
+      .filter(item => item.lessonId === normalizedLessonId)
+      .filter(item => String(item.studentNo || '').trim() === normalizedStudentNumber);
+  }
+  const grouped = collectLatestMasterResponsesByLesson_(items, normalizedLessonId);
+  return grouped[normalizedLessonId] || [];
 }
 
 function listMasterResponseRecordsForAll_() {
@@ -1646,7 +1741,9 @@ function getResponseRecordByStudentNumber_(lessonId, studentNumber) {
   const normalizedLessonId = String(lessonId || '').trim();
   const normalizedStudentNumber = String(studentNumber || '').trim();
   if (!normalizedLessonId || !normalizedStudentNumber) return null;
-  const responses = listResponsesForLesson_(normalizedLessonId);
+  const cached = readCachedLessonResponses_(normalizedLessonId);
+  const responses = cached || listMasterResponseRecordsForStudentNumberLesson_(normalizedStudentNumber, normalizedLessonId);
+  responses.forEach(response => cacheResponseById_(response));
   return responses.find(item => String(item.studentNumber || '').trim() === normalizedStudentNumber) || null;
 }
 
@@ -1829,7 +1926,7 @@ function isNextGoalField_(field) {
 function getOrCreateStudent_(number, name) {
   const sheet = getStudentsDbSheet_();
   const normalizedNumber = String(number || '');
-  const normalizedName = String(name || '');
+  const normalizedName = sanitizeStudentName_(name);
   const cached = readCachedStudentRow_(normalizedNumber);
   if (cached) {
     if (normalizedName && cached.values[2] !== normalizedName) {
@@ -1838,7 +1935,7 @@ function getOrCreateStudent_(number, name) {
       sheet.getRange(cached.rowNumber, 6).setValue(updatedAt);
       cached.values[2] = normalizedName;
       cached.values[5] = updatedAt;
-      removeDomainCacheKeys_(['roster_entries_active_v1', 'roster_entries_all_v1', 'student_entry_options_v1', 'student_entry_options_v2']);
+      removeDomainCacheKeys_(['roster_entries_active_v1', 'roster_entries_all_v1', 'student_entry_options_v1', 'student_entry_options_v2', 'student_number_list_v1']);
       removeStudentEntryOptionsScriptCache_();
     }
     return mapStudentDbRow_(cached.values, normalizedName);
@@ -1855,7 +1952,7 @@ function getOrCreateStudent_(number, name) {
         sheet.getRange(i + 2, 6).setValue(updatedAt);
         row[2] = normalizedName;
         row[5] = updatedAt;
-        removeDomainCacheKeys_(['roster_entries_active_v1', 'roster_entries_all_v1', 'student_entry_options_v1', 'student_entry_options_v2']);
+        removeDomainCacheKeys_(['roster_entries_active_v1', 'roster_entries_all_v1', 'student_entry_options_v1', 'student_entry_options_v2', 'student_number_list_v1']);
         removeStudentEntryOptionsScriptCache_();
       }
       writeStudentRowCache_(normalizedNumber, i + 2);

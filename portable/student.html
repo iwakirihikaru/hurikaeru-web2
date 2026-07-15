@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<script src="./runtime-shim.js"></script>
+<script src="./runtime-shim.js?v=1bffe1e813"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>ふりカエル</title>
@@ -625,9 +625,13 @@ function readStudentEntryOptionsCache_(){
     const parsed=JSON.parse(raw);
     if(!parsed || !parsed.savedAt || Date.now()-Number(parsed.savedAt)>STUDENT_ENTRY_CACHE_TTL_MS) return null;
     const payload=parsed.payload;
-    if(!payload || !Array.isArray(payload.students) || !payload.students.length) return null;
+    if(!payload || typeof payload!=='object') return null;
+    const students=normalizeStudentEntryStudents_(payload);
+    if(!students.length) return null;
     return {
-      students:payload.students,
+      students,
+      numberList:Array.isArray(payload.numberList)?payload.numberList:students.map(student=>student.number),
+      maxNumber:Number(payload.maxNumber||students[students.length-1]?.number||0),
       shell:payload.shell||{},
     };
   }catch(_err){
@@ -637,15 +641,45 @@ function readStudentEntryOptionsCache_(){
 
 function writeStudentEntryOptionsCache_(payload){
   try{
-    if(!payload || !Array.isArray(payload.students) || !payload.students.length) return;
+    const students=normalizeStudentEntryStudents_(payload);
+    const numberList=Array.isArray(payload&&payload.numberList)
+      ? payload.numberList.map(value=>Number(value)||0).filter(value=>value>0)
+      : students.map(student=>Number(student.number)||0).filter(value=>value>0);
+    if(!students.length && !numberList.length) return;
     localStorage.setItem(STUDENT_ENTRY_CACHE_KEY, JSON.stringify({
       savedAt:Date.now(),
       payload:{
-        students:payload.students,
+        students,
+        numberList,
+        maxNumber:Number(payload&&payload.maxNumber||numberList[numberList.length-1]||students[students.length-1]?.number||0),
         shell:payload.shell||{},
       },
     }));
   }catch(_err){}
+}
+
+function buildStudentPlaceholderEntries_(numberList, maxNumber){
+  const normalized=Array.from(new Set((Array.isArray(numberList)?numberList:[])
+    .map(value=>Number(value)||0)
+    .filter(value=>value>0)))
+    .sort((a,b)=>a-b);
+  if(normalized.length){
+    return normalized.map(number=>({ number, name:'', active:true, fallback:true }));
+  }
+  const fallbackMax=Math.max(1, Number(maxNumber)||0, 40);
+  const entries=[];
+  for(let i=1;i<=fallbackMax;i++) entries.push({ number:i, name:'', active:true, fallback:true });
+  return entries;
+}
+
+function normalizeStudentEntryStudents_(payload){
+  if(payload && Array.isArray(payload.students) && payload.students.length){
+    return payload.students;
+  }
+  if(payload && (Array.isArray(payload.numberList) || Number(payload.maxNumber)>0)){
+    return buildStudentPlaceholderEntries_(payload.numberList, payload.maxNumber);
+  }
+  return [];
 }
 
 function readStudentClassSnapshotCache_(){
@@ -689,8 +723,10 @@ let studentEntryOptionsLoaded=Array.isArray(bootstrapStudentOptions.students) &&
 let studentEntryOptionsLoading=!studentEntryOptionsLoaded;
 
 function getInitialStudentOptions_(){
-  if(Array.isArray(bootstrapStudentOptions.students) && bootstrapStudentOptions.students.length){
-    return bootstrapStudentOptions.students;
+  const current=normalizeStudentEntryStudents_(bootstrapStudentOptions);
+  if(current.length){
+    bootstrapStudentOptions.students=current;
+    return current;
   }
   const cached=readStudentEntryOptionsCache_();
   if(cached){
@@ -698,16 +734,20 @@ function getInitialStudentOptions_(){
     studentEntryOptionsLoaded=true;
     return cached.students;
   }
-  return [];
+  const fallback=buildStudentPlaceholderEntries_(bootstrapStudentOptions.numberList, bootstrapStudentOptions.maxNumber);
+  bootstrapStudentOptions.students=fallback;
+  return fallback;
 }
 
 function applyStudentBootstrapData_(data, options){
   const opts=options||{};
-  const hasStudents=Boolean(data && Array.isArray(data.students) && data.students.length);
+  const normalizedStudents=normalizeStudentEntryStudents_(data);
+  const hasStudents=Boolean(normalizedStudents.length);
   const hasClassSnapshot=Boolean(data && data.classSnapshot && typeof data.classSnapshot==='object');
   if(data && typeof data==='object'){
     const existingStudents=Array.isArray(bootstrapStudentOptions.students) ? bootstrapStudentOptions.students : [];
     const incoming=Object.assign({}, data);
+    if(hasStudents) incoming.students=normalizedStudents;
     if(!hasStudents && existingStudents.length){
       delete incoming.students;
     }

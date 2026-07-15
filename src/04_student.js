@@ -95,9 +95,11 @@ function buildStudentEntryClassSnapshot_(students, featureFlags, shell) {
 function buildStudentSnapshotTimelineRow_(student, fields, responseMap) {
   const number = student && student.number != null ? student.number : '';
   const response = responseMap[String(number)] || null;
+  const rosterName = sanitizeStudentName_(student?.name);
+  const responseName = sanitizeStudentName_(response?.studentName);
   return {
     num: number,
-    name: response?.studentName || student?.name || '',
+    name: rosterName || responseName,
     customs: response ? mapAnswersToCustoms_(fields, response.answersMap) : Array(fields.length).fill(''),
     comment: response?.comment || '',
     rank: response?.rank || '',
@@ -311,7 +313,7 @@ function stripStudentPastRecordHintLines_(text, field) {
 
 function findRosterStudentName_(num) {
   const roster = getRosterEntries_();
-  return ((roster.find(student => String(student.number) === String(num)) || {}).name || '');
+  return sanitizeStudentName_((roster.find(student => String(student.number) === String(num)) || {}).name);
 }
 
 function resolveStudentForWrite_(lessonId, num, studentName) {
@@ -320,7 +322,7 @@ function resolveStudentForWrite_(lessonId, num, studentName) {
     return {
       studentId: response.studentId,
       number: String(num || ''),
-      name: response.studentName || studentName || '',
+      name: sanitizeStudentName_(response.studentName) || sanitizeStudentName_(studentName),
     };
   }
   return getOrCreateStudent_(num, studentName);
@@ -348,7 +350,7 @@ function buildStudentState_(unit, period, num, studentName, enabledFields, optio
   return {
     fields: enabledFields,
     num,
-    name: response?.studentName || studentName,
+    name: sanitizeStudentName_(studentName) || sanitizeStudentName_(response?.studentName),
     customs,
     comment: response?.comment || '',
     rank: response?.rank || '',

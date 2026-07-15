@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -27,20 +28,24 @@ function resolveIncludes(html) {
   });
 }
 
-function injectSharedRuntime(html) {
-  return html.replace('<head>', '<head>\n<script src="./runtime-shim.js"></script>');
+function buildRuntimeShimVersion(runtimeShim) {
+  return crypto.createHash('sha1').update(String(runtimeShim || ''), 'utf8').digest('hex').slice(0, 10);
 }
 
-function buildTeacherHtml() {
-  const html = injectSharedRuntime(resolveIncludes(readSrcFile('teacher.html')));
+function injectSharedRuntime(html, runtimeShimVersion) {
+  return html.replace('<head>', `<head>\n<script src="./runtime-shim.js?v=${runtimeShimVersion}"></script>`);
+}
+
+function buildTeacherHtml(runtimeShimVersion) {
+  const html = injectSharedRuntime(resolveIncludes(readSrcFile('teacher.html')), runtimeShimVersion);
   return html.replace(
     /window\.__TEACHER_BOOTSTRAP__ = <\?!= bootstrapTeacherJson \|\| 'null' \?>;/,
     "window.__TEACHER_BOOTSTRAP__ = window.__TEACHER_BOOTSTRAP__ || window.__portableGas.bootstrapTeacher();"
   );
 }
 
-function buildStudentHtml() {
-  const html = injectSharedRuntime(readSrcFile('index.html'));
+function buildStudentHtml(runtimeShimVersion) {
+  const html = injectSharedRuntime(readSrcFile('index.html'), runtimeShimVersion);
   return html.replace(
     /const bootstrapStudentOptions = <\?!= JSON\.stringify\(typeof bootstrapStudentOptions !== 'undefined' \? bootstrapStudentOptions : \{students:\[\]\}\) \?>;/,
     "const bootstrapStudentOptions = window.__STUDENT_BOOTSTRAP__ || { students: [], shell: {} };\nlet bootstrapStudentReadyPromise = Promise.resolve(bootstrapStudentOptions);\nif (!window.__STUDENT_BOOTSTRAP__) {\n  bootstrapStudentReadyPromise = window.__portableGas.bootstrapStudentAsync()\n    .then(data => { if (data && typeof data === 'object') Object.assign(bootstrapStudentOptions, data); return bootstrapStudentOptions; })\n    .catch(error => { console.error(error); return bootstrapStudentOptions; });\n}"
@@ -178,14 +183,14 @@ Deploy \`portable/\` as a static site.
 `;
 }
 
-function buildSetupHtml() {
+function buildSetupHtml(runtimeShimVersion) {
   return String.raw`<!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ふりカエル 接続補助</title>
-<script src="./runtime-shim.js"></script>
+<script src="./runtime-shim.js?v=${runtimeShimVersion}"></script>
 <style>
 :root{
   --navy:#1A237E;--green:#388E3C;--bg:#F5F5F5;--card:#fff;--line:#D7E3F8;
@@ -345,11 +350,14 @@ body{margin:0;font-family:var(--font);background:var(--bg);color:#212121}
 `;
 }
 
-writeOutFile('teacher.html', buildTeacherHtml());
-writeOutFile('student.html', buildStudentHtml());
+const runtimeShim = buildRuntimeShim();
+const runtimeShimVersion = buildRuntimeShimVersion(runtimeShim);
+
+writeOutFile('teacher.html', buildTeacherHtml(runtimeShimVersion));
+writeOutFile('student.html', buildStudentHtml(runtimeShimVersion));
 writeOutFile('index.html', buildIndexHtml());
-writeOutFile('setup.html', buildSetupHtml());
-writeOutFile('runtime-shim.js', buildRuntimeShim());
+writeOutFile('setup.html', buildSetupHtml(runtimeShimVersion));
+writeOutFile('runtime-shim.js', runtimeShim);
 writeOutFile('README.md', buildReadme());
 
 console.log('Built portable teacher.html, student.html, setup.html, and runtime-shim.js');
