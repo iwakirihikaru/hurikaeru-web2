@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<script src="./runtime-shim.js?v=446b62d86e"></script>
+<script src="./runtime-shim.js?v=3dc7b19e3b"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ふりカエル 先生ページ</title>
@@ -1943,6 +1943,9 @@ function applyTeacherInitData(d, options) {
     }
     if (!activeUnitId || !activePeriod) {
         clearTeacherStatusPreloadCache_();
+        if (typeof clearRenderedStatus_ === 'function') {
+            clearRenderedStatus_();
+        }
     }
     persistPortableTeacherBootstrap_();
     applySavedUiState();
@@ -3477,6 +3480,7 @@ function renderStatus(d) {
     latestStatusRows = Array.isArray(d && d.students) ? d.students : [];
     latestStatusMeta = d && d.meta || {};
     if (!latestStatusRows.length && !(latestStatusMeta && (latestStatusMeta.unitId || latestStatusMeta.lessonId))) {
+        clearRenderedStatus_();
         return;
     }
     writeTeacherStatusPreloadCache_({
@@ -3541,6 +3545,28 @@ function renderStatusComment(student) {
         parts.push(renderTeacherDraftEditor(student, draftComment, draftRank));
     }
     return parts.join('');
+}
+function clearRenderedStatus_() {
+    latestStatusRows = [];
+    latestStatusMeta = {};
+    var totalEl = document.getElementById('statTotal');
+    var writtenEl = document.getElementById('statWritten');
+    var submittedEl = document.getElementById('statSubmitted');
+    var aiEl = document.getElementById('statAI');
+    if (totalEl)
+        totalEl.textContent = '0';
+    if (writtenEl)
+        writtenEl.textContent = '0';
+    if (submittedEl)
+        submittedEl.textContent = '0';
+    if (aiEl)
+        aiEl.textContent = '0';
+    syncTeacherFeedbackControls([], 0);
+    renderStatusPerfDebug_();
+    var body = document.getElementById('statusBody');
+    if (body) {
+        body.innerHTML = '<tr><td colspan="2" style="text-align:center;padding:18px;color:#78909C;">授業を開始すると、ここに児童の記録とフィードバックが表示されます。</td></tr>';
+    }
 }
 function renderTeacherDraftEditor(student, draftComment, draftRank) {
     var responseId = String(student.responseId || '').trim();
