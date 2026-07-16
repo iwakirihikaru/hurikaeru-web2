@@ -10,6 +10,7 @@ function ensureDbSheets_() {
   ensureSheetWithHeaders_(ss, SHEET_DB_STUDENTS, STUDENT_HEADERS);
   ensureSheetWithHeaders_(ss, SHEET_DB_LESSONS, LESSON_HEADERS);
   ensureSheetWithHeaders_(ss, SHEET_DB_RESPONSES, RESPONSE_HEADERS);
+  ensureSheetWithHeaders_(ss, SHEET_DB_LESSON_LIVE_STATE, LESSON_LIVE_STATE_HEADERS);
   ensureSheetWithHeaders_(ss, SHEET_DB_HISTORY, HISTORY_HEADERS);
   ensureSheetWithHeaders_(ss, SHEET_DB_AUDIT, AUDIT_HEADERS);
   ensureSheetWithHeaders_(ss, SHEET_DB_ASSESS, ASSESS_HEADERS);
@@ -45,6 +46,10 @@ function getLessonsDbSheet_() {
 
 function getResponsesDbSheet_() {
   return getDbSheet_(SHEET_DB_RESPONSES);
+}
+
+function getLessonLiveStateDbSheet_() {
+  return ensureSheetWithHeaders_(getTenantSpreadsheet_(), SHEET_DB_LESSON_LIVE_STATE, LESSON_LIVE_STATE_HEADERS);
 }
 
 function getResponseHistoryDbSheet_() {
@@ -440,6 +445,22 @@ function getLessonRecordByUnitPeriod_(unitId, period) {
   return null;
 }
 
+function getLessonRecordById_(lessonId) {
+  const lessonKey = String(lessonId || '').trim();
+  if (!lessonKey) return null;
+  const cached = readCachedLessonRecordById_(lessonKey);
+  if (cached) return cached;
+  const rows = listLessonRecords_();
+  for (let i = 0; i < rows.length; i++) {
+    const lesson = rows[i];
+    if (String(lesson?.lessonId || '') === lessonKey) {
+      cacheLessonRecord_(lesson);
+      return lesson;
+    }
+  }
+  return null;
+}
+
 function getReviewField_(unit) {
   const fields = getEnabledFields_(unit || {});
   return fields.find(f => f.isReview === true)
@@ -568,6 +589,244 @@ function getLessonRuntimeSnapshotCacheKey_(unitId, period) {
   return `lesson_runtime_snapshot_v1:${readDomainCacheVersion_('responses')}:${readDomainCacheVersion_('students')}:${readDomainCacheVersion_('lessons')}:${String(unitId || '').trim()}:${String(period || '').trim()}`;
 }
 
+function getLessonLiveStateListCacheKey_(lessonId) {
+  return `lesson_live_state_list_v1:${readDomainCacheVersion_('responses')}:${String(lessonId || '').trim()}`;
+}
+
+function getLessonLiveStateBackfillPropKey_(lessonId) {
+  return `LESSON_LIVE_STATE_BACKFILLED_${String(lessonId || '').trim()}`;
+}
+
+function getLessonLiveStateRowCacheKey_(lessonId, studentId) {
+  return `lesson_live_state_row_v1:${String(lessonId || '').trim()}:${String(studentId || '').trim()}`;
+}
+
+function getLessonLiveStateRowIndexKey_(lessonId) {
+  return `lesson_live_state_rows_v1:${String(lessonId || '').trim()}`;
+}
+
+function readLessonLiveStateRowIndex_(lessonId) {
+  const key = getLessonLiveStateRowIndexKey_(lessonId);
+  const cached = getCachedJson_(key);
+  if (!Array.isArray(cached)) return [];
+  return cached.map(value => Number(value) || 0).filter(value => value >= 2);
+}
+
+function writeLessonLiveStateRowIndex_(lessonId, rowNumbers) {
+  const normalizedLessonId = String(lessonId || '').trim();
+  if (!normalizedLessonId) return [];
+  const list = Array.from(new Set((Array.isArray(rowNumbers) ? rowNumbers : [])
+    .map(value => Number(value) || 0)
+    .filter(value => value >= 2)))
+    .sort((a, b) => a - b);
+  putCachedJson_(getLessonLiveStateRowIndexKey_(normalizedLessonId), list, 21600);
+  return list;
+}
+
+function addLessonLiveStateRowIndex_(lessonId, rowNumber) {
+  const normalizedLessonId = String(lessonId || '').trim();
+  const normalizedRowNumber = Number(rowNumber || 0);
+  if (!normalizedLessonId || !Number.isFinite(normalizedRowNumber) || normalizedRowNumber < 2) return [];
+  const current = readLessonLiveStateRowIndex_(normalizedLessonId);
+  if (current.includes(normalizedRowNumber)) return current;
+  current.push(normalizedRowNumber);
+  return writeLessonLiveStateRowIndex_(normalizedLessonId, current);
+}
+
+function readSheetRowsByRowNumbers_(sheet, rowNumbers, width) {
+  const normalized = Array.from(new Set((Array.isArray(rowNumbers) ? rowNumbers : [])
+    .map(value => Number(value) || 0)
+    .filter(value => value >= 2)))
+    .sort((a, b) => a - b);
+  if (!normalized.length) return [];
+  const batches = [];
+  normalized.forEach(rowNumber => {
+    const last = batches[batches.length - 1];
+    if (last && last.start + last.count === rowNumber) {
+      last.count += 1;
+    } else {
+      batches.push({ start: rowNumber, count: 1 });
+    }
+  });
+  return batches.flatMap(batch => sheet.getRange(batch.start, 1, batch.count, width).getValues());
+}
+
+function mapLessonLiveStateRow_(row) {
+  return {
+    liveStateId: row[0] || '',
+    lessonId: row[1] || '',
+    unitId: row[2] || '',
+    period: Number(row[3] || 0),
+    studentId: row[4] || '',
+    studentNumber: row[5] || '',
+    studentName: row[6] || '',
+    responseId: row[7] || '',
+    answersJson: row[8] || '',
+    answersMap: parseAnswersJson_(row[8]),
+    reviewText: row[9] || '',
+    submitted: row[10] === true,
+    submittedAt: row[11] || '',
+    score: Number(row[12] || 0),
+    rank: row[13] || '',
+    medal: row[14] || '',
+    comment: row[15] || '',
+    isRewrite: row[16] === true,
+    updatedAt: row[17] || '',
+    aiStatus: row[18] || '',
+    aiQueuedAt: row[19] || '',
+    aiProcessedAt: row[20] || '',
+    aiError: row[21] || '',
+    aiBatchId: row[22] || '',
+    aiRetryCount: Number(row[23] || 0),
+    aiStartedAt: row[24] || '',
+    aiLatencyMs: Number(row[25] || 0),
+    aiModelLatencyMs: Number(row[26] || 0),
+    readSource: 'live_state',
+  };
+}
+
+function buildLessonLiveStateRowValues_(responseRow, lesson) {
+  const response = Array.isArray(responseRow) ? mapResponseRow_(responseRow) : responseRow;
+  const item = response && typeof response === 'object' ? response : {};
+  const resolvedLesson = lesson || getLessonRecordById_(item.lessonId);
+  return [
+    makeId_('live'),
+    item.lessonId || '',
+    item.unitId || resolvedLesson?.unitId || '',
+    Number(resolvedLesson?.period || 0),
+    item.studentId || '',
+    item.studentNumber || '',
+    sanitizeStudentName_(item.studentName),
+    item.responseId || '',
+    item.answersJson || JSON.stringify(item.answersMap || {}),
+    item.reviewText || '',
+    item.submitted === true,
+    item.submittedAt || '',
+    Number(item.score || 0),
+    item.rank || '',
+    item.medal || '',
+    item.comment || '',
+    item.isRewrite === true,
+    item.updatedAt || nowIso_(),
+    item.aiStatus || '',
+    item.aiQueuedAt || '',
+    item.aiProcessedAt || '',
+    item.aiError || '',
+    item.aiBatchId || '',
+    Number(item.aiRetryCount || 0),
+    item.aiStartedAt || '',
+    Number(item.aiLatencyMs || 0),
+    Number(item.aiModelLatencyMs || 0),
+  ];
+}
+
+function readLessonLiveStateRowNumber_(sheet, lessonId, studentId) {
+  const normalizedLessonId = String(lessonId || '').trim();
+  const normalizedStudentId = String(studentId || '').trim();
+  if (!normalizedLessonId || !normalizedStudentId) return 0;
+  const cachedRow = Number(getCachedJson_(getLessonLiveStateRowCacheKey_(normalizedLessonId, normalizedStudentId)) || 0);
+  if (cachedRow >= 2) {
+    const values = sheet.getRange(cachedRow, 1, 1, LESSON_LIVE_STATE_HEADERS.length).getValues()[0] || [];
+    if (String(values[1] || '') === normalizedLessonId && String(values[4] || '') === normalizedStudentId) {
+      return cachedRow;
+    }
+  }
+  const lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return 0;
+  const rows = sheet.getRange(2, 1, lastRow - 1, LESSON_LIVE_STATE_HEADERS.length).getValues();
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    if (String(row[1] || '') === normalizedLessonId && String(row[4] || '') === normalizedStudentId) {
+      const rowNumber = i + 2;
+      putCachedJson_(getLessonLiveStateRowCacheKey_(normalizedLessonId, normalizedStudentId), rowNumber, 21600);
+      return rowNumber;
+    }
+  }
+  return 0;
+}
+
+function upsertLessonLiveStateFromResponseRowValues_(responseRow, lesson) {
+  const row = buildLessonLiveStateRowValues_(responseRow, lesson);
+  const lessonId = String(row[1] || '').trim();
+  const studentId = String(row[4] || '').trim();
+  if (!lessonId || !studentId) return null;
+  const sheet = getLessonLiveStateDbSheet_();
+  const rowNumber = readLessonLiveStateRowNumber_(sheet, lessonId, studentId);
+  if (rowNumber >= 2) {
+    const current = sheet.getRange(rowNumber, 1, 1, LESSON_LIVE_STATE_HEADERS.length).getValues()[0] || [];
+    row[0] = current[0] || row[0];
+    sheet.getRange(rowNumber, 1, 1, LESSON_LIVE_STATE_HEADERS.length).setValues([row]);
+    putCachedJson_(getLessonLiveStateRowCacheKey_(lessonId, studentId), rowNumber, 21600);
+    addLessonLiveStateRowIndex_(lessonId, rowNumber);
+    return { rowNumber, liveStateId: row[0] };
+  }
+  const nextRowNumber = Math.max(2, sheet.getLastRow() + 1);
+  sheet.getRange(nextRowNumber, 1, 1, LESSON_LIVE_STATE_HEADERS.length).setValues([row]);
+  putCachedJson_(getLessonLiveStateRowCacheKey_(lessonId, studentId), nextRowNumber, 21600);
+  addLessonLiveStateRowIndex_(lessonId, nextRowNumber);
+  return { rowNumber: nextRowNumber, liveStateId: row[0] };
+}
+
+function safeUpsertLessonLiveStateFromResponseRowValues_(responseRow, lesson) {
+  try {
+    return upsertLessonLiveStateFromResponseRowValues_(responseRow, lesson);
+  } catch (err) {
+    writeAuditLog_({
+      targetType: 'lessonLiveState',
+      targetId: Array.isArray(responseRow) ? String(responseRow[1] || '') : String(responseRow?.lessonId || ''),
+      action: 'lesson_live_state_upsert_failed',
+      before: null,
+      after: { error: String(err && err.message ? err.message : err) },
+      actor: 'system',
+    });
+    return null;
+  }
+}
+
+function ensureLessonLiveStateBackfilled_(lesson) {
+  const lessonId = String(lesson?.lessonId || '').trim();
+  if (!lessonId) return [];
+  const propKey = getLessonLiveStateBackfillPropKey_(lessonId);
+  if (String(getScriptProperties_().getProperty(propKey) || '') === 'done') {
+    return listLessonLiveStateRows_(lessonId);
+  }
+  const responses = listResponsesForLesson_(lessonId);
+  responses.forEach(response => {
+    safeUpsertLessonLiveStateFromResponseRowValues_(response, lesson);
+  });
+  const rows = responses.map(response => mapLessonLiveStateRow_(buildLessonLiveStateRowValues_(response, lesson)));
+  putCachedJson_(getLessonLiveStateListCacheKey_(lessonId), rows, 20);
+  getScriptProperties_().setProperty(propKey, 'done');
+  return rows;
+}
+
+function listLessonLiveStateRows_(lessonId) {
+  const normalizedLessonId = String(lessonId || '').trim();
+  if (!normalizedLessonId) return [];
+  const cached = getCachedJson_(getLessonLiveStateListCacheKey_(normalizedLessonId));
+  if (Array.isArray(cached)) return cached;
+  const sheet = getLessonLiveStateDbSheet_();
+  const indexedRows = readSheetRowsByRowNumbers_(sheet, readLessonLiveStateRowIndex_(normalizedLessonId), LESSON_LIVE_STATE_HEADERS.length)
+    .filter(row => String(row[1] || '') === normalizedLessonId);
+  if (indexedRows.length) {
+    const rows = indexedRows.map(mapLessonLiveStateRow_);
+    return putCachedJson_(getLessonLiveStateListCacheKey_(normalizedLessonId), rows, 20);
+  }
+  const lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return [];
+  const rawRows = sheet.getRange(2, 1, lastRow - 1, LESSON_LIVE_STATE_HEADERS.length).getValues();
+  const rowNumbers = [];
+  const rows = rawRows
+    .map((row, idx) => ({ row, rowNumber: idx + 2 }))
+    .filter(item => String(item.row[1] || '') === normalizedLessonId)
+    .map(item => {
+      rowNumbers.push(item.rowNumber);
+      return mapLessonLiveStateRow_(item.row);
+    });
+  writeLessonLiveStateRowIndex_(normalizedLessonId, rowNumbers);
+  return putCachedJson_(getLessonLiveStateListCacheKey_(normalizedLessonId), rows, 20);
+}
+
 function buildResponseMapByStudentNumber_(responses) {
   const map = {};
   (Array.isArray(responses) ? responses : []).forEach(response => {
@@ -620,6 +879,45 @@ function getLessonRuntimeSnapshot_(unitId, period, options) {
     serverNow: nowIso_(),
   };
   return opts.cache === false ? snapshot : putCachedJson_(cacheKey, snapshot, 20);
+}
+
+function getLessonLiveStateSnapshot_(unitId, period, options) {
+  const opts = options || {};
+  const normalizedUnitId = String(unitId || '').trim();
+  const normalizedPeriod = Number(period || 0);
+  if (!normalizedUnitId || normalizedPeriod <= 0) return null;
+  const units = Array.isArray(opts.units) ? opts.units : getAllUnits();
+  const unit = units.find(item => String(item.id || '') === normalizedUnitId) || null;
+  const lesson = opts.createLesson === true
+    ? getOrCreateLesson_(normalizedUnitId, normalizedPeriod)
+    : getLessonRecordByUnitPeriod_(normalizedUnitId, normalizedPeriod);
+  if (!lesson) return null;
+  const rows = listLessonLiveStateRows_(lesson.lessonId);
+  const liveRows = opts.backfill === false ? rows : ensureLessonLiveStateBackfilled_(lesson);
+  if (!liveRows.length && opts.requireRows !== false) return null;
+  const lessonConfig = { fields: getLessonFields_(lesson, unit) };
+  const fields = getEnabledFields_(lessonConfig);
+  const roster = Array.isArray(opts.roster) ? opts.roster : getRosterEntries_();
+  return {
+    unit,
+    lesson,
+    period: normalizedPeriod,
+    fields,
+    reviewField: getReviewField_(lessonConfig),
+    understandingField: getUnderstandingField_(lessonConfig),
+    roster,
+    responses: liveRows,
+    responseMapByStudentNumber: buildResponseMapByStudentNumber_(liveRows),
+    responseReadMeta: {
+      scope: 'lesson_live_state',
+      lessonId: String(lesson.lessonId || ''),
+      preferMaster: false,
+      masterCount: 0,
+      mergedCount: liveRows.length,
+      mode: 'live_state',
+    },
+    serverNow: nowIso_(),
+  };
 }
 
 function readCachedLessonResponses_(lessonId) {
@@ -2212,6 +2510,7 @@ function writeResponseSheetRowEntryUpdates_(updates, mirrorSource, mirrorAction,
   list.forEach(item => {
     writeResponseSheetRowNumberCache_(item.values[1], item.values[3], item.rowNumber);
     writeResponseIdSheetRowNumberCache_(item.values[0], item.rowNumber);
+    safeUpsertLessonLiveStateFromResponseRowValues_(item.values);
   });
   invalidateLessonResponseCaches_();
   refreshLessonResponseCachesForRows_(list.map(item => item.values).filter(Boolean));
@@ -2245,6 +2544,7 @@ function upsertResponseSheetRowValues_(rowValues, existingRowEntry) {
   writeResponseSheetRowNumberCache_(safeRowValues[1], safeRowValues[3], rowNumber);
   writeResponseIdSheetRowNumberCache_(safeRowValues[0], rowNumber);
   addLessonResponseRowIndex_(safeRowValues[1], rowNumber);
+  safeUpsertLessonLiveStateFromResponseRowValues_(safeRowValues);
   cacheResponseRows_([safeRowValues]);
   return { rowNumber, responseId: safeRowValues[0] };
 }
@@ -2797,7 +3097,8 @@ function getActiveSetting(options) {
   const unitId = parseInt(cfg.active_unit) || 0;
   const period = parseInt(cfg.active_period) || 0;
   const timelineFieldKey = String(cfg.active_timeline_field || '');
-  const units  = includeUnit ? getAllUnits() : [];
+  const providedUnits = Array.isArray(opts.units) ? opts.units : null;
+  const units  = includeUnit ? (providedUnits || getAllUnits()) : [];
   const unit   = includeUnit ? (units.find(u => u.id == unitId) || null) : null;
   const lesson = includeLesson && unit && period > 0 ? getLessonRecordByUnitPeriod_(unitId, period) : null;
   const fields = includeUnit || includeLesson ? getLessonFields_(lesson, unit) : [];

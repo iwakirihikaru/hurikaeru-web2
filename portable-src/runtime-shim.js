@@ -48,6 +48,51 @@
     return normalized;
   }
 
+  function validateApiUrl(value) {
+    var normalized = String(value || "").trim();
+    if (!normalized) {
+      return {
+        ok: false,
+        url: "",
+        error: "GAS Web App URL を入力してください。"
+      };
+    }
+    var parsed;
+    try {
+      parsed = new URL(normalized, window.location.href);
+    } catch (_error) {
+      return {
+        ok: false,
+        url: normalized,
+        error: "URL の形式が正しくありません。"
+      };
+    }
+    var protocol = String(parsed.protocol || "").toLowerCase();
+    if (protocol !== "https:" && protocol !== "http:") {
+      return {
+        ok: false,
+        url: normalized,
+        error: "http または https の URL を指定してください。"
+      };
+    }
+    var pathname = String(parsed.pathname || "");
+    var hostname = String(parsed.hostname || "").toLowerCase();
+    var looksLikeGasExec = /\/macros\/s\/[^/]+\/exec\/?$/i.test(pathname);
+    var isLocalhost = hostname === "localhost" || hostname === "127.0.0.1";
+    if (!looksLikeGasExec && !isLocalhost) {
+      return {
+        ok: false,
+        url: normalized,
+        error: "GAS の Web アプリ URL (/macros/s/.../exec) を指定してください。"
+      };
+    }
+    return {
+      ok: true,
+      url: parsed.toString(),
+      error: ""
+    };
+  }
+
   function parseResponseText(text) {
     var parsed = text ? JSON.parse(text) : {};
     if (parsed && typeof parsed.ok === "boolean" && Object.prototype.hasOwnProperty.call(parsed, "data")) {
@@ -61,6 +106,17 @@
       data: parsed,
       error: parsed && parsed.ok === false ? parsed.error || "Unknown API error." : null
     };
+  }
+
+  function describeInvalidJsonResponse(text) {
+    var sample = String(text || "").trim().slice(0, 120);
+    if (/^Circle Master GAS API v1\.0 is running/i.test(sample)) {
+      return "接続先が API 応答ではありません。GAS Web App URL (/exec) を指定してください。";
+    }
+    if (/^<!doctype html/i.test(sample) || /^<html/i.test(sample)) {
+      return "接続先が HTML ページを返しています。GAS Web App URL (/exec) を指定してください。";
+    }
+    return "Invalid JSON response.";
   }
 
   function getErrorMessage(error) {
@@ -316,6 +372,11 @@
       redirectToSetupIfNeeded();
       throw createPortableError("GAS_API_URL is not set in localStorage.", { code: "missing_api_url" });
     }
+    var validation = validateApiUrl(apiUrl);
+    if (!validation.ok) {
+      throw createPortableError(validation.error, { code: "invalid_api_url" });
+    }
+    apiUrl = validation.url;
     if (sync) {
       var xhr = new XMLHttpRequest();
       xhr.open("POST", apiUrl, false);
@@ -332,7 +393,7 @@
       try {
         return parseResponseText(xhr.responseText);
       } catch (error) {
-        throw createPortableError("Invalid JSON response.", { code: "invalid_json", cause: error });
+        throw createPortableError(describeInvalidJsonResponse(xhr.responseText), { code: "invalid_json", cause: error });
       }
     }
     var requestBody = JSON.stringify(payload);
@@ -362,7 +423,7 @@
           try {
             return parseResponseText(text);
           } catch (error) {
-            throw createPortableError("Invalid JSON response.", { code: "invalid_json", cause: error });
+            throw createPortableError(describeInvalidJsonResponse(text), { code: "invalid_json", cause: error });
           }
         })
         .catch(function (error) {
@@ -490,6 +551,7 @@
   window.__portableGas = {
     getApiUrl: getApiUrl,
     setApiUrl: setApiUrl,
+    validateApiUrl: validateApiUrl,
     postAction: postAction,
     postActionSync: postActionSync,
     callRpcSync: function (method) {

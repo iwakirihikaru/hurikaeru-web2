@@ -80,7 +80,7 @@ function renderStatusPerfDebug_() {
         || window.__teacherUnitsReadMeta
         || null;
     var lines = [
-        formatStatusTimingLine_('表示データ', lessonTiming, ['totalMs', 'responsesMs', 'draftsMs', 'rosterMs', 'studentBuildMs']),
+        formatStatusTimingLine_('表示データ', lessonTiming, ['totalMs', 'snapshotMs', 'responsesMs', 'draftsMs', 'rosterMs', 'studentBuildMs']),
         formatStatusTimingLine_('初回読込', requestTiming, ['totalMs', 'unitsMs', 'activeMs', 'unitProgressMs', 'lessonStatusMs']),
         formatUnitsReadMetaLine_(unitsReadMeta),
         formatResponseReadMetaLine_(responseReadMeta),

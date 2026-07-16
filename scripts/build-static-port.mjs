@@ -312,19 +312,35 @@ body{margin:0;font-family:var(--font);background:var(--bg);color:#212121}
       setStatus('URLを入れてください。', 'error');
       return;
     }
-    window.__portableGas.setApiUrl(url);
+    var validation = window.__portableGas.validateApiUrl
+      ? window.__portableGas.validateApiUrl(url)
+      : { ok: true, url: url, error: '' };
+    if (!validation.ok) {
+      setStatus(validation.error || 'URLが正しくありません。', 'error');
+      return;
+    }
+    var normalizedUrl = String(validation.url || url).trim();
+    var previousUrl = String(window.__portableGas.getApiUrl() || '').trim();
+    var shouldPersist = arguments[0] && arguments[0].persist === true;
+    window.__portableGas.setApiUrl(normalizedUrl);
     renderCurrent();
     setStatus('接続確認中...', '');
     try {
       await window.__portableGas.postAction('teacherInit', {});
-      setStatus('接続できました。この端末は使えます。', 'ok');
+      if (!shouldPersist) {
+        window.__portableGas.setApiUrl(previousUrl);
+      }
+      renderCurrent();
+      setStatus(shouldPersist ? '接続できました。この端末へ保存しました。' : '接続できました。保存はしていません。', 'ok');
     } catch (error) {
+      window.__portableGas.setApiUrl(previousUrl);
+      renderCurrent();
       setStatus('接続に失敗しました: ' + (error && error.message ? error.message : String(error)), 'error');
     }
   }
 
-  document.getElementById('saveBtn').addEventListener('click', testConnection);
-  document.getElementById('testBtn').addEventListener('click', testConnection);
+  document.getElementById('saveBtn').addEventListener('click', function(){ testConnection({ persist:true }); });
+  document.getElementById('testBtn').addEventListener('click', function(){ testConnection({ persist:false }); });
   document.getElementById('copyBtn').addEventListener('click', copyApiUrl);
   document.getElementById('clearBtn').addEventListener('click', function(){
     input.value = '';
@@ -336,8 +352,16 @@ body{margin:0;font-family:var(--font);background:var(--bg);color:#212121}
   var apiFromQuery = new URLSearchParams(window.location.search).get('api');
   var missingApi = new URLSearchParams(window.location.search).get('missingApi');
   if (apiFromQuery) {
+    var queryValidation = window.__portableGas.validateApiUrl
+      ? window.__portableGas.validateApiUrl(apiFromQuery)
+      : { ok: true, url: apiFromQuery, error: '' };
     input.value = apiFromQuery;
-    window.__portableGas.setApiUrl(apiFromQuery);
+    if (queryValidation.ok) {
+      window.__portableGas.setApiUrl(queryValidation.url || apiFromQuery);
+    } else {
+      setStatus('URLパラメータの接続先が不正です: ' + queryValidation.error, 'error');
+      manualBox.open = true;
+    }
   }
   if (missingApi || !window.__portableGas.getApiUrl()) {
     manualBox.open = true;

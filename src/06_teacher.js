@@ -18,7 +18,7 @@ function teacherInit() {
     errors.push(`units: ${err && err.message ? err.message : err}`);
   }
   try {
-    active = getActiveSetting();
+    active = getActiveSetting({ units, includeLesson: false });
   } catch (err) {
     errors.push(`active: ${err && err.message ? err.message : err}`);
   }
@@ -30,7 +30,7 @@ function teacherInit() {
   const deploymentInfo = buildTeacherDeploymentDisplayInfo_(null, { skipShellFallback: true });
   let unitProgress = {};
   try {
-    unitProgress = readTeacherUnitProgressSnapshot_();
+    unitProgress = readCachedTeacherUnitProgressSnapshot_();
   } catch (err) {
     errors.push(`unitProgressCache: ${err && err.message ? err.message : err}`);
   }
@@ -69,14 +69,14 @@ function teacherStatusInit() {
   }
   try {
     const t0 = Date.now();
-    active = getActiveSetting();
+    active = getActiveSetting({ units, includeLesson: false });
     timing.activeMs = Date.now() - t0;
   } catch (err) {
     errors.push(`active: ${err && err.message ? err.message : err}`);
   }
   try {
     const t0 = Date.now();
-    unitProgress = readTeacherUnitProgressSnapshot_();
+    unitProgress = readCachedTeacherUnitProgressSnapshot_();
     progressNeedsRefresh = !Object.keys(unitProgress || {}).length;
     timing.unitProgressMs = Date.now() - t0;
   } catch (err) {
@@ -184,7 +184,7 @@ function teacherStatusSnapshot() {
 }
 
 function getLessonStatusCacheKey_(unitId, period) {
-  return `teacher_lesson_status_v1:${readDomainCacheVersion_('responses')}:${readDomainCacheVersion_('teacher_comment_drafts')}:${readDomainCacheVersion_('students')}:${readDomainCacheVersion_('lessons')}:${String(unitId || '').trim()}:${String(period || '').trim()}`;
+  return `teacher_lesson_status_v1:${APP_BUILD}:${readDomainCacheVersion_('responses')}:${readDomainCacheVersion_('teacher_comment_drafts')}:${readDomainCacheVersion_('students')}:${readDomainCacheVersion_('lessons')}:${String(unitId || '').trim()}:${String(period || '').trim()}`;
 }
 
 function readTeacherUnitProgressSnapshot_() {
@@ -344,6 +344,28 @@ function teacherHelpInit(options) {
   return getTeacherHelpInfo_(null, options);
 }
 
+function resolveTeacherRuntimeWebAppInfo_(options) {
+  const opts = options && typeof options === 'object' ? options : {};
+  const setupConfig = opts.setupConfig && typeof opts.setupConfig === 'object'
+    ? opts.setupConfig
+    : null;
+  const explicitCurrentWebAppUrl = normalizeWebAppUrl_(opts.currentWebAppUrl || '');
+  const resolvedCurrentWebAppUrl = explicitCurrentWebAppUrl || normalizeWebAppUrl_(
+    resolveSetupWebAppBaseUrl_(setupConfig || {}, {
+      currentWebAppUrl: getCurrentWebAppBaseUrl_(),
+    })
+  );
+  const deploymentId = String(
+    inferDeploymentIdFromWebAppUrl_(resolvedCurrentWebAppUrl) ||
+    getScriptProperties_().getProperty('DEPLOYMENT_ID') ||
+    ''
+  ).trim();
+  return {
+    currentWebAppUrl: resolvedCurrentWebAppUrl,
+    deploymentId,
+  };
+}
+
 function refreshTeacherShellConfig() {
   return getTenantShellConfig_({ forceRefresh: true, includeMaintenance: true });
 }
@@ -388,19 +410,12 @@ function getTeacherHelpInfo_(preloadedShellState, options) {
   const shellConfig = shellState && shellState.config ? shellState.config : {};
   const spreadsheet = getTenantSpreadsheet_();
   const setupConfig = loadTemplateSetupConfig_(spreadsheet);
-  const currentWebAppUrl = normalizeWebAppUrl_(
-    resolveSetupWebAppBaseUrl_(setupConfig, {
-      currentWebAppUrl: getCurrentWebAppBaseUrl_(),
-    })
-  );
-  const deploymentId = String(
-    getScriptProperties_().getProperty('DEPLOYMENT_ID') ||
-    inferDeploymentIdFromWebAppUrl_(currentWebAppUrl) ||
-    ''
-  ).trim();
+  const runtimeWebAppInfo = resolveTeacherRuntimeWebAppInfo_({ setupConfig });
+  const currentWebAppUrl = runtimeWebAppInfo.currentWebAppUrl;
+  const deploymentId = runtimeWebAppInfo.deploymentId;
   const scriptId = String(ScriptApp.getScriptId() || '').trim();
   const currentBuild = String(APP_BUILD || '').trim();
-  const versionControl = getTeacherVersionControlInfo_();
+  const versionControl = getTeacherVersionControlInfo_(runtimeWebAppInfo);
   const currentDeploymentVersion = Number(versionControl.currentVersionNumber || 0);
   const remoteLatestBuild = String(shellConfig.latestBuild || '').trim();
   const remoteLatestVersion = String(shellConfig.latestVersion || '').trim();
@@ -533,11 +548,7 @@ function getSelfUpdateInfoFromManifest_(manifest) {
   const sourceBundleUrl = String(releaseManifest.sourceBundleUrl || '').trim();
   const sourceSnapshot = normalizeSelfUpdateSourceSnapshot_(releaseManifest.sourceSnapshot);
   const scriptId = String(ScriptApp.getScriptId() || '').trim();
-  const deploymentId = String(
-    getScriptProperties_().getProperty('DEPLOYMENT_ID') ||
-    inferDeploymentIdFromWebAppUrl_(normalizeWebAppUrl_(getCurrentWebAppBaseUrl_())) ||
-    ''
-  ).trim();
+  const deploymentId = resolveTeacherRuntimeWebAppInfo_().deploymentId;
   let updateStatus = 'unknown';
   let reason = '';
   if (latestBuild && currentBuild) {
@@ -600,11 +611,7 @@ function runTeacherSelfUpdate_() {
   }
 
   const scriptId = String(ScriptApp.getScriptId() || '').trim();
-  const deploymentId = String(
-    getScriptProperties_().getProperty('DEPLOYMENT_ID') ||
-    inferDeploymentIdFromWebAppUrl_(normalizeWebAppUrl_(getCurrentWebAppBaseUrl_())) ||
-    ''
-  ).trim();
+  const deploymentId = resolveTeacherRuntimeWebAppInfo_().deploymentId;
   if (!scriptId) return { ok: false, error: 'scriptId を取得できませんでした。' };
   if (!deploymentId) return { ok: false, error: 'deploymentId を取得できませんでした。' };
 
@@ -802,11 +809,11 @@ function updateScriptDeploymentVersion_(scriptId, deploymentId, versionNumber, d
   );
 }
 
-function getTeacherVersionControlInfo_() {
+function getTeacherVersionControlInfo_(runtimeWebAppInfo) {
   const scriptId = String(ScriptApp.getScriptId() || '').trim();
   const deploymentId = String(
-    getScriptProperties_().getProperty('DEPLOYMENT_ID') ||
-    inferDeploymentIdFromWebAppUrl_(normalizeWebAppUrl_(getCurrentWebAppBaseUrl_())) ||
+    runtimeWebAppInfo && runtimeWebAppInfo.deploymentId ||
+    resolveTeacherRuntimeWebAppInfo_().deploymentId ||
     ''
   ).trim();
   if (!scriptId) {
@@ -935,14 +942,14 @@ function requestTeacherAppUpdate_() {
 
   const spreadsheet = getTenantSpreadsheet_();
   const setupConfig = loadTemplateSetupConfig_(spreadsheet);
-  const currentWebAppUrl = normalizeWebAppUrl_(getCurrentWebAppBaseUrl_());
+  const runtimeWebAppInfo = resolveTeacherRuntimeWebAppInfo_({
+    setupConfig,
+    currentWebAppUrl: getCurrentWebAppBaseUrl_(),
+  });
+  const currentWebAppUrl = runtimeWebAppInfo.currentWebAppUrl;
   const releaseInfo = fetchAdminReleaseInfo_();
   const scriptId = String(ScriptApp.getScriptId() || '').trim();
-  const deploymentId = String(
-    getScriptProperties_().getProperty('DEPLOYMENT_ID') ||
-    inferDeploymentIdFromWebAppUrl_(currentWebAppUrl) ||
-    ''
-  ).trim();
+  const deploymentId = runtimeWebAppInfo.deploymentId;
   const payload = {
     action: 'requestTenantUpdate',
     registrationId: String(setupConfig.registrationId || '').trim(),
@@ -1198,7 +1205,9 @@ function buildLessonStatus_(unitId, period) {
   const startedAt = Date.now();
   const timing = {};
   const snapshotStartedAt = Date.now();
-  const snapshot = getLessonRuntimeSnapshot_(unitId, period) || {};
+  const snapshot = getLessonLiveStateSnapshot_(unitId, period, { createLesson: true })
+    || getLessonRuntimeSnapshot_(unitId, period)
+    || {};
   timing.snapshotMs = Date.now() - snapshotStartedAt;
   const unit = snapshot.unit || null;
   const lesson = snapshot.lesson || getOrCreateLesson_(unitId, period);

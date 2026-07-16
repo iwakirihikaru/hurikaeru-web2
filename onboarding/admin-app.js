@@ -8,7 +8,7 @@
   primaryMaintenanceUrl: '',
   guideModePath: '?mode=guide',
   latestTenantAppBuild: 'shell-config-phase2-2026-07-05-1730',
-  latestTenantAppVersion: '388',
+  latestTenantAppVersion: '395',
   latestTenantAppNote: 'Config のマルチオリジン配信とフォールバック対応',
   latestTenantBundleVersion: '1',
   minimumUpdaterVersion: '1',
@@ -851,6 +851,12 @@ function buildTenantUpdateRequestNote_(body, requestedAt) {
   if (currentWebAppUrl) parts.push(`webAppUrl=${currentWebAppUrl}`);
   return parts.join(' | ');
 }
+
+
+
+
+
+
 
 
 

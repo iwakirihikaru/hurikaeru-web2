@@ -50,7 +50,9 @@ function buildStudentEntryClassSnapshot_(students, featureFlags, shell) {
   const period = Number(active && active.period || 0);
   if (!unit || period <= 0) return null;
 
-  const snapshot = getLessonRuntimeSnapshot_(unit.id, period, { createLesson: false }) || {};
+  const snapshot = getLessonLiveStateSnapshot_(unit.id, period, { createLesson: false })
+    || getLessonRuntimeSnapshot_(unit.id, period, { createLesson: false })
+    || {};
   const enabledFields = Array.isArray(snapshot.fields) && snapshot.fields.length
     ? snapshot.fields
     : getEnabledFields_({ fields: active.fields || unit.fields || [] });
@@ -162,7 +164,9 @@ function getEnabledFields_(unit) {
 
 function getTimeline(unitId, period) {
   const active = getActiveSetting();
-  const snapshot = getLessonRuntimeSnapshot_(unitId, period) || {};
+  const snapshot = getLessonLiveStateSnapshot_(unitId, period)
+    || getLessonRuntimeSnapshot_(unitId, period)
+    || {};
   const unit = snapshot.unit || getAllUnits().find(u => String(u.id) === String(unitId)) || null;
   const fields = Array.isArray(snapshot.fields) ? snapshot.fields : [];
   return {

@@ -27,6 +27,7 @@ let lastTeacherStartAtMs = 0;
 let teacherEndingLesson = false;
 let teacherActiveDebug = '';
 let teacherUnitsReadMeta = null;
+let startPeriodManuallySelected = false;
 const TEACHER_CLIENT_BUILD = 'client-20260704-1035';
 let teacherBootstrapApplied = false;
 const UI_STATE_KEY = 'jibun-matome-teacher-ui';
@@ -310,6 +311,7 @@ function scheduleTeacherUnitProgressRefresh_(data){
         if(!map || typeof map!=='object') return;
         unitProgressByUnitId = map;
         populateUnitSelects();
+        applySuggestedStartPeriodAfterProgressRefresh_();
         const unitListSection=document.getElementById('unitListWrap');
         if(unitListSection && unitListSection.offsetParent!==null){
           renderUnitList();
@@ -1494,8 +1496,32 @@ function getSuggestedPeriodForUnit(unit){
   const max=(unit.maxPeriod===0||unit.maxPeriod>20)?20:Number(unit.maxPeriod||10);
   const progress=unitProgressByUnitId[String(unit.id||'')]||{};
   const lastActivityPeriod=Math.max(0, Number(progress.lastActivityPeriod||0));
-  const next=Math.max(1, lastActivityPeriod>0 ? lastActivityPeriod+1 : 1);
+  const maxProgressPeriod=Math.max(0, Number(progress.maxPeriod||0));
+  const basePeriod=lastActivityPeriod>0 ? lastActivityPeriod : maxProgressPeriod;
+  const next=Math.max(1, basePeriod>0 ? basePeriod+1 : 1);
   return String(Math.min(next, max));
+}
+
+function onStartUnitChange(){
+  startPeriodManuallySelected=false;
+  updatePeriodSelect({ forceSuggested:true });
+}
+
+function onStartPeriodManualChange(){
+  startPeriodManuallySelected=true;
+}
+
+function applySuggestedStartPeriodAfterProgressRefresh_(){
+  if(startPeriodManuallySelected) return;
+  const unitSel=document.getElementById('startUnit');
+  const periodSel=document.getElementById('startPeriod');
+  if(!unitSel || !periodSel || !unitSel.value) return;
+  const unit=allUnits.find(u=>String(u.id)===String(unitSel.value));
+  const suggested=unit?getSuggestedPeriodForUnit(unit):'';
+  if(!suggested) return;
+  if(Array.from(periodSel.options||[]).some(option=>String(option.value)===String(suggested))){
+    periodSel.value=String(suggested);
+  }
 }
 
 function onStatusUnitFilterChange(){
@@ -1532,15 +1558,18 @@ function populateAggUnitSelect(){
   if(agCur && visibleUnits.some(u=>String(u.id)===String(agCur))) ag.value=agCur;
 }
 
-function updatePeriodSelect(){
+function updatePeriodSelect(options){
+  const opts=options||{};
   const unitId=document.getElementById('startUnit').value;
   const unit=allUnits.find(u=>u.id==unitId);
   const max=unit?(unit.maxPeriod===0||unit.maxPeriod>20?20:unit.maxPeriod):10;
   const sel=document.getElementById('startPeriod');
+  const current=String(sel && sel.value || '');
   const suggested=unit?getSuggestedPeriodForUnit(unit):'';
+  const selectedValue=(startPeriodManuallySelected && !opts.forceSuggested && current) ? current : suggested;
   sel.innerHTML='<option value="">時間目を選択…</option>'+
     Array.from({length:max},(_,i)=>i+1)
-      .map(i=>`<option value="${i}" ${suggested && String(suggested)===String(i) ?'selected':''}>${i}じかんめ</option>`).join('');
+      .map(i=>`<option value="${i}" ${selectedValue && String(selectedValue)===String(i) ?'selected':''}>${i}じかんめ</option>`).join('');
 }
 
 // =====================================
