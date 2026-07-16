@@ -31,6 +31,12 @@ let teacherUnitsReadMeta = null;
 let startPeriodManuallySelected = false;
 const TEACHER_CLIENT_BUILD = 'client-20260704-1035';
 let teacherBootstrapApplied = false;
+const teacherClientPerfState = {
+  pageStartedAt:(typeof performance!=='undefined' && performance && typeof performance.now==='function') ? performance.now() : Date.now(),
+  teacherInitCalls:0,
+  teacherStatusInitCalls:0,
+  recordTabSwitchCounts:{},
+};
 const UI_STATE_KEY = 'jibun-matome-teacher-ui';
 const AGG_PRESET_LABELS = {
   standard:'ふりかえり中心',
@@ -115,6 +121,26 @@ function showFatalTeacherError(message){
     box.style.display='block';
     box.textContent=`画面エラー: ${text}`;
   }
+}
+
+function teacherNowMs_(){
+  return (typeof performance!=='undefined' && performance && typeof performance.now==='function')
+    ? performance.now()
+    : Date.now();
+}
+
+function logTeacherClientPerf_(name, payload){
+  try{
+    const apiInfo=(window.__portableGas && typeof window.__portableGas.getResolvedApiInfo==='function')
+      ? window.__portableGas.getResolvedApiInfo()
+      : null;
+    console.log('[teacher_client_perf] '+JSON.stringify({
+      name:String(name||''),
+      apiUrl:apiInfo && apiInfo.apiUrl || '',
+      apiSource:apiInfo && apiInfo.source || '',
+      ...(payload && typeof payload==='object' ? payload : {}),
+    }));
+  }catch(_err){}
 }
 
 window.addEventListener('error', function(event){
@@ -223,6 +249,8 @@ function switchTab(name, el){
 //  初期ロード
 // =====================================
 function loadInit(){
+  const startedAt=teacherNowMs_();
+  teacherClientPerfState.teacherInitCalls += 1;
   const requestEpoch=teacherDataEpoch;
   applyEmbeddedTeacherBootstrap_();
   let statusLoaded=false;
@@ -233,9 +261,23 @@ function loadInit(){
         if(requestEpoch!==teacherDataEpoch) return;
         applyTeacherInitData(d, { includeRoster:true, renderUnitList:true, schedulePreload:true, source:'teacherInit' });
         scheduleTeacherUnitProgressRefresh_(d);
+        logTeacherClientPerf_('teacherInit', {
+          callCount:teacherClientPerfState.teacherInitCalls,
+          totalMs:Math.max(0, teacherNowMs_()-startedAt),
+          sincePageLoadMs:Math.max(0, teacherNowMs_()-teacherClientPerfState.pageStartedAt),
+          unitCount:Array.isArray(d && d.units)?d.units.length:0,
+          rosterCount:Array.isArray(d && d.roster)?d.roster.length:0,
+          deploymentVersion:Number(d && d.deploymentVersion || 0),
+          timing:d && d.timing || null,
+        });
       })
       .withFailureHandler(err=>{
         if(requestEpoch!==teacherDataEpoch) return;
+        logTeacherClientPerf_('teacherInit_error', {
+          callCount:teacherClientPerfState.teacherInitCalls,
+          totalMs:Math.max(0, teacherNowMs_()-startedAt),
+          error:(err && err.message) ? err.message : String(err||'unknown'),
+        });
         handleTeacherInitFailure_(err, 'teacherInit');
       })
       .teacherInit();
@@ -278,6 +320,8 @@ function loadPromptsTab(){
 }
 
 function loadStatusInit(options){
+  const startedAt=teacherNowMs_();
+  teacherClientPerfState.teacherStatusInitCalls += 1;
   const opts=options||{};
   const requestEpoch=teacherDataEpoch;
   applyEmbeddedTeacherBootstrap_();
@@ -304,9 +348,20 @@ function loadStatusInit(options){
       }
       scheduleTeacherUnitProgressRefresh_(d);
       ensureTeacherShellInitAfterStatus_(requestEpoch);
+      logTeacherClientPerf_('teacherStatusInit', {
+        callCount:teacherClientPerfState.teacherStatusInitCalls,
+        totalMs:Math.max(0, teacherNowMs_()-startedAt),
+        deploymentVersion:Number(d && d.deploymentVersion || 0),
+        studentCount:d && d.status && Array.isArray(d.status.students) ? d.status.students.length : 0,
+      });
     })
     .withFailureHandler(err=>{
       if(requestEpoch!==teacherDataEpoch) return;
+      logTeacherClientPerf_('teacherStatusInit_error', {
+        callCount:teacherClientPerfState.teacherStatusInitCalls,
+        totalMs:Math.max(0, teacherNowMs_()-startedAt),
+        error:(err && err.message) ? err.message : String(err||'unknown'),
+      });
       console.warn('teacherStatusSnapshot failed', err);
       if(opts.startPolling){
         startStatusPoll(false);
@@ -697,6 +752,7 @@ function switchCurriculumSubtab(name, el){
 
 function switchRecordSubtab(name, el){
   const next=String(name||'aggregate');
+  teacherClientPerfState.recordTabSwitchCounts[next]=Number(teacherClientPerfState.recordTabSwitchCounts[next]||0)+1;
   document.querySelectorAll('.record-pane').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('[data-record-tab]').forEach(btn=>btn.classList.remove('active'));
   const pane=document.getElementById('record-pane-'+next);
@@ -707,6 +763,10 @@ function switchRecordSubtab(name, el){
     if(btn) btn.classList.add('active');
   }
   saveUiState({ recordSubtab: next });
+  logTeacherClientPerf_('switchRecordSubtab', {
+    tab:next,
+    switchCount:teacherClientPerfState.recordTabSwitchCounts[next],
+  });
   if(next==='aggregate') loadAgg();
   if(next==='portfolio') loadPortfolioTab();
   if(next==='grading') loadAgg();
@@ -1710,6 +1770,7 @@ function startLesson(){
   if(btn){
     btn.dataset.defaultLabel=defaultLabel;
     btn.disabled=true;
+    btn.classList.add('is-busy');
     btn.textContent='⏳ 授業開始中…';
   }
   const selectedUnit=allUnits.find(unit=>String(unit && unit.id || '')===String(unitId))||null;
@@ -1720,6 +1781,7 @@ function startLesson(){
         btn.textContent='✅ 開始しました';
         setTimeout(()=>{
           btn.disabled=false;
+          btn.classList.remove('is-busy');
           btn.textContent=btn.dataset.defaultLabel||defaultLabel;
         },1800);
       }
@@ -1751,6 +1813,7 @@ function startLesson(){
     .withFailureHandler(err=>{
       if(btn){
         btn.disabled=false;
+        btn.classList.remove('is-busy');
         btn.textContent=btn.dataset.defaultLabel||defaultLabel;
       }
       showToast(formatTeacherRpcError_(err, '授業開始に失敗しました', '授業開始'), { tone:'error', duration:5200 });
