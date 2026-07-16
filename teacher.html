@@ -3124,12 +3124,17 @@ function getSuggestedPeriodForUnit(unit) {
     var lastActivityPeriod = Math.max(0, Number(progress.lastActivityPeriod || 0));
     var maxProgressPeriod = Math.max(0, Number(progress.maxPeriod || 0));
     var basePeriod = lastActivityPeriod > 0 ? lastActivityPeriod : maxProgressPeriod;
-    var configuredMax = Number(unit.maxPeriod || 0);
-    var max = (configuredMax === 0 || configuredMax > 20)
-        ? 20
-        : (configuredMax <= 1 && basePeriod > 0 ? Math.max(20, basePeriod + 1) : configuredMax);
+    var max = getSelectablePeriodMaxForUnit_(unit, basePeriod);
     var next = Math.max(1, basePeriod > 0 ? basePeriod + 1 : 1);
     return String(Math.min(next, max));
+}
+function getSelectablePeriodMaxForUnit_(unit, basePeriod) {
+    var configuredMax = Number(unit && unit.maxPeriod || 0);
+    if (configuredMax === 0 || configuredMax > 20)
+        return 20;
+    if (configuredMax <= 1 && basePeriod > 0)
+        return Math.max(20, basePeriod + 1);
+    return configuredMax;
 }
 function onStartUnitChange() {
     startPeriodManuallySelected = false;
@@ -3191,9 +3196,13 @@ function updatePeriodSelect(options) {
     var opts = options || {};
     var unitId = document.getElementById('startUnit').value;
     var unit = allUnits.find(function (u) { return u.id == unitId; });
-    var max = unit ? (unit.maxPeriod === 0 || unit.maxPeriod > 20 ? 20 : unit.maxPeriod) : 10;
     var sel = document.getElementById('startPeriod');
     var current = String(sel && sel.value || '');
+    var progress = unit ? unitProgressByUnitId[String(unit.id || '')] || {} : {};
+    var lastActivityPeriod = Math.max(0, Number(progress.lastActivityPeriod || 0));
+    var maxProgressPeriod = Math.max(0, Number(progress.maxPeriod || 0));
+    var basePeriod = lastActivityPeriod > 0 ? lastActivityPeriod : maxProgressPeriod;
+    var max = unit ? getSelectablePeriodMaxForUnit_(unit, basePeriod) : 10;
     var suggested = unit ? getSuggestedPeriodForUnit(unit) : '';
     var selectedValue = (startPeriodManuallySelected && !opts.forceSuggested && current) ? current : suggested;
     sel.innerHTML = '<option value="">時間目を選択…</option>' +
