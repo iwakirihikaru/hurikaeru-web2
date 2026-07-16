@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<script src="./runtime-shim.js"></script>
+<script src="./runtime-shim.js?v=446b62d86e"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>ふりカエル</title>
@@ -30,9 +30,9 @@ html,body{height:100%;font-family:var(--font);background:var(--bg);color:var(--i
 #screen-select{align-items:center;justify-content:center;min-height:100vh;padding:24px 16px;}
 .brand-lockup{display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:8px;}
 .brand-mascot{
-    display:inline-block;background-image:var(--mascot);background-size:cover;background-position:center;background-repeat:no-repeat;border-radius:50%;
-    box-shadow:0 4px 14px rgba(26,35,126,.18);
-  }
+  display:inline-block;background-image:var(--mascot);background-size:cover;background-position:center;background-repeat:no-repeat;border-radius:50%;
+  box-shadow:0 4px 14px rgba(26,35,126,.18);
+}
 .brand-mascot-lg{width:96px;height:96px;}
 .brand-mascot-sm{width:34px;height:34px;flex:0 0 34px;}
 .sel-title{font-size:26px;font-weight:bold;margin-bottom:4px;text-align:center;}
@@ -436,6 +436,7 @@ let autoTimer  = null;
 let pollTimer  = null;
 let initBusy   = false;
 let pollBusy   = false;
+let timelineRefreshPending = false;
 let lastAiCommentText = '';
 let aiCommentAutoScrolled = false;
 let studentStateReady = false;
@@ -455,16 +456,25 @@ let studentHistoryRows = [];
 let studentHistoryIndex = 0;
 let studentHistoryLoaded = false;
 let studentHistoryLoading = false;
+let studentHistoryPreloadTimer = null;
 let studentMaintenanceMode = false;
 let currentStudentShellState = {};
 let currentStudentUnitInfo = null;
+let currentStudentName = '';
+let currentStudentCustoms = [];
+let currentStudentStateKey = '';
 const AUTO_SAVE_MS = 30000;
 const POLL_IDLE_MS = 4000;
 const POLL_WAITING_AI_MS = 2500;
 const POLL_DONE_MS = 6000;
 const STUDENT_CACHE_TTL_MS = 5 * 60 * 1000;
+const STUDENT_ENTRY_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const STUDENT_CLASS_SNAPSHOT_CACHE_TTL_MS = 60 * 1000;
 const STUDENT_NUMBER_CACHE_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 const STUDENT_ENTRY_CACHE_KEY = 'furikaeri:studentEntryOptions';
+const STUDENT_CLASS_SNAPSHOT_CACHE_KEY = 'furikaeri:studentClassSnapshot';
+let studentClassSnapshotPreloadBusy = false;
+let studentClassSnapshotPreloadScheduled = false;
 
 function getStudentCacheKey_(kind, suffix){
   return `furikaeri:${kind}:${String(suffix||'')}`;
@@ -548,6 +558,60 @@ function rememberStudentNumber_(num){
   }catch(e){}
 }
 
+function formatStudentIdentity_(num, name){
+  const normalizedNum=String(num==null?'':num).trim();
+  const normalizedName=String(name||'').trim();
+  if(normalizedNum && normalizedName) return `${normalizedNum}ばん ${normalizedName} さん`;
+  if(normalizedNum) return `${normalizedNum}ばん`;
+  if(normalizedName) return normalizedName;
+  return '';
+}
+
+function findRosterNameForNumber_(num){
+  const target=String(num||'').trim();
+  if(!target || !Array.isArray(bootstrapStudentOptions.students)) return '';
+  const match=bootstrapStudentOptions.students.find(student=>String(student&&student.number||'').trim()===target);
+  return match ? String(match.name||'').trim() : '';
+}
+
+function normalizeStudentIdentity_(state){
+  const d=state&&typeof state==='object'?state:{};
+  const num=String(d.num==null?'':d.num).trim() || String(myNum||'').trim();
+  const name=String(d.name==null?'':d.name).trim()
+    || currentStudentName
+    || findRosterNameForNumber_(num);
+  if(num) myNum=num;
+  if(name) currentStudentName=name;
+  return { num, name };
+}
+
+function getCurrentStudentStateKey_(){
+  return [myUnitId,myPeriod,myNum].join('_');
+}
+
+function hasMeaningfulCustoms_(values){
+  return Array.isArray(values) && values.some(value=>String(value||'').trim());
+}
+
+function normalizeStudentCustoms_(values){
+  const incoming=Array.isArray(values)?values:[];
+  const fieldCount=Array.isArray(myFields)?myFields.length:0;
+  const normalized=incoming.slice(0,fieldCount);
+  while(normalized.length<fieldCount) normalized.push('');
+
+  const stateKey=getCurrentStudentStateKey_();
+  const sameState=stateKey && stateKey===currentStudentStateKey;
+  const screenValues=sameState ? getCustomValues() : [];
+  const fallback=hasMeaningfulCustoms_(screenValues) ? screenValues : currentStudentCustoms;
+  const result=(!hasMeaningfulCustoms_(normalized) && sameState && hasMeaningfulCustoms_(fallback))
+    ? fallback.slice(0,fieldCount)
+    : normalized;
+  while(result.length<fieldCount) result.push('');
+  currentStudentStateKey=stateKey;
+  currentStudentCustoms=result.slice();
+  return result;
+}
+
 function forgetRememberedStudent_(){
   try{ localStorage.removeItem('furikaeri:rememberedStudentNumber'); }catch(e){}
   const box=document.getElementById('resumeBox');
@@ -559,9 +623,17 @@ function readStudentEntryOptionsCache_(){
     const raw=localStorage.getItem(STUDENT_ENTRY_CACHE_KEY);
     if(!raw) return null;
     const parsed=JSON.parse(raw);
-    if(!parsed || !parsed.savedAt || Date.now()-Number(parsed.savedAt)>STUDENT_CACHE_TTL_MS) return null;
+    if(!parsed || !parsed.savedAt || Date.now()-Number(parsed.savedAt)>STUDENT_ENTRY_CACHE_TTL_MS) return null;
     const payload=parsed.payload;
-    return payload && Array.isArray(payload.students) && payload.students.length ? payload : null;
+    if(!payload || typeof payload!=='object') return null;
+    const students=normalizeStudentEntryStudents_(payload);
+    if(!students.length) return null;
+    return {
+      students,
+      numberList:Array.isArray(payload.numberList)?payload.numberList:students.map(student=>student.number),
+      maxNumber:Number(payload.maxNumber||students[students.length-1]?.number||0),
+      shell:payload.shell||{},
+    };
   }catch(_err){
     return null;
   }
@@ -569,10 +641,69 @@ function readStudentEntryOptionsCache_(){
 
 function writeStudentEntryOptionsCache_(payload){
   try{
-    if(!payload || !Array.isArray(payload.students) || !payload.students.length) return;
+    const students=normalizeStudentEntryStudents_(payload);
+    const numberList=Array.isArray(payload&&payload.numberList)
+      ? payload.numberList.map(value=>Number(value)||0).filter(value=>value>0)
+      : students.map(student=>Number(student.number)||0).filter(value=>value>0);
+    if(!students.length && !numberList.length) return;
     localStorage.setItem(STUDENT_ENTRY_CACHE_KEY, JSON.stringify({
       savedAt:Date.now(),
-      payload,
+      payload:{
+        students,
+        numberList,
+        maxNumber:Number(payload&&payload.maxNumber||numberList[numberList.length-1]||students[students.length-1]?.number||0),
+        shell:payload.shell||{},
+      },
+    }));
+  }catch(_err){}
+}
+
+function buildStudentPlaceholderEntries_(numberList, maxNumber){
+  const normalized=Array.from(new Set((Array.isArray(numberList)?numberList:[])
+    .map(value=>Number(value)||0)
+    .filter(value=>value>0)))
+    .sort((a,b)=>a-b);
+  if(normalized.length){
+    return normalized.map(number=>({ number, name:'', active:true, fallback:true }));
+  }
+  const fallbackMax=Math.max(1, Number(maxNumber)||0, 40);
+  const entries=[];
+  for(let i=1;i<=fallbackMax;i++) entries.push({ number:i, name:'', active:true, fallback:true });
+  return entries;
+}
+
+function normalizeStudentEntryStudents_(payload){
+  if(payload && Array.isArray(payload.students) && payload.students.length){
+    return payload.students;
+  }
+  if(payload && (Array.isArray(payload.numberList) || Number(payload.maxNumber)>0)){
+    return buildStudentPlaceholderEntries_(payload.numberList, payload.maxNumber);
+  }
+  return [];
+}
+
+function readStudentClassSnapshotCache_(){
+  try{
+    const raw=localStorage.getItem(STUDENT_CLASS_SNAPSHOT_CACHE_KEY);
+    if(!raw) return null;
+    const parsed=JSON.parse(raw);
+    if(!parsed || !parsed.savedAt || Date.now()-Number(parsed.savedAt)>STUDENT_CLASS_SNAPSHOT_CACHE_TTL_MS){
+      localStorage.removeItem(STUDENT_CLASS_SNAPSHOT_CACHE_KEY);
+      return null;
+    }
+    const snapshot=parsed.payload;
+    return snapshot && typeof snapshot==='object' ? snapshot : null;
+  }catch(_err){
+    return null;
+  }
+}
+
+function writeStudentClassSnapshotCache_(snapshot){
+  try{
+    if(!snapshot || typeof snapshot!=='object' || !snapshot.statesByNumber) return;
+    localStorage.setItem(STUDENT_CLASS_SNAPSHOT_CACHE_KEY, JSON.stringify({
+      savedAt:Date.now(),
+      payload:snapshot,
     }));
   }catch(_err){}
 }
@@ -589,10 +720,13 @@ if (!window.__STUDENT_BOOTSTRAP__) {
 }
 let studentAppBootStarted=false;
 let studentEntryOptionsLoaded=Array.isArray(bootstrapStudentOptions.students) && bootstrapStudentOptions.students.length>0;
+let studentEntryOptionsLoading=!studentEntryOptionsLoaded;
 
 function getInitialStudentOptions_(){
-  if(Array.isArray(bootstrapStudentOptions.students) && bootstrapStudentOptions.students.length){
-    return bootstrapStudentOptions.students;
+  const current=normalizeStudentEntryStudents_(bootstrapStudentOptions);
+  if(current.length){
+    bootstrapStudentOptions.students=current;
+    return current;
   }
   const cached=readStudentEntryOptionsCache_();
   if(cached){
@@ -600,15 +734,39 @@ function getInitialStudentOptions_(){
     studentEntryOptionsLoaded=true;
     return cached.students;
   }
-  return [];
+  const fallback=buildStudentPlaceholderEntries_(bootstrapStudentOptions.numberList, bootstrapStudentOptions.maxNumber);
+  bootstrapStudentOptions.students=fallback;
+  return fallback;
 }
 
 function applyStudentBootstrapData_(data, options){
   const opts=options||{};
+  const normalizedStudents=normalizeStudentEntryStudents_(data);
+  const hasStudents=Boolean(normalizedStudents.length);
+  const hasClassSnapshot=Boolean(data && data.classSnapshot && typeof data.classSnapshot==='object');
   if(data && typeof data==='object'){
-    Object.assign(bootstrapStudentOptions, data);
-    studentEntryOptionsLoaded=true;
-    writeStudentEntryOptionsCache_(bootstrapStudentOptions);
+    const existingStudents=Array.isArray(bootstrapStudentOptions.students) ? bootstrapStudentOptions.students : [];
+    const incoming=Object.assign({}, data);
+    if(hasStudents) incoming.students=normalizedStudents;
+    if(!hasStudents && existingStudents.length){
+      delete incoming.students;
+    }
+    Object.assign(bootstrapStudentOptions, incoming);
+    if(hasStudents || existingStudents.length){
+      studentEntryOptionsLoaded=true;
+      studentEntryOptionsLoading=false;
+    }else if(opts.initial===true){
+      studentEntryOptionsLoading=true;
+    }else{
+      studentEntryOptionsLoaded=false;
+      studentEntryOptionsLoading=true;
+    }
+    if(hasStudents || opts.initial !== true){
+      writeStudentEntryOptionsCache_(bootstrapStudentOptions);
+    }
+    if(hasClassSnapshot){
+      writeStudentClassSnapshotCache_(incoming.classSnapshot);
+    }
   }
   applyStudentShellState_(bootstrapStudentOptions.shell||{});
   const students=getInitialStudentOptions_();
@@ -619,20 +777,29 @@ function applyStudentBootstrapData_(data, options){
   if(opts.skipResume!==true && !initBusy){
     setupRememberedStudentResume_(students);
   }
+  if(opts.skipClassSnapshotPreload!==true && !hasClassSnapshot && students.length){
+    scheduleStudentClassSnapshotPreload_();
+  }
 }
 
 function startStudentApp_(){
   if(studentAppBootStarted) return;
   studentAppBootStarted=true;
-  applyStudentBootstrapData_(bootstrapStudentOptions);
+  applyStudentBootstrapData_(bootstrapStudentOptions,{ initial:true, skipResume:true });
 }
 
 startStudentApp_();
 bootstrapStudentReadyPromise.then(data => applyStudentBootstrapData_(data)).catch(error => { console.error(error); });
 
 function getBootstrapClassSnapshot_(){
-  const snapshot=bootstrapStudentOptions.classSnapshot;
-  return snapshot && typeof snapshot==='object' ? snapshot : null;
+  const current=bootstrapStudentOptions.classSnapshot;
+  if(current && typeof current==='object') return current;
+  const cached=readStudentClassSnapshotCache_();
+  if(cached){
+    bootstrapStudentOptions.classSnapshot=cached;
+    return cached;
+  }
+  return null;
 }
 
 function getBootstrapStudentSnapshotState_(num){
@@ -654,6 +821,35 @@ function getBootstrapStudentSnapshotState_(num){
   });
 }
 
+function scheduleStudentClassSnapshotPreload_(){
+  if(studentClassSnapshotPreloadBusy || studentClassSnapshotPreloadScheduled) return;
+  if(getBootstrapClassSnapshot_()) return;
+  studentClassSnapshotPreloadScheduled=true;
+  const run=()=>{
+    studentClassSnapshotPreloadScheduled=false;
+    if(studentClassSnapshotPreloadBusy || getBootstrapClassSnapshot_()) return;
+    studentClassSnapshotPreloadBusy=true;
+    google.script.run
+      .withSuccessHandler(payload=>{
+        studentClassSnapshotPreloadBusy=false;
+        const snapshot=payload && payload.classSnapshot;
+        if(snapshot && typeof snapshot==='object'){
+          bootstrapStudentOptions.classSnapshot=snapshot;
+          writeStudentClassSnapshotCache_(snapshot);
+        }
+      })
+      .withFailureHandler(()=>{
+        studentClassSnapshotPreloadBusy=false;
+      })
+      .getStudentEntryOptions({ lightweight:false, shell:false });
+  };
+  if(typeof requestAnimationFrame==='function'){
+    requestAnimationFrame(()=>setTimeout(run,100));
+  }else{
+    setTimeout(run,100);
+  }
+}
+
 function getStudentShellLabels_(shell){
   const state=shell||{};
   return state.labels && typeof state.labels==='object' ? state.labels : {};
@@ -668,6 +864,22 @@ function getStudentShellLabel_(key, fallback){
 function setStudentText_(id, value){
   const el=document.getElementById(id);
   if(el && String(value||'').trim()) el.textContent=String(value||'').trim();
+}
+
+function getStudentSelectSubtitleText_(){
+  if(studentEntryOptionsLoading || !studentEntryOptionsLoaded){
+    return '名簿を読み込み中です…';
+  }
+  const hasStudents=Array.isArray(bootstrapStudentOptions.students) && bootstrapStudentOptions.students.length>0;
+  if(!hasStudents){
+    return getStudentShellLabel_('studentRosterEmptyMessage', '名簿がまだ設定されていません。先生に伝えてね。');
+  }
+  return getStudentShellLabel_('studentSelectSubtitle', 'きみのばんごうをタップしてね');
+}
+
+function updateStudentSelectScreenMessage_(){
+  const subtitle=document.getElementById('studentSelectSubtitle');
+  if(subtitle) subtitle.textContent=getStudentSelectSubtitleText_();
 }
 
 function formatStudentTemplate_(template, values){
@@ -685,7 +897,6 @@ function applyStudentShellState_(shell){
   const notice=state.noticeBanner||{};
   studentMaintenanceMode=maintenanceMode;
   setStudentText_('studentSelectTitle', labels.studentSelectTitle);
-  setStudentText_('studentSelectSubtitle', labels.studentSelectSubtitle);
   setStudentText_('resumeContinueBtn', labels.studentResumeStartLabel);
   setStudentText_('resumeChangeBtn', labels.studentResumeChangeLabel);
   setStudentText_('studentPeriodTitle', labels.studentPeriodTitle);
@@ -727,15 +938,17 @@ function applyStudentShellState_(shell){
   }else if(submitNote && /メンテナンス/.test(String(submitNote.textContent||''))){
     submitNote.textContent='';
   }
+  updateStudentSelectScreenMessage_();
 }
 
 function renderNumberButtons(students){
   const g=document.getElementById('numGrid');
   const list=(students&&students.length)?students:[];
+  updateStudentSelectScreenMessage_();
   if(!list.length){
-    const emptyMessage=studentEntryOptionsLoaded
-      ? getStudentShellLabel_('studentRosterEmptyMessage', '名簿がまだ設定されていません。先生に伝えてね。')
-      : '名簿を確認中…';
+    const emptyMessage=(studentEntryOptionsLoading || !studentEntryOptionsLoaded)
+      ? '名簿を読み込み中です…'
+      : getStudentShellLabel_('studentRosterEmptyMessage', '名簿がまだ設定されていません。先生に伝えてね。');
     g.innerHTML=`<div style="grid-column:1/-1;text-align:center;color:#78909C;font-size:14px;">${esc(emptyMessage)}</div>`;
     return;
   }
@@ -878,7 +1091,9 @@ function loadMain(d){
   clearInterval(autoTimer);
   stopPolling();
   pollBusy=false;
-  rememberStudentNumber_(d.num);
+  timelineRefreshPending=false;
+  const identity=normalizeStudentIdentity_(d);
+  rememberStudentNumber_(identity.num);
   myUnitId  = d.unit?.id   || null;
   myPeriod  = d.period      || null;
   myFields  = d.fields      || [];
@@ -912,8 +1127,9 @@ function loadMain(d){
   document.getElementById('submitBtn').textContent=getStudentShellLabel_('studentSubmitLabel', '🚀 ていしゅつ');
   document.getElementById('hdrUnit').textContent=
     currentStudentUnitInfo?`【${currentStudentUnitInfo.subject}】${currentStudentUnitInfo.name}・${d.period}じかんめ`:'';
-  document.getElementById('hdrMeta').textContent=`${d.num}ばん ${d.name||''} さん`;
-  document.getElementById('myNameLabel').textContent=`${d.num}ばん ${d.name||''} さん`;
+  const identityLabel=formatStudentIdentity_(identity.num, identity.name);
+  document.getElementById('hdrMeta').textContent=identityLabel;
+  document.getElementById('myNameLabel').textContent=identityLabel;
   document.getElementById('changeStudentBtn').style.display='inline-block';
 
   activeStudentTab='current';
@@ -923,6 +1139,10 @@ function loadMain(d){
   studentHistoryIndex=0;
   studentHistoryLoaded=false;
   studentHistoryLoading=false;
+  if(studentHistoryPreloadTimer){
+    clearTimeout(studentHistoryPreloadTimer);
+    studentHistoryPreloadTimer=null;
+  }
   showStudentTab('current');
   setFieldInteractivity(false);
   document.getElementById('submitNote').textContent=d.cacheOnly ? 'さいしんじょうほうをよみこみ中…' : 'よみこみ中…';
@@ -934,7 +1154,9 @@ function loadMain(d){
       skipCachedTimeline:skipLocalFallback,
       skipPreviousReview:Boolean(d.prevReview||d.previousNextGoal),
     });
-    loadStudentState({ skipCachedState:skipLocalFallback });
+    if(d.bootstrapSource==='classSnapshot'){
+      loadStudentState({ skipCachedState:skipLocalFallback, skipTimelineRefresh:true });
+    }
   }
   resetAutoSave();
 }
@@ -948,14 +1170,21 @@ function loadStudentState(options){
   }
   google.script.run
     .withSuccessHandler(payload=>{
-      writeStudentCache_('state',cacheKey,payload);
-      applyStudentState(payload);
-      refreshTimeline();
+      const identity=normalizeStudentIdentity_(payload);
+      const normalizedPayload=Object.assign({}, payload||{}, { num: identity.num, name: identity.name });
+      writeStudentCache_('state',cacheKey,normalizedPayload);
+      applyStudentState(normalizedPayload);
+      if(opts.skipTimelineRefresh!==true) refreshTimeline();
     })
     .withFailureHandler(()=>{
       studentStateReady=true;
-      setFieldInteractivity(true);
-      document.getElementById('submitNote').textContent='';
+      if(submitted){
+        lockSubmitted();
+        document.getElementById('submitNote').textContent='提出結果を確認中です。少し待ってね。';
+      }else{
+        setFieldInteractivity(true);
+        document.getElementById('submitNote').textContent='';
+      }
     })
     .studentLoadState(myUnitId,myPeriod,myNum);
 }
@@ -1024,12 +1253,15 @@ function applyStudentState(d){
   myFields=d.fields||myFields;
   if(typeof d.studentAiEnabled!=='undefined') studentAiEnabled=Boolean(d.studentAiEnabled);
   if(typeof d.studentAiAutoSubmitEnabled!=='undefined') studentAiAutoSubmitEnabled=Boolean(d.studentAiAutoSubmitEnabled);
-  document.getElementById('hdrMeta').textContent=`${d.num}ばん ${d.name||''} さん`;
-  document.getElementById('myNameLabel').textContent=`${d.num}ばん ${d.name||''} さん`;
-  buildFields(myFields, d.customs||[]);
+  const identity=normalizeStudentIdentity_(d);
+  const identityLabel=formatStudentIdentity_(identity.num, identity.name);
+  document.getElementById('hdrMeta').textContent=identityLabel;
+  document.getElementById('myNameLabel').textContent=identityLabel;
+  const customs=normalizeStudentCustoms_(d.customs);
+  buildFields(myFields, customs);
   writeStudentCache_('state',[myUnitId,myPeriod,myNum].join('_'),{
-    num:d.num,
-    name:d.name,
+    num:identity.num,
+    name:identity.name,
     unitId:myUnitId,
     period:myPeriod,
     unit:currentStudentUnitInfo ? {
@@ -1038,7 +1270,7 @@ function applyStudentState(d){
       name:currentStudentUnitInfo.name||''
     } : null,
     fields:myFields,
-    customs:d.customs||[],
+    customs:customs,
     submitted:Boolean(d.submitted),
     comment:d.comment||'',
     rank:d.rank||'',
@@ -1150,6 +1382,28 @@ function buildFields(fields, values){
         <div class="understanding-group">${buttonHtml}</div>
         <input type="hidden" class="field-inp" data-idx="${i}" value="${esc(cur)}">`;
 
+    } else if(f.type==='student_select'){
+      const rosterChoices=getStudentRosterChoiceOptions_();
+      const cur=values[i]||'';
+      const optHtml=rosterChoices.map(choice=>
+        `<option value="${esc(choice.value)}" ${cur===choice.value?'selected':''}>${esc(choice.label)}</option>`
+      ).join('');
+      wrap.innerHTML=`${lbl}
+        <select class="f field-inp" data-idx="${i}" onfocus="setFocus('${f.key}')">
+          <option value="">えらんでね</option>${optHtml}
+        </select>`;
+
+    } else if(f.type==='student_multi'){
+      const rosterChoices=getStudentRosterChoiceOptions_();
+      const selected=new Set(splitStudentRosterMultiValue_(values[i]||''));
+      const choiceHtml=rosterChoices.map(choice=>
+        `<div class="choice-btn ${selected.has(choice.value)?'selected':''}" data-val="${esc(choice.value)}"
+          onclick="toggleStudentRosterMultiChoice(this,${i})">${esc(choice.label)}</div>`
+      ).join('');
+      wrap.innerHTML=`${lbl}
+        <div class="choice-group" data-idx="${i}">${choiceHtml || '<div style="grid-column:1/-1;color:#78909C;font-size:13px;">名簿を読み込み中です…</div>'}</div>
+        <input type="hidden" class="field-inp" data-idx="${i}" value="${esc(Array.from(selected).join('、'))}">`;
+
     } else if(f.type==='select'){
       const opts=(f.options||'').split(',').map(o=>o.trim()).filter(Boolean);
       const optHtml=opts.map(o=>
@@ -1193,7 +1447,7 @@ function handleFieldValueChanged_(){
 
 function setFieldInteractivity(enabled){
   document.querySelectorAll('.field-inp').forEach(el=>{ el.disabled=!enabled; });
-  document.querySelectorAll('.understanding-btn,.radio-btn,.hint-tag').forEach(el=>{
+  document.querySelectorAll('.understanding-btn,.radio-btn,.choice-btn,.hint-tag').forEach(el=>{
     el.style.pointerEvents=enabled?'':'none';
     el.style.opacity=enabled?'1':'0.55';
   });
@@ -1225,6 +1479,39 @@ function selectRadio(el, idx, val){
   el.classList.add('selected');
   document.querySelector(`.field-inp[data-idx="${idx}"][type="hidden"]`).value=val;
   setFocus(el.closest('.field-wrap').dataset.key);
+  handleFieldValueChanged_();
+}
+
+function getStudentRosterChoiceOptions_(){
+  const students=getInitialStudentOptions_();
+  return (Array.isArray(students)?students:[])
+    .filter(student=>student && student.fallback!==true)
+    .map(student=>{
+      const number=String(student.number||'').trim();
+      const name=String(student.name||'').trim();
+      const label=name ? `${number}ばん ${name}` : `${number}ばん`;
+      return { value:label, label };
+    })
+    .filter(choice=>choice.value.trim());
+}
+
+function splitStudentRosterMultiValue_(value){
+  return String(value||'')
+    .split(/[、,]/)
+    .map(item=>item.trim())
+    .filter(Boolean);
+}
+
+function toggleStudentRosterMultiChoice(el, idx){
+  const wrap=el.closest('.field-wrap');
+  const hidden=wrap ? wrap.querySelector(`.field-inp[data-idx="${idx}"][type="hidden"]`) : null;
+  if(!hidden) return;
+  el.classList.toggle('selected');
+  const values=Array.from(wrap.querySelectorAll('.choice-btn.selected'))
+    .map(btn=>String(btn.dataset.val||'').trim())
+    .filter(Boolean);
+  hidden.value=values.join('、');
+  setFocus(wrap.dataset.key);
   handleFieldValueChanged_();
 }
 
@@ -1389,6 +1676,10 @@ function doSubmit(){
   lockSubmitted();
   document.getElementById('submitNote').textContent='⏳ ていしゅつ中…そのまままっててね';
 
+  runStudentSubmit_(values, 0);
+}
+
+function runStudentSubmit_(values, attempt){
   google.script.run
     .withSuccessHandler(res=>{
       if(!res.ok){
@@ -1399,12 +1690,6 @@ function doSubmit(){
       submitInFlight=false;
       lastKnownAiStatus=res.queuedAi?'pending':'';
       if(res.queuedAi){
-        google.script.run
-          .withFailureHandler(()=>{})
-          .kickAiNow();
-        google.script.run
-          .withFailureHandler(()=>{})
-          .queueAiRescueTrigger();
         showToast('🎉 ていしゅつできたよ！AIのコメントをまっててね✨');
       } else {
         showToast('🎉 ていしゅつできたよ！');
@@ -1414,18 +1699,36 @@ function doSubmit(){
       }
       syncStudentTabState_();
       scheduleStudentHistoryPreload_();
-      refreshTimeline();
+      refreshTimeline({ force:true });
     })
     .withFailureHandler(e=>{
-      unlockAfterSubmitError_();
-      showToast('エラー:'+e);
+      if(attempt<1 && isRetriableSubmitError_(e)){
+        setTimeout(()=>runStudentSubmit_(values, attempt+1), 700);
+        return;
+      }
+      handleSubmitUnknownFailure_(e);
     })
     .submitReview(myUnitId,myPeriod,myNum,values);
 }
 
+function isRetriableSubmitError_(error){
+  const message=String(error&&error.message||error||'');
+  return /Failed to fetch|network|timeout|Request timed out|HTTP 5\d\d/i.test(message);
+}
+
+function handleSubmitUnknownFailure_(error){
+  submitInFlight=false;
+  document.getElementById('submitNote').textContent='提出結果を確認しています…';
+  showToast('通信が切れました。提出できているか確認します。');
+  lockSubmitted();
+  loadStudentState({ skipCachedState:true, skipTimelineRefresh:true });
+  refreshTimeline({ force:true });
+  setTimeout(()=>refreshTimeline({ force:true }), 1800);
+}
+
 function lockSubmitted(){
   document.querySelectorAll('.field-inp').forEach(el=>el.disabled=true);
-  document.querySelectorAll('.understanding-btn,.radio-btn').forEach(el=>el.style.pointerEvents='none');
+  document.querySelectorAll('.understanding-btn,.radio-btn,.choice-btn').forEach(el=>el.style.pointerEvents='none');
   document.querySelectorAll('.hint-tag').forEach(el=>el.style.pointerEvents='none');
   document.getElementById('submitBtn').disabled=true;
   document.getElementById('rewriteRow').style.display='block';
@@ -1451,7 +1754,7 @@ function doRewrite(evt){
   lastAiArrivalBannerKey='';
   hideAiArrivalBanner_();
   document.querySelectorAll('.field-inp').forEach(el=>el.disabled=false);
-  document.querySelectorAll('.understanding-btn,.radio-btn').forEach(el=>el.style.pointerEvents='');
+  document.querySelectorAll('.understanding-btn,.radio-btn,.choice-btn').forEach(el=>el.style.pointerEvents='');
   document.querySelectorAll('.hint-tag').forEach(el=>el.style.pointerEvents='');
   document.getElementById('submitBtn').disabled=false;
   document.getElementById('submitBtn').textContent='🚀 さいていしゅつ';
@@ -1480,7 +1783,7 @@ function unlockAfterSubmitError_(){
   lastAiArrivalBannerKey='';
   hideAiArrivalBanner_();
   document.querySelectorAll('.field-inp').forEach(el=>el.disabled=false);
-  document.querySelectorAll('.understanding-btn,.radio-btn').forEach(el=>el.style.pointerEvents='');
+  document.querySelectorAll('.understanding-btn,.radio-btn,.choice-btn').forEach(el=>el.style.pointerEvents='');
   document.querySelectorAll('.hint-tag').forEach(el=>el.style.pointerEvents='');
   document.getElementById('submitBtn').disabled=false;
   document.getElementById('submitBtn').textContent=getStudentShellLabel_('studentSubmitLabel', '🚀 ていしゅつ');
@@ -1503,9 +1806,13 @@ function unlockAfterSubmitError_(){
 // =====================================
 //  タイムライン
 // =====================================
-function refreshTimeline(){
+function refreshTimeline(options){
+  const opts=options||{};
   if(!myUnitId||!myPeriod) return;
-  if(pollBusy) return;
+  if(pollBusy){
+    if(opts.force) timelineRefreshPending=true;
+    return;
+  }
   pollBusy=true;
   const cacheKey=[myUnitId,myPeriod,myNum].join('_');
   google.script.run
@@ -1513,10 +1820,18 @@ function refreshTimeline(){
       writeStudentCache_('timeline',cacheKey,payload);
       const me=applyTimelinePayload(payload);
       pollBusy=false;
+      if(timelineRefreshPending){
+        timelineRefreshPending=false;
+        setTimeout(()=>refreshTimeline({ force:true }), 120);
+      }
       scheduleNextPoll(resolvePollDelay(me));
     })
     .withFailureHandler(()=>{
       pollBusy=false;
+      if(timelineRefreshPending){
+        timelineRefreshPending=false;
+        setTimeout(()=>refreshTimeline({ force:true }), 800);
+      }
       scheduleNextPoll(POLL_IDLE_MS);
     })
     .getTimeline(myUnitId,myPeriod);
@@ -1591,13 +1906,19 @@ function showStudentTab(tabName){
 }
 
 function scheduleStudentHistoryPreload_(){
-  if(!submitted||!myNum||studentHistoryLoaded||studentHistoryLoading) return;
-  const run=()=>loadStudentPastRecords_({ background:true });
-  if(typeof requestIdleCallback==='function'){
-    requestIdleCallback(run,{timeout:3000});
-  }else{
-    setTimeout(run,1200);
-  }
+  if(!submitted||!myNum||studentHistoryLoaded||studentHistoryLoading||studentHistoryPreloadTimer) return;
+  const run=()=>{
+    studentHistoryPreloadTimer=null;
+    if(!submitted||!myNum||studentHistoryLoaded||studentHistoryLoading) return;
+    loadStudentPastRecords_({ background:true });
+  };
+  studentHistoryPreloadTimer=setTimeout(()=>{
+    if(typeof requestIdleCallback==='function'){
+      requestIdleCallback(run,{timeout:1200});
+    }else{
+      run();
+    }
+  },1200);
 }
 
 function loadStudentPastRecords_(options){
@@ -1609,18 +1930,22 @@ function loadStudentPastRecords_(options){
   if(list && !opts.background) list.innerHTML='<div class="history-empty"><span class="spinner"></span> よみこみ中…</div>';
   const cacheKey=[myNum,myUnitId].join('_');
   const cached=readStudentCache_('history',cacheKey);
-  if(cached) renderStudentPastRecords_(cached);
+  if(cached && (!opts.background || activeStudentTab==='history')) renderStudentPastRecords_(cached);
   google.script.run
     .withSuccessHandler(res=>{
       studentHistoryLoading=false;
-      studentHistoryLoaded=true;
+      studentHistoryLoaded=!opts.background || activeStudentTab==='history';
       writeStudentCache_('history',cacheKey,res||{groups:[]});
-      renderStudentPastRecords_(res||{groups:[]});
+      if(!opts.background || activeStudentTab==='history'){
+        renderStudentPastRecords_(res||{groups:[]});
+      }
     })
     .withFailureHandler(()=>{
       studentHistoryLoading=false;
-      studentHistoryLoaded=true;
-      renderStudentPastRecords_({groups:[]});
+      studentHistoryLoaded=!opts.background || activeStudentTab==='history';
+      if(!opts.background || activeStudentTab==='history'){
+        renderStudentPastRecords_({groups:[]});
+      }
     })
     .getStudentPastRecords(myNum,myUnitId,6);
 }
@@ -1751,7 +2076,11 @@ function changeStudentNumber_(){
   clearInterval(autoTimer);
   initBusy=false;
   pollBusy=false;
+  timelineRefreshPending=false;
   myNum=null;
+  currentStudentName='';
+  currentStudentCustoms=[];
+  currentStudentStateKey='';
   myUnitId=null;
   myPeriod=null;
   submitted=false;
@@ -1846,6 +2175,13 @@ function compareTimelineRows_(a,b){
 }
 
 function getTimelineVisibleIndexes(focusIdx){
+  if(submitted){
+    const submittedIdxs=myFields
+      .map((field,idx)=>({field,idx}))
+      .filter(({field})=>isReviewField(field)||isUnderstandingField(field))
+      .map(({idx})=>idx);
+    return submittedIdxs.length?submittedIdxs:myFields.map((_,idx)=>idx);
+  }
   const forcedIdx=teacherTimelineFieldKey?myFields.findIndex(f=>String(f.key||'')===String(teacherTimelineFieldKey)): -1;
   if(forcedIdx>=0){
     const forcedField=myFields[forcedIdx]||{};
