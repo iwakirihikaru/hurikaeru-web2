@@ -3146,9 +3146,7 @@ function applySuggestedStartPeriodAfterProgressRefresh_() {
     var suggested = unit ? getSuggestedPeriodForUnit(unit) : '';
     if (!suggested)
         return;
-    if (Array.from(periodSel.options || []).some(function (option) { return String(option.value) === String(suggested); })) {
-        periodSel.value = String(suggested);
-    }
+    updatePeriodSelect({ forceSuggested: true });
 }
 function onStatusUnitFilterChange() {
     saveUiState({
@@ -3212,7 +3210,7 @@ function renderActiveBanner(active) {
     if ((unit || unitId) && period > 0) {
         var unitLabel = unit
             ? "".concat(esc(unit.subject), "\uFF1A").concat(esc(unit.name))
-            : (activeUnitName ? "".concat(esc(activeSubject)).concat(activeSubject ? '：' : '').concat(esc(activeUnitName)) : "\u5358\u5143 ".concat(esc(unitId)));
+            : (activeUnitName ? "".concat(esc(activeSubject)).concat(activeSubject ? '：' : '').concat(esc(activeUnitName)) : '授業情報を確認中…');
         el.innerHTML = "<div class=\"lesson-banner\">\n      <div class=\"lesson-banner-top\">\n        <div>\n          <div class=\"lbl\">\u2705 \u6388\u696D\u4E2D</div>\n          <div class=\"name\">".concat(unitLabel, "</div>\n          <div class=\"meta\">").concat(period, "\u3058\u304B\u3093\u3081</div>\n        </div>\n        <div class=\"lesson-banner-actions\">\n          <button class=\"btn-subtle lesson-action-btn\" type=\"button\" onclick=\"openLessonFieldEditor()\">\uD83D\uDD52 \u3053\u306E\u6642\u9593\u3060\u3051\u9805\u76EE\u3092\u7DE8\u96C6</button>\n          <button class=\"btn-ai lesson-action-btn\" type=\"button\" onclick=\"genStatusSummary()\">\uD83E\uDD16 \u3053\u306E\u6642\u9593\u306E\u3075\u308A\u304B\u3048\u308A\u30EC\u30DD\u30FC\u30C8</button>\n          <button class=\"btn-end lesson-action-btn\" type=\"button\" onclick=\"endLesson()\">\uD83D\uDD1A \u6388\u696D\u7D42\u4E86</button>\n        </div>\n      </div>\n      <div class=\"stat-row lesson-banner-stats\">\n        <div class=\"stat-box\"><div class=\"stat-num\" id=\"statTotal\">-</div><div class=\"stat-lbl\">\u5168\u54E1</div></div>\n        <div class=\"stat-box\"><div class=\"stat-num\" id=\"statWritten\">-</div><div class=\"stat-lbl\">\u8A18\u5165\u4E2D</div></div>\n        <div class=\"stat-box\"><div class=\"stat-num\" id=\"statSubmitted\">-</div><div class=\"stat-lbl\">\u63D0\u51FA\u6E08</div></div>\n        <div class=\"stat-box\"><div class=\"stat-num\" id=\"statAI\">-</div><div class=\"stat-lbl\">AI\u5B8C\u4E86</div></div>\n      </div>\n    </div>\n    <div class=\"ai-report\" id=\"statusAiReport\" style=\"display:none;\"></div>");
     }
     else {
