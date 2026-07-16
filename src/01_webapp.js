@@ -16,6 +16,7 @@ function doGet(e) {
 }
 
 function doPost(e) {
+  const requestStartedAt = Date.now();
   const body = parseWebAppJsonBody_(e);
   if (String(body && body.action || '').trim() === 'syncLocalTenantReleaseInfo') {
     return jsonOutput_(syncLocalTenantReleaseInfo_(body));
@@ -25,7 +26,28 @@ function doPost(e) {
     return jsonOutput_(masterApiResponse);
   }
   if (isPortableActionRequestBody_(body)) {
-    return jsonOutput_({ ok: true, data: dispatchPortableActionRequest_(body) });
+    const action = resolvePortableActionNameFromBody_(body);
+    try {
+      const data = dispatchPortableActionRequest_(body);
+      const payload = { ok: true, data: data };
+      const jsonStartedAt = Date.now();
+      const serialized = JSON.stringify(payload);
+      const jsonMs = Date.now() - jsonStartedAt;
+      logPortableServerPerf_(action, data, {
+        totalMs: Date.now() - requestStartedAt,
+        jsonMs,
+        responseBytes: measureJsonBytes_(serialized),
+        ok: true,
+      });
+      return jsonTextOutput_(serialized);
+    } catch (err) {
+      logPortableServerPerf_(action, null, {
+        totalMs: Date.now() - requestStartedAt,
+        ok: false,
+        error: String(err && err.message ? err.message : err),
+      });
+      return jsonOutput_({ ok: false, error: String(err && err.message ? err.message : err) });
+    }
   }
   return jsonOutput_({ ok: false, error: 'unknown_action' });
 }
@@ -49,6 +71,64 @@ function jsonOutput_(payload) {
   return ContentService
     .createTextOutput(JSON.stringify(payload))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+function jsonTextOutput_(text) {
+  return ContentService
+    .createTextOutput(String(text || ''))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function measureJsonBytes_(text) {
+  try {
+    return Utilities.newBlob(String(text || ''), 'application/json').getBytes().length;
+  } catch (_err) {
+    return String(text || '').length;
+  }
+}
+
+function readPortableDeploymentLabel_() {
+  try {
+    return String(getScriptProperties_().getProperty('DEPLOYMENT_ID') || '').trim();
+  } catch (_err) {
+    return '';
+  }
+}
+
+function summarizePortablePerfPayload_(data) {
+  if (!(data && typeof data === 'object')) return {};
+  const summary = {};
+  if (data.timing && typeof data.timing === 'object') {
+    summary.timing = data.timing;
+  }
+  if (data.performanceMeta && typeof data.performanceMeta === 'object') {
+    summary.performanceMeta = data.performanceMeta;
+  }
+  if (data.responseReadMeta && typeof data.responseReadMeta === 'object') {
+    summary.responseReadMeta = data.responseReadMeta;
+  }
+  if (data.debug && typeof data.debug === 'object') {
+    summary.debug = {
+      rowCount: Number(data.debug.rowCount || 0),
+      responseCount: Number(data.debug.responseCount || 0),
+      matchedStudentCount: Number(data.debug.matchedStudentCount || 0),
+      matchedUnitCount: Number(data.debug.matchedUnitCount || 0),
+    };
+  }
+  return summary;
+}
+
+function logPortableServerPerf_(action, data, extras) {
+  const payload = extras && typeof extras === 'object' ? extras : {};
+  try {
+    console.log('[portable_server_perf] ' + JSON.stringify({
+      action: String(action || ''),
+      build: String(APP_BUILD || ''),
+      deploymentId: readPortableDeploymentLabel_(),
+      ...summarizePortablePerfPayload_(data),
+      ...payload,
+    }));
+  } catch (_err) {}
 }
 
 function onOpen() {
