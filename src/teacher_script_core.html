@@ -155,6 +155,19 @@ function showToast(message, options){
   window.setTimeout(close, Number(options && options.duration || 2600));
 }
 
+function formatTeacherRpcError_(err, fallback, actionLabel){
+  const raw=String(err && err.message ? err.message : (err || '')).trim();
+  const label=String(actionLabel||'通信').trim();
+  if(!raw) return fallback || `${label}に失敗しました`;
+  if(/Failed to fetch|NetworkError|Load failed|Request timed out|timeout/i.test(raw)){
+    return `${label}に失敗しました。GASに接続できていません。接続先URL・Pages反映・ネットワークを確認してください。`;
+  }
+  if(/missing_api_url|GAS_API_URL/i.test(raw)){
+    return `${label}に失敗しました。接続先GAS URLが未設定です。接続補助ページで保存し直してください。`;
+  }
+  return `${fallback || `${label}に失敗しました`}: ${raw}`;
+}
+
 window.alert=function(message){
   showToast(message);
 };
@@ -850,14 +863,13 @@ function renderBuildBar(){
   const el=document.getElementById('buildBar');
   if(!el) return;
   const parts=[];
+  parts.push(`Pages ${TEACHER_CLIENT_BUILD}`);
+  parts.push(`GAS build ${teacherBuild||'unknown'}`);
   if(Number(teacherDeploymentVersion||0)>0){
     parts.push(`GAS v${Number(teacherDeploymentVersion||0)}`);
-  }else{
-    parts.push(`build ${teacherBuild||'unknown'}`);
   }
   const deployedAt=formatTeacherDeploymentCreatedAt_(teacherDeploymentCreatedAt);
   if(deployedAt) parts.push(`deployed ${deployedAt}`);
-  parts.push(TEACHER_CLIENT_BUILD);
   el.textContent=parts.join(' / ');
 }
 
@@ -1534,7 +1546,7 @@ function getSuggestedPeriodForUnit(unit){
 function getSelectablePeriodMaxForUnit_(unit, basePeriod){
   const configuredMax=Number(unit && unit.maxPeriod || 0);
   if(configuredMax===0 || configuredMax>20) return 20;
-  if(configuredMax<=1 && basePeriod>0) return Math.max(20, basePeriod+1);
+  if(configuredMax<=1) return Math.max(20, Number(basePeriod||0)+1);
   return configuredMax;
 }
 
@@ -1741,7 +1753,7 @@ function startLesson(){
         btn.disabled=false;
         btn.textContent=btn.dataset.defaultLabel||defaultLabel;
       }
-      showToast(err && err.message ? `授業開始に失敗しました: ${err.message}` : '授業開始に失敗しました');
+      showToast(formatTeacherRpcError_(err, '授業開始に失敗しました', '授業開始'), { tone:'error', duration:5200 });
     })
     .teacherStartLesson(unitId,parseInt(period));
 }

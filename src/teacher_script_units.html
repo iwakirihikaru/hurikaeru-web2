@@ -648,7 +648,9 @@ function generateTeacherFeedbackDraftsFromStatus(onlyMissing){
     })
     .withFailureHandler(err=>{
       resetActionButton_(btn);
-      showToast(err && err.message || 'AI下書き生成に失敗しました');
+      const msg=formatTeacherRpcError_(err, 'AI下書き生成に失敗しました', 'AI下書き生成');
+      setTeacherFeedbackResult(`失敗: ${msg}`);
+      showToast(msg, { tone:'error', duration:5200 });
     })
     .generateTeacherFeedbackDrafts(activeUnitId,activePeriod,includeRank,autoReturn,[],missingOnly,medalMode);
 }
@@ -702,7 +704,9 @@ function generateAndReturnTeacherFeedbackChunks_(missingOnly, includeRank){
       })
       .withFailureHandler(err=>{
         resetActionButton_(btn);
-        showToast(err && err.message || 'AI生成と返却に失敗しました');
+        const msg=formatTeacherRpcError_(err, 'AI生成と返却に失敗しました', 'AI生成と返却');
+        setTeacherFeedbackResult(`失敗: ${msg}`);
+        showToast(msg, { tone:'error', duration:5200 });
         scheduleTeacherStatusRefreshAfterReturn_();
       })
       .generateTeacherFeedbackDrafts(activeUnitId,activePeriod,includeRank,true,chunk,missingOnly,'none');
@@ -729,7 +733,7 @@ function generateTeacherFeedbackDraftForRow(responseId){
     })
     .withFailureHandler(err=>{
       setTeacherDraftRowBusy_(responseId,false);
-      showToast(err && err.message || 'AI下書き生成に失敗しました');
+      showToast(formatTeacherRpcError_(err, 'AI下書き生成に失敗しました', 'AI下書き生成'), { tone:'error', duration:5200 });
     })
     .generateTeacherFeedbackDrafts(activeUnitId,activePeriod,includeRank,false,[responseId],false,'none');
 }
@@ -755,7 +759,9 @@ function returnTeacherFeedbackDraftsFromStatus(){
     })
     .withFailureHandler(err=>{
       resetActionButton_(btn);
-      showToast(err && err.message || '返却に失敗しました');
+      const msg=formatTeacherRpcError_(err, '返却に失敗しました', '下書き返却');
+      setTeacherFeedbackResult(`失敗: ${msg}`);
+      showToast(msg, { tone:'error', duration:5200 });
     })
     .returnTeacherFeedbackDrafts(activeUnitId,activePeriod,targetResponseIds,medalMode,{ source:'teacher_bulk_return', skipEventLogs:true, draftItems });
 }
@@ -936,7 +942,7 @@ function returnTeacherFeedbackDraftForRow(responseId){
     })
     .withFailureHandler(err=>{
       setTeacherDraftRowBusy_(responseId,false);
-      showToast(err && err.message || '返却に失敗しました');
+      showToast(formatTeacherRpcError_(err, '返却に失敗しました', '下書き返却'), { tone:'error', duration:5200 });
     })
     .returnTeacherFeedbackDrafts(activeUnitId,activePeriod,[responseId],'none',{ source:'teacher_row_return', skipEventLogs:true, draftItems });
 }

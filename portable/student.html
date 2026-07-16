@@ -296,10 +296,17 @@ textarea.f{min-height:70px;}
 .arrival-banner.show{display:block;opacity:1;transform:translate(-50%,0);}
 .arrival-banner-title{font-size:13px;font-weight:bold;line-height:1.4;}
 .arrival-banner-sub{font-size:11px;opacity:.88;margin-top:2px;}
+.student-api-debug{
+  position:fixed;left:8px;right:8px;bottom:4px;z-index:940;
+  padding:5px 9px;border-radius:10px;background:rgba(38,50,56,.86);color:#ECEFF1;
+  font-size:10px;line-height:1.35;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.18);
+  pointer-events:none;
+}
+.student-api-debug.error{background:rgba(183,28,28,.9);}
 
 /* トースト */
 #toast{
-  position:fixed;bottom:18px;left:50%;transform:translateX(-50%) translateY(60px);
+  position:fixed;bottom:38px;left:50%;transform:translateX(-50%) translateY(60px);
   background:#212121;color:#fff;border-radius:18px;padding:9px 20px;
   font-size:13px;opacity:0;transition:all .3s;z-index:999;white-space:nowrap;
 }
@@ -419,6 +426,7 @@ textarea.f{min-height:70px;}
   </div>
 </div>
 
+<div id="studentApiDebug" class="student-api-debug">Pages client-20260704-1035 / API waiting</div>
 <div id="toast"></div>
 
 <script>
@@ -476,6 +484,7 @@ const STUDENT_ENTRY_CACHE_KEY = 'furikaeri:studentEntryOptions';
 const STUDENT_CLASS_SNAPSHOT_CACHE_KEY = 'furikaeri:studentClassSnapshot';
 let studentClassSnapshotPreloadBusy = false;
 let studentClassSnapshotPreloadScheduled = false;
+const STUDENT_CLIENT_BUILD = 'client-20260704-1035';
 
 function getStudentCacheKey_(kind, suffix){
   return `furikaeri:${kind}:${String(suffix||'')}`;
@@ -725,8 +734,36 @@ let studentEntryOptionsLoading=!studentEntryOptionsLoaded;
 
 function logStudentApiTiming_(label,payload){
   const timing=payload && payload.timing;
+  renderStudentApiDebug_(label, timing, false);
   if(!timing || typeof console==='undefined' || typeof console.info!=='function') return;
   console.info('[student-api]', label, timing);
+}
+
+function renderStudentApiDebug_(label, timing, isError){
+  const el=document.getElementById('studentApiDebug');
+  if(!el) return;
+  const parts=[`Pages ${STUDENT_CLIENT_BUILD}`];
+  const apiLabel=String(label||'API').trim();
+  if(timing && typeof timing==='object'){
+    if(timing.api) parts.push(String(timing.api));
+    else parts.push(apiLabel);
+    if(timing.totalMs!==undefined) parts.push(`${Number(timing.totalMs||0)}ms`);
+    if(timing.payloadBytes!==undefined) parts.push(`${Number(timing.payloadBytes||0)}B`);
+    if(timing.cacheHit!==undefined) parts.push(`cache ${timing.cacheHit?'hit':'miss'}`);
+  }else{
+    parts.push(apiLabel);
+  }
+  if(isError) parts.push('通信失敗');
+  el.textContent=parts.join(' / ');
+  el.classList.toggle('error', Boolean(isError));
+}
+
+function logStudentApiFailure_(label, err){
+  const message=String(err && err.message ? err.message : (err || '')).trim();
+  renderStudentApiDebug_(label, { api:label, totalMs:0, payloadBytes:0 }, true);
+  if(typeof console!=='undefined' && typeof console.warn==='function'){
+    console.warn('[student-api]', label, message || 'failed');
+  }
 }
 
 function getInitialStudentOptions_(){
@@ -849,6 +886,7 @@ function scheduleStudentClassSnapshotPreload_(){
       })
       .withFailureHandler(()=>{
         studentClassSnapshotPreloadBusy=false;
+        logStudentApiFailure_('classSnapshotPreload', 'failed');
       })
       .getStudentEntryOptions({ lightweight:false, shell:false });
   };
@@ -1055,6 +1093,7 @@ function selectNumber(num, options){
     .withFailureHandler(e=>{
       initBusy=false;
       setNumberSelectionBusy_(num,false);
+      logStudentApiFailure_('studentInit', e);
       showToast(opts.auto ? '前の番号で入れなかったので、えらびなおしてね。' : 'エラー:'+e);
     })
     .studentInit(num,0);
@@ -1083,6 +1122,7 @@ function onInit(d){
           .withFailureHandler(e=>{
             initBusy=false;
             document.querySelectorAll('.period-btn').forEach(btn=>btn.disabled=false);
+            logStudentApiFailure_('studentInitPeriod', e);
             showToast('エラー:'+e);
           })
           .studentInit(myNum,i);
@@ -1187,7 +1227,8 @@ function loadStudentState(options){
       applyStudentState(normalizedPayload);
       if(opts.skipTimelineRefresh!==true) refreshTimeline();
     })
-    .withFailureHandler(()=>{
+    .withFailureHandler(err=>{
+      logStudentApiFailure_('studentLoadState', err);
       studentStateReady=true;
       if(submitted){
         lockSubmitted();
@@ -1242,7 +1283,7 @@ function loadPreviousReview(){
       }
       renderPreviousNextGoal_(previousNextGoal);
     })
-    .withFailureHandler(()=>{})
+    .withFailureHandler(err=>{ logStudentApiFailure_('getStudentPreviousReview', err); })
     .getStudentPreviousReview(myUnitId,myPeriod,myNum);
 }
 
@@ -1839,7 +1880,8 @@ function refreshTimeline(options){
       }
       scheduleNextPoll(resolvePollDelay(me));
     })
-    .withFailureHandler(()=>{
+    .withFailureHandler(err=>{
+      logStudentApiFailure_('getTimeline', err);
       pollBusy=false;
       if(timelineRefreshPending){
         timelineRefreshPending=false;
@@ -1912,7 +1954,8 @@ function handleStudentActiveLessonChange_(payload){
       logStudentApiTiming_('studentInitActiveChanged', d);
       loadMain(d);
     })
-    .withFailureHandler(()=>{
+    .withFailureHandler(err=>{
+      logStudentApiFailure_('studentInitActiveChanged', err);
       studentActiveReloading=false;
       scheduleNextPoll(POLL_IDLE_MS);
     })
