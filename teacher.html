@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<script src="./runtime-shim.js"></script>
+<script src="./runtime-shim.js?v=3dc7b19e3b"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>先生画面</title>
+<title>ふりカエル 先生ページ</title>
 <style>
 :root{
   --navy:#1A237E;--sky:#1976D2;--green:#388E3C;--red:#C62828;
@@ -12,6 +12,7 @@
   --bg:#F5F5F5;--card:#fff;--muted:#78909C;
   --r:10px;--sh:0 2px 8px rgba(0,0,0,.10);
   --font:'Hiragino Maru Gothic ProN','BIZ UDPGothic',sans-serif;
+  --mascot:url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAM8AAADhCAYAAABvJ+EZAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAAEnQAABJ0Ad5mH3gAAP+lSURBVHhexP13tCXHddgL/6q6++R7bo4T72ACMJgBMACIQJAAARIgCUYxK1iyJEvP8rMs02vZLy3LXH5/PX3+LNv6JCpbpCiRBIMYQUICA0jkMIPB5Jzv3JxO7u6q+v6o7nP79px7Z0DL6+27+p5zqqor7Nq7ateuXbuEMcqAxBgDCCwYAIQQGGMwxiBEHLca1goHojxXIJk2jovD0mljiOsQf49hvfR0iO9Uz2S70unT8XTI+3r1Sad/s3ExdEoTQ6e016sXHeqerk/yveT3OF263LXCYkjXI13+zwqdykzXfb06x5DGQRofK6AJgzra+J+WsEKclmmuRdo/VkP/34T16r1e3P8s+H+jzDSYNQbGteoWJ7OfndP8LCCEuKYONwpr1TWGNO2ulX5tZlkNxoARoAB5nbTXhbiwuGLJCsZI6YScTmExJBuQ/t4JAcm80nEx3EhZ6TTJ3yIxC8ewVlkxpOPTONJar4pPlx9DOjxZjzRO0mlj6NQXabx1at+1+Wo6MU4SP8k83gwk6/5m8kin7dTWJCTrma5v+p213geQrJGADhklw9ZraPodOlT4RqBTPjcC6fzfbD7p92PolM/12hPHrZUm+f5aadaC9dJfr17Xg+S7JmJ0rW2e9rtul5EuqxOekpB+r1Mea8H1aO9/BqxmJhBS4kjHMs96FegUF4clG5IM+x+FdJ5rQafy03Cj9VmNoGsHjOT3dPw/BqxV/07wsxBPOl2SYDsxQhyefIxZzTRpJlqvrDR0CkuClDId1LGv/2f0RRLSbQMQGJQGobU2dKhE+oVO0KkTRWKBH0OndOm4dHgM6XolodM76fLXe78TxO8m2xPDWu1Il9kpLB0fQzJdnP9adU7nka5Dp+9pMCmGSUO6/e3w6FMKgxAyKiNZjmiviYjq0KltrIHbJMTh6TqsB2vlxQ3mk+6vtUHjhzWUDj4tTOoNEy0g18soTvOzQBoxbyaf9eq0FnTqtE5xdIhPw3p50aFtaUi3OZkuXZcbgbXeX6+eJjWjGGMwgNKKZrOJ32oR+j6hUoSBJgwVoQ7RWgEGGYksruPiuA6u45HL5shkM7gZB89zrUgjnfbsYZltdR1s+JtvcxLS73fCRydaTZafxs/1QROqBtqE1zJPGjpFd6pQDJ0IIwnp+LXySUM6v3Q+a8F6hLRWXKfwdD3Tef2ssB4ufxZI52VS4lUMSikajQZLS0tUKxXmZqY5f+E8U1PTLC4vUa1Wadab+L5PEFrmievqOi6u5+K5HsVSkYHBIYaHh+np6WF0dIzxreP09ffheW5Un3idvKpqq6ATztOQblsS0u+slTbdn+n3YhBrMpbGD+oo43+6LbaRyFBrHTX22gLWztTC9ZCwVvxajeU6+STjOuW3VnnrxaXr0um9OCzdGTcK6+FxrfD1YK3+Sq9bfN9nYWGBiYkJTpw4wYkTJ7hy5QqTk5NMTk6yuLxEs9HEDwO0Ws1wAoFdMa+U5zoOpXyBrmIXxUKJ0Y1jPPbux3jPe97D2NgYrmtFvCR+OuEqHRbTYBLSv5PQCWed8LFWnFljP+jadzVhWEejVphnvRfW6+g0rJcPHSqdDk9DOt160CntWvmyRl07pe+UbwzrvReDjYsXnnYETmcZx8X7bisdCcasVmknIU4bPyaxwDXRrBOGIbVajYmJCU6fPs3Bgwc5fPgwZ8+eZXp6mnq9QRAE+GGAMQqDBinAEYjoEykRjkAKA0La9miDNgYRSJxQILXAzXjceded/Ivf+l957NFHyeezSGnFtpW10uq6J2E9WkunjaFT+nQ5aVgvfr04O/PUUCb4tFBKGdapWBLWz9TCjeRDh/fj99LhabjRdHF8sj6d6hZ3YKf0yTQ3Cp3eT28+AxizOp0xJmKo1czT6d00xGmT7YhnarlarxcWLF3nttdd4/vnnOXToEFeuXGFpaYlWq4WOGcUDkRXIgossuDh5B5GTSE8iPAkuCFcgHAFY7ldKo0KFaICeCfCvNgirIZs2buZ/+c1/zq/+6j+lp6eMlDFzy1VatE54Xat/03hNx6fhRmj1epCuixACgyYIaoRaWeaJkZ4uMF1hOmQYf092YBLWyifdoHSaOD5Z8Rg6pU2HxZAsp1Pd03FpWC/vGNL5CZHOX0SPiT6vbZ/9FKBltBFJlN5ghFg1U8X9JaXNVwjAGIRRaCFASFSoWZib58D+/Xz/H77Hc88/y/nz52ks1wmVIXQV5AVeT4ZcX5Fsf45MT5ZMdw5Z8hAFichIpOcgPQHSYDyBdgAhQINWCpSBOjRPLTL7k6u0LtfZODbGb/7mP+fXf/3X6OvrazPMigKhMz6Tfd2p35KQxl+a/pL9lu6fTnGd3ktCOx6N79euXfPcCKQLTUOy4HTF3gyshZz09/UgXcf16t4pz05ld4J0fp2YJ06SrkPy0xjACIzWK/yWYLgoh/a3VcSoNcbOI/h+S7Q==");
 }
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:var(--font);background:var(--bg);color:#212121;}
@@ -19,7 +20,13 @@ body{font-family:var(--font);background:var(--bg);color:#212121;}
 .nav{background:var(--navy);color:#fff;display:flex;align-items:center;
   padding:0 16px;height:50px;position:sticky;top:0;z-index:100;
   box-shadow:0 2px 6px rgba(0,0,0,.3);gap:2px;overflow-x:auto;}
-.nav h1{font-size:14px;margin-right:14px;white-space:nowrap;}
+.nav h1{font-size:14px;margin-right:14px;white-space:nowrap;display:flex;align-items:center;gap:8px;}
+.brand-mascot{
+    display:inline-block;width:30px;height:30px;flex:0 0 30px;border-radius:50%;
+  background-image:var(--mascot);background-size:cover;background-position:center;background-repeat:no-repeat;
+    box-shadow:0 2px 6px rgba(0,0,0,.18);
+  }
+.brand-title{display:inline-flex;align-items:center;gap:8px;}
 .tab{padding:0 12px;height:50px;border:none;background:transparent;
   color:rgba(255,255,255,.7);font-size:13px;cursor:pointer;white-space:nowrap;
   border-bottom:3px solid transparent;transition:.2s;font-family:var(--font);}
@@ -248,6 +255,8 @@ body{font-family:var(--font);background:var(--bg);color:#212121;}
   .container{padding:10px;}
   .card{padding:14px;}
   .nav{padding:0 8px;}
+  .nav h1{margin-right:8px;}
+  .brand-mascot{width:26px;height:26px;flex-basis:26px;}
   .status-top-grid{
     grid-template-columns:1fr;
   }
@@ -446,9 +455,12 @@ input.inp,select.inp,textarea.inp{
 textarea.inp{resize:vertical;min-height:70px;}
 .btn-primary{padding:9px 18px;border:none;border-radius:8px;
   background:var(--green);color:#fff;font-size:13px;font-weight:bold;cursor:pointer;font-family:var(--font);}
-.btn-primary[disabled],.btn-update[disabled],.btn-cancel[disabled],.btn-jump-add[disabled]{
+.btn-primary[disabled],.btn-update[disabled],.btn-cancel[disabled],.btn-jump-add[disabled],button[disabled]{
   opacity:.65;cursor:wait;
 }
+.btn-del-confirm{padding:8px 18px;border:none;border-radius:8px;background:var(--red);color:#fff;font-size:13px;font-weight:bold;cursor:pointer;font-family:var(--font);}
+button{transition:transform .08s ease,filter .12s ease,opacity .12s ease;}
+button:not([disabled]):active,button.is-pressed{transform:translateY(1px);filter:brightness(.96);}
 .btn-update{padding:9px 18px;border:none;border-radius:8px;
   background:var(--sky);color:#fff;font-size:13px;font-weight:bold;cursor:pointer;font-family:var(--font);}
 .btn-cancel{padding:7px 16px;border:1.5px solid #CFD8DC;border-radius:7px;
@@ -732,7 +744,7 @@ textarea.inp{resize:vertical;min-height:70px;}
 <body>
 
 <div class="nav">
-  <h1>📊 先生画面</h1>
+  <h1><span class="brand-title"><span class="brand-mascot" aria-hidden="true"></span><span>ふりカエル 先生ページ</span></span></h1>
   <button class="tab active" onclick="switchTab('status', this)">📡 授業スタート</button>
   <button class="tab" onclick="switchTab('records', this)">📝 記録・所見・評定</button>
   <button class="tab" onclick="switchTab('curriculum', this)">📚 教科・単元設定</button>
@@ -757,9 +769,9 @@ textarea.inp{resize:vertical;min-height:70px;}
         <div class="status-start-block">
           <div class="status-top-label">授業を開始する</div>
           <div class="start-row status-start-row">
-            <select id="startUnit" onchange="updatePeriodSelect()"><option value="">単元を選択…</option></select>
-            <select id="startPeriod"><option value="">時間目を選択…</option></select>
-            <button class="btn-start" onclick="startLesson()">▶️ 授業開始</button>
+            <select id="startUnit" onchange="onStartUnitChange()"><option value="">単元を選択…</option></select>
+            <select id="startPeriod" onchange="onStartPeriodManualChange()"><option value="">時間目を選択…</option></select>
+            <button id="startLessonBtn" class="btn-start" onclick="startLesson()">▶️ 授業開始</button>
             <button class="btn-update" type="button" onclick="openUnitSettingsTab()">🧩 単元設定へ</button>
             <button class="btn-medal" id="awardMedalsBtn" onclick="awardMedals()">🏅 メダル発表</button>
           </div>
@@ -861,6 +873,8 @@ textarea.inp{resize:vertical;min-height:70px;}
                 <option value="text">自由記述</option>
                 <option value="select">選択肢</option>
                 <option value="radio">ラジオ</option>
+                <option value="student_select">児童名簿（1人）</option>
+                <option value="student_multi">児童名簿（複数）</option>
                 <option value="review">ふりかえり</option>
               </select>
               <input class="inp" id="cfEmoji" placeholder="絵文字" value="🆕">
@@ -904,6 +918,8 @@ textarea.inp{resize:vertical;min-height:70px;}
               <option value="text">自由記述</option>
               <option value="select">選択肢</option>
               <option value="radio">ラジオ</option>
+              <option value="student_select">児童名簿（1人）</option>
+              <option value="student_multi">児童名簿（複数）</option>
               <option value="review">ふりかえり</option>
             </select>
             <input class="inp" id="sfEmoji" placeholder="絵文字" value="🆕">
@@ -1022,11 +1038,8 @@ textarea.inp{resize:vertical;min-height:70px;}
             <div class="guide-link-actions" style="margin-top:10px;">
               <button class="btn-update" type="button" onclick="refreshTeacherUpdateInfo()">最新版を確認</button>
             </div>
-            <div class="guide-note" id="helpUpdateMessage" style="margin-top:10px;">この画面では版情報だけを確認できます。更新作業は管理側で行います。</div>
+            <div class="guide-note" id="helpUpdateMessage" style="margin-top:10px;">版情報を確認できます。</div>
           </div>
-        </div>
-        <div class="guide-note" style="margin-top:10px;">
-          先生画面では版情報だけを表示します。更新や版戻しの作業は管理者側で行ってください。
         </div>
       </div>
     </div>
@@ -1309,8 +1322,8 @@ textarea.inp{resize:vertical;min-height:70px;}
     <h3>🗑️ 削除しますか？</h3>
     <p id="delMsg" style="font-size:13px;color:#555;"></p>
     <div class="modal-btns">
-      <button class="btn-cancel" onclick="closeModal()">キャンセル</button>
-      <button style="padding:8px 18px;border:none;border-radius:8px;background:var(--red);color:#fff;font-size:13px;font-weight:bold;cursor:pointer;" onclick="confirmDelete()">削除する</button>
+      <button class="btn-cancel" id="delCancelBtn" onclick="closeModal()">キャンセル</button>
+      <button class="btn-del-confirm" id="delConfirmBtn" onclick="confirmDelete()">削除する</button>
     </div>
   </div>
 </div>
@@ -1524,12 +1537,14 @@ var teacherHelpData = null;
 var teacherHelpLoading = false;
 var teacherHelpAutoChecked = false;
 var teacherShellRefreshQueued = false;
+var teacherShellInitLoading = false;
 var unitProgressByUnitId = {};
 var teacherDataEpoch = 0;
 var lastTeacherStartAtMs = 0;
 var teacherEndingLesson = false;
 var teacherActiveDebug = '';
 var teacherUnitsReadMeta = null;
+var startPeriodManuallySelected = false;
 var TEACHER_CLIENT_BUILD = 'client-20260704-1035';
 var teacherBootstrapApplied = false;
 var UI_STATE_KEY = 'jibun-matome-teacher-ui';
@@ -1652,6 +1667,13 @@ function showToast(message, options) {
 window.alert = function (message) {
     showToast(message);
 };
+document.addEventListener('click', function (event) {
+    var button = event.target && event.target.closest ? event.target.closest('button') : null;
+    if (!button || button.disabled)
+        return;
+    button.classList.add('is-pressed');
+    window.setTimeout(function () { return button.classList.remove('is-pressed'); }, 140);
+});
 // 編集中の項目リスト（単元フォーム用）
 var editingFields = [];
 var subjectEditingFields = [];
@@ -1667,6 +1689,7 @@ var preloadCache = {
     rosterLoading: false,
     editorLoading: false,
     promptsLoading: false,
+    statusLoading: false,
     started: false,
 };
 var TEACHER_PRELOAD_CACHE_KEY = 'jibun-matome-teacher-preload';
@@ -1710,18 +1733,46 @@ function switchTab(name, el) {
 function loadInit() {
     var requestEpoch = teacherDataEpoch;
     applyEmbeddedTeacherBootstrap_();
-    google.script.run
-        .withSuccessHandler(function (d) {
-        if (requestEpoch !== teacherDataEpoch)
+    var statusLoaded = false;
+    // まず現在授業のポインタだけ軽く取り、その後に shell bootstrap を続ける。
+    var loadTeacherInit = function () {
+        google.script.run
+            .withSuccessHandler(function (d) {
+            if (requestEpoch !== teacherDataEpoch)
+                return;
+            applyTeacherInitData(d, { includeRoster: true, renderUnitList: true, schedulePreload: true, source: 'teacherInit' });
+            scheduleTeacherUnitProgressRefresh_(d);
+        })
+            .withFailureHandler(function (err) {
+            if (requestEpoch !== teacherDataEpoch)
+                return;
+            handleTeacherInitFailure_(err, 'teacherInit');
+        })
+            .teacherInit();
+    };
+    var loadTeacherStatusFirst = function () {
+        if (statusLoaded)
             return;
-        applyTeacherInitData(d, { includeRoster: true, renderUnitList: true, schedulePreload: true, source: 'teacherInit' });
-    })
-        .withFailureHandler(function (err) {
-        if (requestEpoch !== teacherDataEpoch)
-            return;
-        handleTeacherInitFailure_(err, 'teacherInit');
-    })
-        .teacherInit();
+        statusLoaded = true;
+        google.script.run
+            .withSuccessHandler(function (d) {
+            if (requestEpoch !== teacherDataEpoch)
+                return;
+            applyTeacherInitData(d, { includeRoster: false, renderUnitList: false, schedulePreload: false, source: 'teacherStatusSnapshot' });
+            if (d && d.status && Array.isArray(d.status.students) && d.status.students.length) {
+                renderStatus(d.status);
+            }
+            loadTeacherInit();
+        })
+            .withFailureHandler(function (err) {
+            if (requestEpoch !== teacherDataEpoch)
+                return;
+            handleTeacherInitFailure_(err, 'teacherStatusSnapshot');
+            loadTeacherInit();
+        })
+            .teacherStatusSnapshot();
+    };
+    loadTeacherStatusFirst();
 }
 function loadCurriculumTab() {
     loadInit();
@@ -1740,6 +1791,7 @@ function loadStatusInit(options) {
     var requestEpoch = teacherDataEpoch;
     applyEmbeddedTeacherBootstrap_();
     var cachedStatus = readTeacherStatusPreloadCache_();
+    var statusRefreshStarted = false;
     if (cachedStatus) {
         renderStatus(cachedStatus);
     }
@@ -1747,35 +1799,58 @@ function loadStatusInit(options) {
         .withSuccessHandler(function (d) {
         if (requestEpoch !== teacherDataEpoch)
             return;
-        applyTeacherInitData(d, { includeRoster: false, renderUnitList: false, schedulePreload: true, source: 'teacherStatusInit' });
-        if (d && d.status) {
+        applyTeacherInitData(d, { includeRoster: false, renderUnitList: false, schedulePreload: true, source: 'teacherStatusSnapshot' });
+        if (d && d.status && Array.isArray(d.status.students) && d.status.students.length) {
             renderStatus(d.status);
         }
         else {
             var statusSection = document.getElementById('sec-status');
             if (statusSection && statusSection.classList.contains('active')) {
                 loadStatus();
+                statusRefreshStarted = true;
             }
         }
         if (opts.startPolling) {
-            startStatusPoll(Boolean(d && d.status));
+            startStatusPoll(statusRefreshStarted || Boolean(d && d.status && Array.isArray(d.status.students) && d.status.students.length));
         }
         scheduleTeacherUnitProgressRefresh_(d);
+        ensureTeacherShellInitAfterStatus_(requestEpoch);
     })
         .withFailureHandler(function (err) {
         if (requestEpoch !== teacherDataEpoch)
             return;
-        handleTeacherInitFailure_(err, 'teacherStatusInit');
+        console.warn('teacherStatusSnapshot failed', err);
         if (opts.startPolling) {
             startStatusPoll(false);
         }
+        ensureTeacherShellInitAfterStatus_(requestEpoch);
     });
-    var hasUnitsReadMeta = Boolean(teacherUnitsReadMeta && typeof teacherUnitsReadMeta === 'object');
-    if (opts.lightweight !== false && hasUnitsReadMeta && Array.isArray(allUnits) && allUnits.length) {
-        runner.teacherStatusSnapshot();
+    runner.teacherStatusSnapshot();
+}
+function ensureTeacherShellInitAfterStatus_(requestEpoch) {
+    if (Array.isArray(allUnits) && allUnits.length)
         return;
-    }
-    runner.teacherStatusInit();
+    if (teacherShellInitLoading)
+        return;
+    teacherShellInitLoading = true;
+    google.script.run
+        .withSuccessHandler(function (d) {
+        teacherShellInitLoading = false;
+        if (requestEpoch !== teacherDataEpoch)
+            return;
+        applyTeacherInitData(d, {
+            includeRoster: true,
+            renderUnitList: false,
+            schedulePreload: true,
+            source: 'teacherInitAfterStatus',
+        });
+        scheduleTeacherUnitProgressRefresh_(d);
+    })
+        .withFailureHandler(function (err) {
+        teacherShellInitLoading = false;
+        console.warn('teacherInitAfterStatus failed', err);
+    })
+        .teacherInit();
 }
 function scheduleTeacherUnitProgressRefresh_(data) {
     if (!(data && data.progressNeedsRefresh))
@@ -1791,6 +1866,7 @@ function scheduleTeacherUnitProgressRefresh_(data) {
                 return;
             unitProgressByUnitId = map;
             populateUnitSelects();
+            applySuggestedStartPeriodAfterProgressRefresh_();
             var unitListSection = document.getElementById('unitListWrap');
             if (unitListSection && unitListSection.offsetParent !== null) {
                 renderUnitList();
@@ -1800,10 +1876,10 @@ function scheduleTeacherUnitProgressRefresh_(data) {
             .teacherUnitProgressRefresh();
     };
     if (typeof requestIdleCallback === 'function') {
-        requestIdleCallback(run, { timeout: 4000 });
+        requestIdleCallback(run, { timeout: 1200 });
     }
     else {
-        setTimeout(run, 2500);
+        setTimeout(run, 500);
     }
 }
 function invalidateTeacherDataRequests_() {
@@ -1887,7 +1963,7 @@ function applyTeacherInitData(d, options) {
     if (d.deploymentCreatedAt !== undefined)
         teacherDeploymentCreatedAt = String(d.deploymentCreatedAt || '').trim();
     if (opts.includeRoster) {
-        if (Array.isArray(d.roster)) {
+        if (Array.isArray(d.roster) && d.roster.length) {
             rosterEntries = d.roster.filter(function (row) { return row.active !== false; });
             preloadCache.roster = { roster: d.roster };
             persistTeacherPreloadCache_();
@@ -1895,6 +1971,9 @@ function applyTeacherInitData(d, options) {
     }
     if (!activeUnitId || !activePeriod) {
         clearTeacherStatusPreloadCache_();
+        if (typeof clearRenderedStatus_ === 'function') {
+            clearRenderedStatus_();
+        }
     }
     persistPortableTeacherBootstrap_();
     applySavedUiState();
@@ -1961,25 +2040,68 @@ function persistPortableTeacherBootstrap_() {
     window.__TEACHER_BOOTSTRAP__ = payload;
     window.__portableGas.cacheTeacherBootstrap(payload);
 }
+function scheduleTeacherStatusPreload_() {
+    if (!activeUnitId || !activePeriod)
+        return;
+    if (readTeacherStatusPreloadCache_())
+        return;
+    if (preloadCache.statusLoading)
+        return;
+    var run = function () {
+        if (!activeUnitId || !activePeriod || readTeacherStatusPreloadCache_())
+            return;
+        if (typeof loadStatus === 'function') {
+            loadStatus();
+        }
+    };
+    if (typeof requestIdleCallback === 'function') {
+        requestIdleCallback(run, { timeout: 2500 });
+    }
+    else {
+        setTimeout(run, 1200);
+    }
+}
 function scheduleTeacherPreload() {
     if (preloadCache.started)
         return;
     preloadCache.started = true;
     var runner = function () {
+        // 名簿は最優先、その他は初期描画後の遅延取得へ回す。
         ensureRosterPreload();
-        ensureEditorPreload();
-        ensurePromptPreload();
-        preloadTeacherHelpInfo();
-        if (typeof scheduleAggregateBackgroundPreload === 'function') {
-            scheduleAggregateBackgroundPreload('teacher-preload');
+        scheduleTeacherStatusPreload_();
+        if (typeof scheduleTeacherCurrentLessonAggregatePreload === 'function') {
+            scheduleTeacherCurrentLessonAggregatePreload('teacher-preload');
         }
+        setTimeout(function () {
+            ensureEditorPreload();
+            ensurePromptPreload();
+            preloadTeacherHelpInfo();
+            if (typeof scheduleTeacherRecordsDataPreload === 'function') {
+                scheduleTeacherRecordsDataPreload('teacher-preload');
+            }
+            if (typeof scheduleTeacherCurrentLessonAggregatePreload !== 'function' && typeof scheduleAggregateBackgroundPreload === 'function') {
+                scheduleAggregateBackgroundPreload('teacher-preload');
+            }
+        }, 180);
     };
-    if (typeof requestIdleCallback === 'function') {
-        requestIdleCallback(runner, { timeout: 1500 });
+    if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(function () { return setTimeout(runner, 80); });
     }
     else {
-        setTimeout(runner, 700);
+        setTimeout(runner, 80);
     }
+}
+function normalizeRosterPreload_(payload) {
+    if (!payload || typeof payload !== 'object')
+        return null;
+    var roster = Array.isArray(payload.roster) ? payload.roster : [];
+    return roster.length ? { roster: roster } : null;
+}
+function clearRosterPreload_(skipPersist) {
+    preloadCache.roster = null;
+    if (skipPersist)
+        return;
+    persistTeacherPreloadCache_();
 }
 function hydrateTeacherPreloadCache_() {
     try {
@@ -1991,8 +2113,11 @@ function hydrateTeacherPreloadCache_() {
             localStorage.removeItem(TEACHER_PRELOAD_CACHE_KEY);
             return;
         }
-        if (parsed.roster)
-            preloadCache.roster = parsed.roster;
+        if (parsed.roster) {
+            var rosterPayload = normalizeRosterPreload_(parsed.roster);
+            if (rosterPayload)
+                preloadCache.roster = rosterPayload;
+        }
         if (parsed.editor)
             preloadCache.editor = parsed.editor;
         if (parsed.prompts)
@@ -2195,18 +2320,37 @@ function setControlValue(id, value) {
     if (el)
         el.value = value;
 }
-function ensureRosterPreload(force) {
-    if (preloadCache.roster || preloadCache.rosterLoading)
+function ensureRosterPreload(force, callbacks) {
+    var cb = callbacks || {};
+    if (!force && normalizeRosterPreload_(preloadCache.roster))
+        return;
+    if (preloadCache.roster && !normalizeRosterPreload_(preloadCache.roster)) {
+        clearRosterPreload_(true);
+    }
+    if (preloadCache.rosterLoading)
         return;
     preloadCache.rosterLoading = true;
     google.script.run
         .withSuccessHandler(function (d) {
         preloadCache.rosterLoading = false;
-        preloadCache.roster = d || { roster: [] };
-        persistTeacherPreloadCache_();
+        var rosterPayload = normalizeRosterPreload_(d);
+        if (rosterPayload) {
+            preloadCache.roster = rosterPayload;
+            rosterEntries = rosterPayload.roster.filter(function (row) { return row.active !== false; });
+            persistTeacherPreloadCache_();
+            if (typeof cb.onSuccess === 'function')
+                cb.onSuccess(rosterPayload);
+        }
+        else {
+            clearRosterPreload_();
+            if (typeof cb.onEmpty === 'function')
+                cb.onEmpty();
+        }
     })
         .withFailureHandler(function () {
         preloadCache.rosterLoading = false;
+        if (typeof cb.onFailure === 'function')
+            cb.onFailure();
     })
         .teacherRosterInit();
 }
@@ -2976,11 +3120,41 @@ function compareSuggestedStartUnit_(a, b) {
 function getSuggestedPeriodForUnit(unit) {
     if (!unit)
         return '';
-    var max = (unit.maxPeriod === 0 || unit.maxPeriod > 20) ? 20 : Number(unit.maxPeriod || 10);
     var progress = unitProgressByUnitId[String(unit.id || '')] || {};
     var lastActivityPeriod = Math.max(0, Number(progress.lastActivityPeriod || 0));
-    var next = Math.max(1, lastActivityPeriod > 0 ? lastActivityPeriod + 1 : 1);
+    var maxProgressPeriod = Math.max(0, Number(progress.maxPeriod || 0));
+    var basePeriod = lastActivityPeriod > 0 ? lastActivityPeriod : maxProgressPeriod;
+    var max = getSelectablePeriodMaxForUnit_(unit, basePeriod);
+    var next = Math.max(1, basePeriod > 0 ? basePeriod + 1 : 1);
     return String(Math.min(next, max));
+}
+function getSelectablePeriodMaxForUnit_(unit, basePeriod) {
+    var configuredMax = Number(unit && unit.maxPeriod || 0);
+    if (configuredMax === 0 || configuredMax > 20)
+        return 20;
+    if (configuredMax <= 1 && basePeriod > 0)
+        return Math.max(20, basePeriod + 1);
+    return configuredMax;
+}
+function onStartUnitChange() {
+    startPeriodManuallySelected = false;
+    updatePeriodSelect({ forceSuggested: true });
+}
+function onStartPeriodManualChange() {
+    startPeriodManuallySelected = true;
+}
+function applySuggestedStartPeriodAfterProgressRefresh_() {
+    if (startPeriodManuallySelected)
+        return;
+    var unitSel = document.getElementById('startUnit');
+    var periodSel = document.getElementById('startPeriod');
+    if (!unitSel || !periodSel || !unitSel.value)
+        return;
+    var unit = allUnits.find(function (u) { return String(u.id) === String(unitSel.value); });
+    var suggested = unit ? getSuggestedPeriodForUnit(unit) : '';
+    if (!suggested)
+        return;
+    updatePeriodSelect({ forceSuggested: true });
 }
 function onStatusUnitFilterChange() {
     saveUiState({
@@ -3018,15 +3192,22 @@ function populateAggUnitSelect() {
     if (agCur && visibleUnits.some(function (u) { return String(u.id) === String(agCur); }))
         ag.value = agCur;
 }
-function updatePeriodSelect() {
+function updatePeriodSelect(options) {
+    var opts = options || {};
     var unitId = document.getElementById('startUnit').value;
     var unit = allUnits.find(function (u) { return u.id == unitId; });
-    var max = unit ? (unit.maxPeriod === 0 || unit.maxPeriod > 20 ? 20 : unit.maxPeriod) : 10;
     var sel = document.getElementById('startPeriod');
+    var current = String(sel && sel.value || '');
+    var progress = unit ? unitProgressByUnitId[String(unit.id || '')] || {} : {};
+    var lastActivityPeriod = Math.max(0, Number(progress.lastActivityPeriod || 0));
+    var maxProgressPeriod = Math.max(0, Number(progress.maxPeriod || 0));
+    var basePeriod = lastActivityPeriod > 0 ? lastActivityPeriod : maxProgressPeriod;
+    var max = unit ? getSelectablePeriodMaxForUnit_(unit, basePeriod) : 10;
     var suggested = unit ? getSuggestedPeriodForUnit(unit) : '';
+    var selectedValue = (startPeriodManuallySelected && !opts.forceSuggested && current) ? current : suggested;
     sel.innerHTML = '<option value="">時間目を選択…</option>' +
         Array.from({ length: max }, function (_, i) { return i + 1; })
-            .map(function (i) { return "<option value=\"".concat(i, "\" ").concat(suggested && String(suggested) === String(i) ? 'selected' : '', ">").concat(i, "\u3058\u304B\u3093\u3081</option>"); }).join('');
+            .map(function (i) { return "<option value=\"".concat(i, "\" ").concat(selectedValue && String(selectedValue) === String(i) ? 'selected' : '', ">").concat(i, "\u3058\u304B\u3093\u3081</option>"); }).join('');
 }
 // =====================================
 //  アクティブバナー
@@ -3036,8 +3217,13 @@ function renderActiveBanner(active) {
     var period = Number(active && active.period || activePeriod || 0);
     var unitId = String(active && active.unitId || activeUnitId || '').trim();
     var unit = (active && active.unit) || allUnits.find(function (u) { return String(u && u.id || '').trim() === unitId; }) || null;
-    if (unit && period > 0) {
-        el.innerHTML = "<div class=\"lesson-banner\">\n      <div class=\"lesson-banner-top\">\n        <div>\n          <div class=\"lbl\">\u2705 \u6388\u696D\u4E2D</div>\n          <div class=\"name\">".concat(esc(unit.subject), "\uFF1A").concat(esc(unit.name), "</div>\n          <div class=\"meta\">").concat(period, "\u3058\u304B\u3093\u3081</div>\n        </div>\n        <div class=\"lesson-banner-actions\">\n          <button class=\"btn-subtle lesson-action-btn\" type=\"button\" onclick=\"openLessonFieldEditor()\">\uD83D\uDD52 \u3053\u306E\u6642\u9593\u3060\u3051\u9805\u76EE\u3092\u7DE8\u96C6</button>\n          <button class=\"btn-ai lesson-action-btn\" type=\"button\" onclick=\"genStatusSummary()\">\uD83E\uDD16 \u3053\u306E\u6642\u9593\u306E\u3075\u308A\u304B\u3048\u308A\u30EC\u30DD\u30FC\u30C8</button>\n          <button class=\"btn-end lesson-action-btn\" type=\"button\" onclick=\"endLesson()\">\uD83D\uDD1A \u6388\u696D\u7D42\u4E86</button>\n        </div>\n      </div>\n      <div class=\"stat-row lesson-banner-stats\">\n        <div class=\"stat-box\"><div class=\"stat-num\" id=\"statTotal\">-</div><div class=\"stat-lbl\">\u5168\u54E1</div></div>\n        <div class=\"stat-box\"><div class=\"stat-num\" id=\"statWritten\">-</div><div class=\"stat-lbl\">\u8A18\u5165\u4E2D</div></div>\n        <div class=\"stat-box\"><div class=\"stat-num\" id=\"statSubmitted\">-</div><div class=\"stat-lbl\">\u63D0\u51FA\u6E08</div></div>\n        <div class=\"stat-box\"><div class=\"stat-num\" id=\"statAI\">-</div><div class=\"stat-lbl\">AI\u5B8C\u4E86</div></div>\n      </div>\n    </div>\n    <div class=\"ai-report\" id=\"statusAiReport\" style=\"display:none;\"></div>");
+    var activeSubject = String(active && active.subject || '').trim();
+    var activeUnitName = String(active && (active.unitName || active.name) || '').trim();
+    if ((unit || unitId) && period > 0) {
+        var unitLabel = unit
+            ? "".concat(esc(unit.subject), "\uFF1A").concat(esc(unit.name))
+            : (activeUnitName ? "".concat(esc(activeSubject)).concat(activeSubject ? '：' : '').concat(esc(activeUnitName)) : '授業情報を確認中…');
+        el.innerHTML = "<div class=\"lesson-banner\">\n      <div class=\"lesson-banner-top\">\n        <div>\n          <div class=\"lbl\">\u2705 \u6388\u696D\u4E2D</div>\n          <div class=\"name\">".concat(unitLabel, "</div>\n          <div class=\"meta\">").concat(period, "\u3058\u304B\u3093\u3081</div>\n        </div>\n        <div class=\"lesson-banner-actions\">\n          <button class=\"btn-subtle lesson-action-btn\" type=\"button\" onclick=\"openLessonFieldEditor()\">\uD83D\uDD52 \u3053\u306E\u6642\u9593\u3060\u3051\u9805\u76EE\u3092\u7DE8\u96C6</button>\n          <button class=\"btn-ai lesson-action-btn\" type=\"button\" onclick=\"genStatusSummary()\">\uD83E\uDD16 \u3053\u306E\u6642\u9593\u306E\u3075\u308A\u304B\u3048\u308A\u30EC\u30DD\u30FC\u30C8</button>\n          <button class=\"btn-end lesson-action-btn\" type=\"button\" onclick=\"endLesson()\">\uD83D\uDD1A \u6388\u696D\u7D42\u4E86</button>\n        </div>\n      </div>\n      <div class=\"stat-row lesson-banner-stats\">\n        <div class=\"stat-box\"><div class=\"stat-num\" id=\"statTotal\">-</div><div class=\"stat-lbl\">\u5168\u54E1</div></div>\n        <div class=\"stat-box\"><div class=\"stat-num\" id=\"statWritten\">-</div><div class=\"stat-lbl\">\u8A18\u5165\u4E2D</div></div>\n        <div class=\"stat-box\"><div class=\"stat-num\" id=\"statSubmitted\">-</div><div class=\"stat-lbl\">\u63D0\u51FA\u6E08</div></div>\n        <div class=\"stat-box\"><div class=\"stat-num\" id=\"statAI\">-</div><div class=\"stat-lbl\">AI\u5B8C\u4E86</div></div>\n      </div>\n    </div>\n    <div class=\"ai-report\" id=\"statusAiReport\" style=\"display:none;\"></div>");
     }
     else {
         el.innerHTML = "<div class=\"lesson-banner\" style=\"background:linear-gradient(135deg,#FAFAFA,#F1F5F9);border-color:#CFD8DC;\">\n      <div class=\"lesson-banner-top\">\n        <div>\n          <div class=\"lbl\" style=\"color:#607D8B;\">\u6388\u696D\u5F85\u6A5F\u4E2D</div>\n          <div class=\"name\" style=\"font-size:16px;\">\u73FE\u5728\u30A2\u30AF\u30C6\u30A3\u30D6\u306A\u6388\u696D\u306F\u3042\u308A\u307E\u305B\u3093\u3002</div>\n          <div class=\"meta\">\u5358\u5143\u3068\u6642\u9593\u76EE\u3092\u9078\u3093\u3067\u6388\u696D\u3092\u958B\u59CB\u3057\u3066\u304F\u3060\u3055\u3044\u3002</div>\n        </div>\n      </div>\n      <div class=\"stat-row lesson-banner-stats\">\n        <div class=\"stat-box\"><div class=\"stat-num\" id=\"statTotal\">0</div><div class=\"stat-lbl\">\u5168\u54E1</div></div>\n        <div class=\"stat-box\"><div class=\"stat-num\" id=\"statWritten\">0</div><div class=\"stat-lbl\">\u8A18\u5165\u4E2D</div></div>\n        <div class=\"stat-box\"><div class=\"stat-num\" id=\"statSubmitted\">0</div><div class=\"stat-lbl\">\u63D0\u51FA\u6E08</div></div>\n        <div class=\"stat-box\"><div class=\"stat-num\" id=\"statAI\">0</div><div class=\"stat-lbl\">AI\u5B8C\u4E86</div></div>\n      </div>\n    </div>";
@@ -3074,11 +3260,37 @@ function startLesson() {
         alert('単元と時間目を選択してください');
         return;
     }
+    var btn = document.getElementById('startLessonBtn');
+    var defaultLabel = btn ? (btn.dataset.defaultLabel || btn.textContent || '▶️ 授業開始') : '';
+    if (btn) {
+        btn.dataset.defaultLabel = defaultLabel;
+        btn.disabled = true;
+        btn.textContent = '⏳ 授業開始中…';
+    }
+    var selectedUnit = allUnits.find(function (unit) { return String(unit && unit.id || '') === String(unitId); }) || null;
+    showToast('授業を開始しています…');
     google.script.run
         .withSuccessHandler(function (res) {
+        if (btn) {
+            btn.textContent = '✅ 開始しました';
+            setTimeout(function () {
+                btn.disabled = false;
+                btn.textContent = btn.dataset.defaultLabel || defaultLabel;
+            }, 1800);
+        }
         invalidateTeacherDataRequests_();
         lastTeacherStartAtMs = Date.now();
         teacherEndingLesson = false;
+        activeUnitId = String(unitId);
+        activePeriod = Number(period);
+        clearTeacherStatusPreloadCache_();
+        if (selectedUnit) {
+            renderActiveBanner({
+                unitId: unitId,
+                period: Number(period),
+                unit: selectedUnit,
+            });
+        }
         if (res && res.active) {
             applyTeacherInitData({
                 active: res.active,
@@ -3090,6 +3302,13 @@ function startLesson() {
         }
         loadStatusInit({ lightweight: false, startPolling: true });
         showToast('授業を開始しました！', { tone: 'success' });
+    })
+        .withFailureHandler(function (err) {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = btn.dataset.defaultLabel || defaultLabel;
+        }
+        showToast(err && err.message ? "\u6388\u696D\u958B\u59CB\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat(err.message) : '授業開始に失敗しました');
     })
         .teacherStartLesson(unitId, parseInt(period));
 }
@@ -3178,6 +3397,7 @@ var __assign = (this && this.__assign) || function () {
 };
 var latestStatusRows = [];
 var latestStatusMeta = {};
+var teacherStatusRequestSeq = 0;
 var teacherFeedbackResultTimer = null;
 var unitSaveState = { busy: false, requestToken: '' };
 var lessonFieldEditState = { mode: 'unit', unitId: '', period: 0 };
@@ -3245,7 +3465,7 @@ function renderStatusPerfDebug_() {
         || window.__teacherUnitsReadMeta
         || null;
     var lines = [
-        formatStatusTimingLine_('表示データ', lessonTiming, ['totalMs', 'responsesMs', 'draftsMs', 'rosterMs', 'studentBuildMs']),
+        formatStatusTimingLine_('表示データ', lessonTiming, ['totalMs', 'snapshotMs', 'responsesMs', 'draftsMs', 'rosterMs', 'studentBuildMs']),
         formatStatusTimingLine_('初回読込', requestTiming, ['totalMs', 'unitsMs', 'activeMs', 'unitProgressMs', 'lessonStatusMs']),
         formatUnitsReadMetaLine_(unitsReadMeta),
         formatResponseReadMetaLine_(responseReadMeta),
@@ -3307,11 +3527,59 @@ function loadStatus() {
     bindTeacherFeedbackPrefs_();
     if (!activeUnitId || !activePeriod)
         return;
-    google.script.run.withSuccessHandler(renderStatus).getLessonStatus(activeUnitId, activePeriod);
+    if (preloadCache.statusLoading)
+        return;
+    preloadCache.statusLoading = true;
+    var requestSeq = ++teacherStatusRequestSeq;
+    var requestUnitId = String(activeUnitId || '');
+    var requestPeriod = Number(activePeriod || 0);
+    google.script.run
+        .withSuccessHandler(function (d) {
+        preloadCache.statusLoading = false;
+        if (requestSeq !== teacherStatusRequestSeq)
+            return;
+        if (String(activeUnitId || '') !== requestUnitId || Number(activePeriod || 0) !== requestPeriod)
+            return;
+        var meta = d && d.meta || {};
+        var responseUnitId = String(meta.unitId || requestUnitId);
+        var responsePeriod = Number(meta.period || requestPeriod);
+        if (responseUnitId !== requestUnitId || responsePeriod !== requestPeriod)
+            return;
+        renderStatus(d);
+    })
+        .withFailureHandler(function () {
+        preloadCache.statusLoading = false;
+    })
+        .getLessonStatus(requestUnitId, requestPeriod);
+}
+function applyActiveFromStatusMeta_(meta) {
+    var unitId = String(meta && meta.unitId || '').trim();
+    var period = Number(meta && meta.period || 0);
+    if (!unitId || period <= 0 || teacherEndingLesson)
+        return false;
+    if (String(activeUnitId || '') === unitId && Number(activePeriod || 0) === period)
+        return false;
+    activeUnitId = unitId;
+    activePeriod = period;
+    teacherActiveDebug = "status-meta resolved=".concat(activeUnitId, "/").concat(activePeriod);
+    renderActiveBanner({
+        unitId: unitId,
+        period: period,
+        unitName: String(meta && meta.unitName || '').trim(),
+        subject: String(meta && meta.subject || '').trim(),
+    });
+    renderTimelineFieldSelect({ unitId: unitId, period: period });
+    populateUnitSelects();
+    return true;
 }
 function renderStatus(d) {
     latestStatusRows = Array.isArray(d && d.students) ? d.students : [];
     latestStatusMeta = d && d.meta || {};
+    applyActiveFromStatusMeta_(latestStatusMeta);
+    if (!latestStatusRows.length && !(latestStatusMeta && (latestStatusMeta.unitId || latestStatusMeta.lessonId))) {
+        clearRenderedStatus_();
+        return;
+    }
     writeTeacherStatusPreloadCache_({
         meta: latestStatusMeta,
         students: latestStatusRows,
@@ -3374,6 +3642,28 @@ function renderStatusComment(student) {
         parts.push(renderTeacherDraftEditor(student, draftComment, draftRank));
     }
     return parts.join('');
+}
+function clearRenderedStatus_() {
+    latestStatusRows = [];
+    latestStatusMeta = {};
+    var totalEl = document.getElementById('statTotal');
+    var writtenEl = document.getElementById('statWritten');
+    var submittedEl = document.getElementById('statSubmitted');
+    var aiEl = document.getElementById('statAI');
+    if (totalEl)
+        totalEl.textContent = '0';
+    if (writtenEl)
+        writtenEl.textContent = '0';
+    if (submittedEl)
+        submittedEl.textContent = '0';
+    if (aiEl)
+        aiEl.textContent = '0';
+    syncTeacherFeedbackControls([], 0);
+    renderStatusPerfDebug_();
+    var body = document.getElementById('statusBody');
+    if (body) {
+        body.innerHTML = '<tr><td colspan="2" style="text-align:center;padding:18px;color:#78909C;">授業を開始すると、ここに児童の記録とフィードバックが表示されます。</td></tr>';
+    }
 }
 function renderTeacherDraftEditor(student, draftComment, draftRank) {
     var responseId = String(student.responseId || '').trim();
@@ -3559,6 +3849,68 @@ function collectTeacherDraftValues_(responseId, row) {
     }
     return { comment: comment, rank: rank };
 }
+function collectTeacherFeedbackReturnDraftItems_(responseIds) {
+    return (Array.isArray(responseIds) ? responseIds : [])
+        .map(function (value) { return String(value || '').trim(); })
+        .filter(Boolean)
+        .filter(function (value, index, array) { return array.indexOf(value) === index; })
+        .map(function (responseId) {
+        var row = findTeacherDraftRow_(responseId);
+        var values = collectTeacherDraftValues_(responseId, row);
+        return {
+            responseId: responseId,
+            draftComment: values.comment || '',
+            draftRank: values.rank || '',
+        };
+    })
+        .filter(function (item) { return String(item.draftComment || '').trim(); });
+}
+function applyTeacherFeedbackReturnedOptimistic_(responseIds, draftItems) {
+    var returnedAt = new Date().toISOString();
+    var ids = (Array.isArray(responseIds) ? responseIds : [])
+        .map(function (value) { return String(value || '').trim(); })
+        .filter(Boolean);
+    if (!ids.length)
+        return;
+    var idSet = new Set(ids);
+    var draftMap = {};
+    (Array.isArray(draftItems) ? draftItems : []).forEach(function (item) {
+        var responseId = String(item && item.responseId || '').trim();
+        if (responseId)
+            draftMap[responseId] = item;
+    });
+    latestStatusRows = (Array.isArray(latestStatusRows) ? latestStatusRows : []).map(function (student) {
+        var responseId = String(student && student.responseId || '').trim();
+        if (!idSet.has(responseId))
+            return student;
+        var values = collectTeacherDraftValues_(responseId, findTeacherDraftRow_(responseId));
+        var draft = draftMap[responseId] || {};
+        var nextComment = String(draft.draftComment || draft.comment || values.comment || student.comment || '');
+        var nextRank = String(draft.draftRank || draft.rank || values.rank || student.rank || '');
+        var next = Object.assign({}, student, {
+            comment: nextComment,
+            rank: nextRank,
+            draftComment: nextComment,
+            draftRank: nextRank,
+            draftStatus: 'returned',
+            draftUpdatedAt: returnedAt,
+            draftReturnedAt: returnedAt,
+            aiStatus: 'done',
+        });
+        var entry = getTeacherDraftState_(responseId);
+        if (entry) {
+            entry.comment = next.draftComment;
+            entry.rank = next.draftRank;
+            entry.commentDirty = false;
+            entry.rankDirty = false;
+        }
+        return next;
+    });
+    renderStatus({ students: latestStatusRows, meta: latestStatusMeta });
+}
+function scheduleTeacherStatusRefreshAfterReturn_() {
+    setTimeout(function () { return loadStatus(); }, 900);
+}
 function updateTeacherFeedbackDraftFromRow(textarea) {
     var responseId = String(textarea && textarea.dataset && textarea.dataset.responseId || '').trim();
     if (!responseId)
@@ -3637,6 +3989,10 @@ function generateTeacherFeedbackDraftsFromStatus(onlyMissing) {
     var autoReturn = Boolean((document.getElementById('teacherFeedbackAutoReturn') || {}).checked);
     var medalMode = getTeacherFeedbackMedalMode();
     var missingOnly = onlyMissing !== false;
+    if (autoReturn && medalMode !== 'auto_award') {
+        generateAndReturnTeacherFeedbackChunks_(missingOnly, includeRank);
+        return;
+    }
     var startedAt = Date.now();
     var btn = setActionButtonBusy_(missingOnly ? 'teacherFeedbackGenerateBtn' : 'teacherFeedbackGenerateAllBtn', autoReturn ? '⏳ 生成して返却中…' : '⏳ 生成中…');
     showToast(autoReturn
@@ -3665,6 +4021,66 @@ function generateTeacherFeedbackDraftsFromStatus(onlyMissing) {
         showToast(err && err.message || 'AI下書き生成に失敗しました');
     })
         .generateTeacherFeedbackDrafts(activeUnitId, activePeriod, includeRank, autoReturn, [], missingOnly, medalMode);
+}
+function generateAndReturnTeacherFeedbackChunks_(missingOnly, includeRank) {
+    var targetIds = (Array.isArray(latestStatusRows) ? latestStatusRows : [])
+        .filter(function (row) { return canTeacherFeedbackGenerateForStudent(row); })
+        .filter(function (row) { return missingOnly ? !String(row.comment || '').trim() : true; })
+        .map(function (row) { return String(row.responseId || '').trim(); })
+        .filter(Boolean)
+        .filter(function (value, index, array) { return array.indexOf(value) === index; });
+    if (!targetIds.length) {
+        showToast('AIコメントを作れる記録がありません');
+        return;
+    }
+    var chunkSize = 6;
+    var chunks = [];
+    for (var i = 0; i < targetIds.length; i += chunkSize) {
+        chunks.push(targetIds.slice(i, i + chunkSize));
+    }
+    var btn = setActionButtonBusy_(missingOnly ? 'teacherFeedbackGenerateBtn' : 'teacherFeedbackGenerateAllBtn', '⏳ 生成して返却中…');
+    var startedAt = Date.now();
+    var completed = 0;
+    var updatedCount = 0;
+    var returnedCount = 0;
+    var skippedExistingCount = 0;
+    var runChunk = function (index) {
+        if (index >= chunks.length) {
+            var msg = "AI\u30B3\u30E1\u30F3\u30C8\u3092 ".concat(updatedCount, "\u4EBA\u5206\u751F\u6210\u3057\u3001").concat(returnedCount, "\u4EBA\u3078\u8FD4\u5374\u3057\u307E\u3057\u305F").concat(skippedExistingCount ? " / \u5BFE\u8C61\u5916 ".concat(skippedExistingCount, "\u4EBA") : '', " / ").concat(formatElapsedSeconds_(startedAt));
+            showToast(msg);
+            setTeacherFeedbackResult("\u5B8C\u4E86: ".concat(msg));
+            setActionButtonDone_(btn, '✅ 完了');
+            scheduleTeacherStatusRefreshAfterReturn_();
+            return;
+        }
+        var chunk = chunks[index];
+        setTeacherFeedbackResult("\u751F\u6210\u3057\u3066\u8FD4\u5374\u4E2D: ".concat(completed, "/").concat(targetIds.length, "\u4EBA\u5B8C\u4E86"));
+        google.script.run
+            .withSuccessHandler(function (res) {
+            if (!(res && res.ok)) {
+                resetActionButton_(btn);
+                showToast(res && res.error || 'AI生成と返却に失敗しました');
+                scheduleTeacherStatusRefreshAfterReturn_();
+                return;
+            }
+            updatedCount += Number(res.updatedCount || 0);
+            returnedCount += Number(res.returnedCount || 0);
+            skippedExistingCount += Number(res.skippedExistingCount || 0);
+            completed += chunk.length;
+            if (Array.isArray(res.returnedIds) && res.returnedIds.length) {
+                applyTeacherFeedbackReturnedOptimistic_(res.returnedIds, res.drafts);
+            }
+            runChunk(index + 1);
+        })
+            .withFailureHandler(function (err) {
+            resetActionButton_(btn);
+            showToast(err && err.message || 'AI生成と返却に失敗しました');
+            scheduleTeacherStatusRefreshAfterReturn_();
+        })
+            .generateTeacherFeedbackDrafts(activeUnitId, activePeriod, includeRank, true, chunk, missingOnly, 'none');
+    };
+    showToast("AI\u30B3\u30E1\u30F3\u30C8\u3092".concat(chunks.length, "\u56DE\u306B\u5206\u3051\u3066\u3001\u3067\u304D\u305F\u9806\u306B\u8FD4\u5374\u3057\u307E\u3059\u2026"));
+    runChunk(0);
 }
 function generateTeacherFeedbackDraftForRow(responseId) {
     if (!activeUnitId || !activePeriod || !responseId)
@@ -3698,31 +4114,34 @@ function returnTeacherFeedbackDraftsFromStatus() {
         return;
     }
     var medalMode = getTeacherFeedbackMedalMode();
+    var targetResponseIds = getTeacherFeedbackReturnTargetIds_();
+    if (!targetResponseIds.length) {
+        showToast('返却できる下書きがありません');
+        return;
+    }
     var btn = setActionButtonBusy_('teacherFeedbackReturnBtn', '⏳ 一括返却中…');
+    var draftItems = collectTeacherFeedbackReturnDraftItems_(targetResponseIds);
     showToast(medalMode === 'auto_award' ? 'AI下書きを返却してメダルを処理しています…' : 'AI下書きを返却しています…');
-    flushTeacherFeedbackDrafts_(latestStatusRows.map(function (row) { return row.responseId; }), function () {
-        google.script.run
-            .withSuccessHandler(function (res) {
-            if (!(res && res.ok)) {
-                resetActionButton_(btn);
-                showToast(res && res.error || '返却に失敗しました');
-                return;
-            }
-            var msg = "".concat(res.returnedCount || 0, "\u4EBA\u3078\u8FD4\u5374\u3057\u307E\u3057\u305F").concat(res.medalAwarded ? ' / メダル発表まで完了' : '');
-            showToast(msg);
-            setTeacherFeedbackResult("\u5B8C\u4E86: ".concat(msg));
-            setActionButtonDone_(btn, '✅ 完了');
-            loadStatus();
-        })
-            .withFailureHandler(function (err) {
+    google.script.run
+        .withSuccessHandler(function (res) {
+        if (!(res && res.ok)) {
             resetActionButton_(btn);
-            showToast(err && err.message || '返却に失敗しました');
-        })
-            .returnTeacherFeedbackDrafts(activeUnitId, activePeriod, [], medalMode);
-    }, function (err) {
+            showToast(res && res.error || '返却に失敗しました');
+            return;
+        }
+        var returnedIds = Array.isArray(res.returnedIds) && res.returnedIds.length ? res.returnedIds : targetResponseIds;
+        applyTeacherFeedbackReturnedOptimistic_(returnedIds);
+        var msg = "".concat(res.returnedCount || 0, "\u4EBA\u3078\u8FD4\u5374\u3057\u307E\u3057\u305F").concat(res.medalAwarded ? ' / メダル発表まで完了' : '');
+        showToast(msg);
+        setTeacherFeedbackResult("\u5B8C\u4E86: ".concat(msg));
+        setActionButtonDone_(btn, '✅ 完了');
+        scheduleTeacherStatusRefreshAfterReturn_();
+    })
+        .withFailureHandler(function (err) {
         resetActionButton_(btn);
-        showToast(err && err.message || '返却前の保存に失敗しました');
-    });
+        showToast(err && err.message || '返却に失敗しました');
+    })
+        .returnTeacherFeedbackDrafts(activeUnitId, activePeriod, targetResponseIds, medalMode, { source: 'teacher_bulk_return', skipEventLogs: true, draftItems: draftItems });
 }
 function clearTeacherFeedbackDraftsFromStatus() {
     if (!activeUnitId || !activePeriod) {
@@ -3744,6 +4163,12 @@ function clearTeacherFeedbackDraftsFromStatus() {
         showToast(err && err.message || '下書きクリアに失敗しました');
     })
         .clearTeacherFeedbackDrafts(activeUnitId, activePeriod, []);
+}
+function getTeacherFeedbackReturnTargetIds_() {
+    return (Array.isArray(latestStatusRows) ? latestStatusRows : [])
+        .map(function (row) { return String(row && row.responseId || '').trim(); })
+        .filter(Boolean)
+        .filter(function (value, index, array) { return array.indexOf(value) === index; });
 }
 function persistTeacherFeedbackDraftForRow_(responseId, options) {
     var normalized = String(responseId || '').trim();
@@ -3815,20 +4240,60 @@ function flushTeacherFeedbackDrafts_(responseIds, onSuccess, onFailure) {
         var entry = getTeacherDraftState_(value);
         return Boolean(entry && (entry.commentDirty || entry.rankDirty));
     });
-    var next = function () {
-        var responseId = queue.shift();
-        if (!responseId) {
-            if (typeof onSuccess === 'function')
-                onSuccess();
+    if (!queue.length) {
+        if (typeof onSuccess === 'function')
+            onSuccess();
+        return;
+    }
+    var payload = queue.map(function (responseId) {
+        var row = findTeacherDraftRow_(responseId);
+        var values = collectTeacherDraftValues_(responseId, row);
+        setTeacherDraftRowBusy_(responseId, true, '返却前に保存中');
+        return {
+            responseId: responseId,
+            draftComment: values.comment || '',
+            draftRank: values.rank || '',
+        };
+    });
+    google.script.run
+        .withSuccessHandler(function (res) {
+        queue.forEach(function (responseId) { return setTeacherDraftRowBusy_(responseId, false); });
+        if (!(res && res.ok)) {
+            if (typeof onFailure === 'function')
+                onFailure({ message: res && res.error || '返却前の保存に失敗しました' });
             return;
         }
-        persistTeacherFeedbackDraftForRow_(responseId, {
-            busyLabel: '返却前に保存中',
-            onSuccess: function () { return next(); },
-            onFailure: onFailure,
+        var savedMap = {};
+        (Array.isArray(res.drafts) ? res.drafts : []).forEach(function (draft) {
+            var responseId = String(draft && draft.responseId || '').trim();
+            if (responseId)
+                savedMap[responseId] = draft;
         });
-    };
-    next();
+        queue.forEach(function (responseId) {
+            var entry = getTeacherDraftState_(responseId);
+            var row = findTeacherDraftRow_(responseId);
+            var values = collectTeacherDraftValues_(responseId, row);
+            var saved = savedMap[responseId] || {};
+            if (entry) {
+                entry.comment = String(saved.draftComment != null ? saved.draftComment : values.comment || '');
+                entry.rank = String(saved.draftRank != null ? saved.draftRank : values.rank || '');
+                entry.commentDirty = false;
+                entry.rankDirty = false;
+            }
+            var status = row ? row.querySelector('.status-draft-status') : null;
+            if (status)
+                status.textContent = '保存済み';
+            syncTeacherDraftDirtyUi_(responseId);
+        });
+        if (typeof onSuccess === 'function')
+            onSuccess(res);
+    })
+        .withFailureHandler(function (err) {
+        queue.forEach(function (responseId) { return setTeacherDraftRowBusy_(responseId, false); });
+        if (typeof onFailure === 'function')
+            onFailure(err);
+    })
+        .saveTeacherFeedbackDraftsBulk(payload);
 }
 function saveTeacherFeedbackMedalFromRow(select) {
     var responseId = String(select && select.dataset && select.dataset.responseId || '').trim();
@@ -3837,12 +4302,16 @@ function saveTeacherFeedbackMedalFromRow(select) {
     var row = select.closest('.status-draft-box');
     if (isTeacherDraftRowBusy_(row))
         return;
+    setTeacherDraftRowBusy_(responseId, true, 'メダル保存中');
     google.script.run
         .withSuccessHandler(function () {
         showToast('メダルを保存しました');
         loadStatus();
     })
-        .withFailureHandler(function (err) { showToast(err && err.message || 'メダル保存に失敗しました'); })
+        .withFailureHandler(function (err) {
+        setTeacherDraftRowBusy_(responseId, false);
+        showToast(err && err.message || 'メダル保存に失敗しました');
+    })
         .saveTeacherFeedbackMedal(responseId, select.value || '');
 }
 function returnTeacherFeedbackDraftForRow(responseId) {
@@ -3851,21 +4320,24 @@ function returnTeacherFeedbackDraftForRow(responseId) {
     var row = findTeacherDraftRow_(responseId);
     if (isTeacherDraftRowBusy_(row))
         return;
-    flushTeacherFeedbackDrafts_([responseId], function () {
-        google.script.run
-            .withSuccessHandler(function (res) {
-            if (!(res && res.ok)) {
-                showToast(res && res.error || '返却に失敗しました');
-                return;
-            }
-            showToast('返却しました');
-            loadStatus();
-        })
-            .withFailureHandler(function (err) { showToast(err && err.message || '返却に失敗しました'); })
-            .returnTeacherFeedbackDrafts(activeUnitId, activePeriod, [responseId]);
-    }, function (err) {
-        showToast(err && err.message || '返却前の保存に失敗しました');
-    });
+    var draftItems = collectTeacherFeedbackReturnDraftItems_([responseId]);
+    setTeacherDraftRowBusy_(responseId, true, '返却中');
+    google.script.run
+        .withSuccessHandler(function (res) {
+        if (!(res && res.ok)) {
+            setTeacherDraftRowBusy_(responseId, false);
+            showToast(res && res.error || '返却に失敗しました');
+            return;
+        }
+        applyTeacherFeedbackReturnedOptimistic_(Array.isArray(res.returnedIds) && res.returnedIds.length ? res.returnedIds : [responseId]);
+        showToast('返却しました');
+        scheduleTeacherStatusRefreshAfterReturn_();
+    })
+        .withFailureHandler(function (err) {
+        setTeacherDraftRowBusy_(responseId, false);
+        showToast(err && err.message || '返却に失敗しました');
+    })
+        .returnTeacherFeedbackDrafts(activeUnitId, activePeriod, [responseId], 'none', { source: 'teacher_row_return', skipEventLogs: true, draftItems: draftItems });
 }
 function clearTeacherFeedbackDraftForRow(responseId) {
     if (!activeUnitId || !activePeriod)
@@ -3874,9 +4346,13 @@ function clearTeacherFeedbackDraftForRow(responseId) {
     if (isTeacherDraftRowBusy_(row))
         return;
     delete teacherDraftLocalState[String(responseId || '').trim()];
+    setTeacherDraftRowBusy_(responseId, true, '下書き削除中');
     google.script.run
         .withSuccessHandler(function () { showToast('下書きを消しました'); loadStatus(); })
-        .withFailureHandler(function (err) { showToast(err && err.message || '下書きクリアに失敗しました'); })
+        .withFailureHandler(function (err) {
+        setTeacherDraftRowBusy_(responseId, false);
+        showToast(err && err.message || '下書きクリアに失敗しました');
+    })
         .clearTeacherFeedbackDrafts(activeUnitId, activePeriod, [responseId]);
 }
 function formatStatusTimestamp(value) {
@@ -4152,7 +4628,15 @@ function renderFieldList() {
     list.innerHTML = editingFields.map(function (f, i) { return "\n    <div class=\"field-item ".concat(f.enabled !== false ? 'enabled' : '', "\" data-i=\"").concat(i, "\">\n      <span class=\"drag-handle\" title=\"\u4E26\u3073\u66FF\u3048\u30CF\u30F3\u30C9\u30EB\">\u283F</span>\n      <span class=\"f-emoji\">").concat(f.emoji || '📌', "</span>\n      <div style=\"flex:1;min-width:0;\">\n        <div class=\"f-label\">").concat(esc(f.label), "</div>\n        <div class=\"f-type\">").concat(typeLabel(f.type)).concat(formatFieldCategorySuffix(f), "</div>\n      </div>\n      <div class=\"field-order-actions\">\n        <button class=\"btn-move\" type=\"button\" onclick=\"moveField(").concat(i, ",-1)\" ").concat(i === 0 ? 'disabled' : '', " title=\"\u4E0A\u3078\">\u25B2</button>\n        <button class=\"btn-move\" type=\"button\" onclick=\"moveField(").concat(i, ",1)\" ").concat(i === editingFields.length - 1 ? 'disabled' : '', " title=\"\u4E0B\u3078\">\u25BC</button>\n      </div>\n      <button class=\"btn-edit-field\" type=\"button\" onclick=\"startEditCustomField(").concat(i, ")\">\u7DE8\u96C6</button>\n      <button class=\"toggle-btn ").concat(f.enabled !== false ? 'toggle-on' : 'toggle-off', "\"\n        onclick=\"toggleField(").concat(i, ")\">\n        ").concat(f.enabled !== false ? 'ON' : 'OFF', "</button>\n      <button class=\"btn-remove\" onclick=\"removeField(").concat(i, ")\">\u2715</button>\n    </div>"); }).join('');
 }
 function typeLabel(t) {
-    return { text: '自由記述', select: '選択肢', radio: 'ラジオ', review: 'ふりかえり（ヒント付き）', number: '数値' }[t] || t;
+    return {
+        text: '自由記述',
+        select: '選択肢',
+        radio: 'ラジオ',
+        review: 'ふりかえり（ヒント付き）',
+        number: '数値',
+        student_select: '児童名簿（1人）',
+        student_multi: '児童名簿（複数）',
+    }[t] || t;
 }
 function toggleField(i) {
     editingFields[i].enabled = !editingFields[i].enabled;
@@ -4207,7 +4691,8 @@ function createCustomFieldFromInputs(prefix, existingFields, options) {
     var label = document.getElementById(prefix + 'Label').value.trim();
     var type = document.getElementById(prefix + 'Type').value;
     var emoji = document.getElementById(prefix + 'Emoji').value.trim() || '🆕';
-    var fieldOptions = parseFieldOptionsInput(document.getElementById(prefix + 'Options').value);
+    var isRosterChoice = type === 'student_select' || type === 'student_multi';
+    var fieldOptions = isRosterChoice ? '' : parseFieldOptionsInput(document.getElementById(prefix + 'Options').value);
     var placeholder = document.getElementById(prefix + 'Placeholder').value.trim();
     var categories = getCheckedCategories(prefix);
     if (!label) {
@@ -4230,7 +4715,7 @@ function createCustomFieldFromInputs(prefix, existingFields, options) {
         label: label,
         emoji: emoji,
         type: type,
-        placeholder: placeholder,
+        placeholder: placeholder || (isRosterChoice ? '名簿からえらんでね' : ''),
         options: fieldOptions,
         hints: type === 'review' ? 'がんばったこと,やり方,わかったこと,次にしたいこと' : '',
         categories: categories,
@@ -4498,11 +4983,40 @@ function applySavedUnitLocally_(savedUnit) {
         allUnits[idx] = savedUnit;
     else
         allUnits.unshift(savedUnit);
-    if (preloadCache.init) {
-        preloadCache.init.units = allUnits.slice();
-        persistTeacherPreloadCache_();
-    }
+    if (preloadCache.aggregate)
+        preloadCache.aggregate = null;
+    if (preloadCache.status)
+        clearTeacherStatusPreloadCache_(true);
+    persistTeacherPreloadCache_();
     refreshUnitUiAfterMutation_();
+}
+function invalidateUnitRelatedClientState_(unitId) {
+    var normalized = String(unitId || '').trim();
+    if (normalized && unitProgressByUnitId && typeof unitProgressByUnitId === 'object') {
+        delete unitProgressByUnitId[normalized];
+    }
+    if (preloadCache.aggregate)
+        preloadCache.aggregate = null;
+    if (preloadCache.portfolio)
+        preloadCache.portfolio = null;
+    if (String(activeUnitId || '') === normalized) {
+        activeUnitId = null;
+        activePeriod = 0;
+        latestStatusRows = [];
+        latestStatusMeta = {};
+        teacherDraftLocalState = {};
+        clearTeacherStatusPreloadCache_(true);
+    }
+    else if (preloadCache.status) {
+        clearTeacherStatusPreloadCache_(true);
+    }
+    if (Array.isArray(allAggData) && normalized) {
+        allAggData = allAggData.filter(function (row) { return String(row.unitId || '') !== normalized; });
+    }
+    if (typeof allAggMeta === 'object' && allAggMeta) {
+        allAggMeta = { scope: 'unknown', fetchedAt: 0, unitId: '', subject: '' };
+    }
+    persistTeacherPreloadCache_();
 }
 function removeUnitLocally_(unitId) {
     var normalized = String(unitId || '').trim();
@@ -4513,10 +5027,7 @@ function removeUnitLocally_(unitId) {
     if (!removed)
         return false;
     allUnits = nextUnits;
-    if (preloadCache.init) {
-        preloadCache.init.units = allUnits.slice();
-        persistTeacherPreloadCache_();
-    }
+    invalidateUnitRelatedClientState_(normalized);
     if (String(document.getElementById('editUnitId').value || '') === normalized) {
         cancelEdit();
     }
@@ -4526,6 +5037,8 @@ function removeUnitLocally_(unitId) {
 function refreshUnitUiAfterMutation_() {
     renderUnitList();
     populateUnitSelects();
+    if (typeof populateGradingSelects === 'function')
+        populateGradingSelects();
     var startUnit = document.getElementById('startUnit');
     if (startUnit) {
         var currentValue_1 = String(startUnit.value || '').trim();
@@ -4641,17 +5154,33 @@ function saveUnit(startAfterSave) {
 }
 function askDelete(id, name) {
     delTargetId = id;
+    setDeleteModalBusy_(false);
     document.getElementById('delMsg').textContent = "\u300C".concat(name, "\u300D\u3092\u524A\u9664\u3057\u307E\u3059\u3002\u6388\u696D\u30C7\u30FC\u30BF\u306F\u6B8B\u308A\u307E\u3059\u3002");
     document.getElementById('delModal').classList.add('show');
+}
+function setDeleteModalBusy_(busy) {
+    var confirmBtn = document.getElementById('delConfirmBtn');
+    var cancelBtn = document.getElementById('delCancelBtn');
+    if (confirmBtn) {
+        if (!confirmBtn.dataset.defaultLabel)
+            confirmBtn.dataset.defaultLabel = confirmBtn.textContent || '削除する';
+        confirmBtn.disabled = Boolean(busy);
+        confirmBtn.textContent = busy ? '削除中…' : confirmBtn.dataset.defaultLabel;
+    }
+    if (cancelBtn)
+        cancelBtn.disabled = Boolean(busy);
 }
 function confirmDelete() {
     var targetId = String(delTargetId || '').trim();
     if (!targetId)
         return;
+    setDeleteModalBusy_(true);
+    setUnitSaveMeta('単元を削除しています…', 'busy');
     google.script.run
         .withSuccessHandler(function (res) {
         if (!(res && res.ok)) {
             var msg = '単元の削除に失敗しました。';
+            setDeleteModalBusy_(false);
             setUnitSaveMeta(msg, 'error');
             showToast(msg);
             return;
@@ -4665,12 +5194,16 @@ function confirmDelete() {
     })
         .withFailureHandler(function (err) {
         var msg = err && err.message || '単元の削除に失敗しました。';
+        setDeleteModalBusy_(false);
         setUnitSaveMeta(msg, 'error');
         showToast(msg);
     })
         .deleteUnit(targetId);
 }
-function closeModal() { document.getElementById('delModal').classList.remove('show'); }
+function closeModal() {
+    setDeleteModalBusy_(false);
+    document.getElementById('delModal').classList.remove('show');
+}
 </script>
 
 <script>
@@ -4693,18 +5226,22 @@ function renderRosterEditor() {
     body.innerHTML = rosterEntries.map(function (row, idx) { return "\n    <tr>\n      <td>".concat(idx + 1, "</td>\n      <td><input class=\"inp\" type=\"number\" min=\"1\" value=\"").concat(row.number || '', "\" onchange=\"updateRosterField(").concat(idx, ",'number',this.value)\"></td>\n      <td><input class=\"inp\" type=\"text\" value=\"").concat(esc(row.name || ''), "\" onchange=\"updateRosterField(").concat(idx, ",'name',this.value)\"></td>\n      <td style=\"text-align:center;\"><input type=\"checkbox\" ").concat(row.active !== false ? 'checked' : '', " onchange=\"updateRosterField(").concat(idx, ",'active',this.checked)\"></td>\n      <td><button class=\"btn-remove\" onclick=\"removeRosterRow(").concat(idx, ")\">\u2715</button></td>\n    </tr>\n  "); }).join('');
 }
 function loadRosterEditor() {
-    if (preloadCache.roster) {
-        rosterEntries = preloadCache.roster.roster || [];
+    var cachedRoster = normalizeRosterPreload_(preloadCache.roster);
+    if (cachedRoster) {
+        rosterEntries = cachedRoster.roster;
+        preloadCache.roster = cachedRoster;
         renderRosterEditor();
+        ensureRosterPreload(true, {
+            onSuccess: function () { return renderRosterEditor(); },
+        });
         return;
     }
-    ensureRosterPreload();
-    google.script.run.withSuccessHandler(function (d) {
-        rosterEntries = d.roster || [];
-        preloadCache.roster = d || { roster: [] };
-        persistTeacherPreloadCache_();
-        renderRosterEditor();
-    }).teacherRosterInit();
+    clearRosterPreload_(true);
+    renderRosterEditor();
+    ensureRosterPreload(true, {
+        onSuccess: function () { return renderRosterEditor(); },
+        onEmpty: function () { return renderRosterEditor(); },
+    });
 }
 function updateRosterField(idx, key, value) {
     rosterEntries[idx][key] = key === 'number' ? Number(value) : value;
@@ -4858,7 +5395,15 @@ function removeSubjectCustomField(index) {
     renderSubjectFieldEditor(currentSubject);
 }
 function typeLabel(t) {
-    return { text: '自由記述', select: '選択肢', radio: 'ラジオ', review: 'ふりかえり', number: '数値' }[t] || t;
+    return {
+        text: '自由記述',
+        select: '選択肢',
+        radio: 'ラジオ',
+        review: 'ふりかえり',
+        number: '数値',
+        student_select: '児童名簿（1人）',
+        student_multi: '児童名簿（複数）',
+    }[t] || t;
 }
 // =====================================
 //  プロンプト
@@ -5167,13 +5712,37 @@ function scheduleAggregateBackgroundPreload(reason) {
     if (aggregateBackgroundPreloadScheduled)
         return;
     aggregateBackgroundPreloadScheduled = true;
-    var run = function () { return ensureAggregateBackgroundPreload_(reason || 'idle'); };
-    if (typeof requestIdleCallback === 'function') {
-        requestIdleCallback(run, { timeout: 7000 });
+    var run = function () {
+        aggregateBackgroundPreloadScheduled = false;
+        ensureAggregateBackgroundPreload_(reason || 'immediate');
+    };
+    if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(function () { return setTimeout(run, 120); });
     }
     else {
-        setTimeout(run, 4500);
+        setTimeout(run, 120);
     }
+}
+function scheduleTeacherCurrentLessonAggregatePreload(reason) {
+    var scope = buildTeacherCurrentLessonAggregateScope_();
+    if (!scope) {
+        scheduleAggregateBackgroundPreload(reason || 'teacher-preload');
+        return false;
+    }
+    if (hasFreshAggregateScopeFor_(scope)) {
+        scheduleAggregateBackgroundPreload(reason || 'teacher-preload-fresh');
+        return false;
+    }
+    var started = requestAggregateScope_(scope, {
+        onParseError: function () { },
+        onError: function () { },
+        onFailure: function () { },
+    });
+    if (!started) {
+        scheduleAggregateBackgroundPreload(reason || 'teacher-preload-busy');
+        return false;
+    }
+    return true;
 }
 function ensureAggregateBackgroundPreload_(reason) {
     if (readAggregatePreloadCacheEntry_())
@@ -5182,7 +5751,7 @@ function ensureAggregateBackgroundPreload_(reason) {
         return false;
     if (aggregateScopeFetchKey) {
         aggregateBackgroundPreloadScheduled = false;
-        setTimeout(function () { return scheduleAggregateBackgroundPreload('retry-busy'); }, 8000);
+        setTimeout(function () { return scheduleAggregateBackgroundPreload('retry-busy'); }, 600);
         return false;
     }
     aggregateBackgroundPreloadInFlight = true;
@@ -5193,6 +5762,7 @@ function ensureAggregateBackgroundPreload_(reason) {
         onSuccess: function (rows) {
             aggregateBackgroundPreloadInFlight = false;
             writeAggregatePreloadCache_(rows);
+            preloadPortfolioFromAggregate_(reason || 'aggregate-background-success');
             if (!Array.isArray(rows) || !rows.length)
                 return;
             if (shouldRenderAggregatePreloadResult_() && !hasFreshAggregateData_()) {
@@ -5201,6 +5771,52 @@ function ensureAggregateBackgroundPreload_(reason) {
         },
     });
     return true;
+}
+function scheduleTeacherRecordsDataPreload(reason) {
+    ensureReportTabInitData_({
+        onSuccess: function () { },
+        onFailure: function () { },
+    });
+    scheduleAggregateBackgroundPreload(reason || 'records-preload');
+    schedulePortfolioBackgroundPreload_(reason || 'records-preload');
+}
+function schedulePortfolioBackgroundPreload_(reason) {
+    var run = function () { return preloadPortfolioFromAggregate_(reason || 'idle'); };
+    if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(function () { return setTimeout(run, 320); });
+    }
+    else {
+        setTimeout(run, 320);
+    }
+}
+function preloadPortfolioFromAggregate_(reason) {
+    if (!Array.isArray(rosterEntries) || !rosterEntries.length)
+        return false;
+    var entry = readAggregatePreloadCacheEntry_();
+    var rows = Array.isArray(allAggData) && allAggData.length
+        ? allAggData
+        : (entry && Array.isArray(entry.rows) ? entry.rows : []);
+    if (!rows.length) {
+        scheduleAggregateBackgroundPreload(reason || 'portfolio-waiting-aggregate');
+        return false;
+    }
+    var firstStudent = rosterEntries.find(function (row) { return String(row && row.number || '').trim(); });
+    if (!firstStudent)
+        return false;
+    var studentNumber = String(firstStudent.number || '').trim();
+    var currentUnitId = String(activeUnitId || '').trim();
+    writePortfolioCache_(studentNumber, '', buildPortfolioRowsFromAggregate_(rows, studentNumber, ''));
+    if (currentUnitId) {
+        writePortfolioCache_(studentNumber, currentUnitId, buildPortfolioRowsFromAggregate_(rows, studentNumber, currentUnitId));
+    }
+    return true;
+}
+function buildTeacherCurrentLessonAggregateScope_() {
+    var unitId = String(activeUnitId || '').trim();
+    var period = Number(activePeriod || 0);
+    if (!unitId || period <= 0)
+        return null;
+    return { unitId: unitId };
 }
 function isAggregateRecordPaneActive_() {
     var pane = document.getElementById('record-pane-aggregate');
@@ -5221,6 +5837,35 @@ function renderAggregateDataSet_(rows, meta) {
     };
     filterAgg();
     filterGrading();
+}
+function expandCompactAggregateRows_(payload) {
+    if (!(payload && Number(payload.compactVersion || 0) === 1 && Array.isArray(payload.rowsCompact)))
+        return null;
+    var fieldSets = payload.fieldSets && typeof payload.fieldSets === 'object' ? payload.fieldSets : {};
+    var schema = Array.isArray(payload.rowSchema) && payload.rowSchema.length
+        ? payload.rowSchema
+        : ['unitName', 'subject', 'period', 'num', 'name', 'date', 'review', 'rank', 'comment', 'unitId', 'answersMap', 'fieldSetKey', 'teacherAssessment'];
+    var indexByName = {};
+    schema.forEach(function (name, index) { indexByName[String(name || '')] = index; });
+    var valueOf = function (row, name, fallback) {
+        var index = indexByName[name];
+        return Number.isInteger(index) ? row[index] : fallback;
+    };
+    return payload.rowsCompact.map(function (row) { return ({
+        unitName: valueOf(row, 'unitName', '') || '',
+        subject: valueOf(row, 'subject', '') || '',
+        period: valueOf(row, 'period', '') || '',
+        num: valueOf(row, 'num', '') || '',
+        name: valueOf(row, 'name', '') || '',
+        date: valueOf(row, 'date', '') || '',
+        review: valueOf(row, 'review', '') || '',
+        rank: valueOf(row, 'rank', '') || '',
+        comment: valueOf(row, 'comment', '') || '',
+        unitId: valueOf(row, 'unitId', '') || '',
+        answersMap: valueOf(row, 'answersMap', {}) && typeof valueOf(row, 'answersMap', {}) === 'object' ? valueOf(row, 'answersMap', {}) : {},
+        fields: Array.isArray(fieldSets[valueOf(row, 'fieldSetKey', '')]) ? fieldSets[valueOf(row, 'fieldSetKey', '')] : [],
+        teacherAssessment: valueOf(row, 'teacherAssessment', null) || null,
+    }); });
 }
 function fetchAggregateDataSet_(options) {
     var opts = options || {};
@@ -5245,7 +5890,7 @@ function fetchAggregateDataSet_(options) {
                 opts.onError(res.error);
             return;
         }
-        var rows = res && res.rows || [];
+        var rows = expandCompactAggregateRows_(res) || (res && res.rows) || [];
         if (typeof opts.onSuccess === 'function')
             opts.onSuccess(rows, res || {});
     })
@@ -5255,7 +5900,7 @@ function fetchAggregateDataSet_(options) {
         if (typeof opts.onFailure === 'function')
             opts.onFailure(err);
     })
-        .getAggregateDataJson(unitId, subject ? JSON.stringify({ subject: subject }) : '');
+        .getAggregateDataJson(unitId, JSON.stringify({ subject: subject, compact: true }));
 }
 function getInitialAggregateFetchOptions_(renderedImmediate) {
     var currentAggUnitId = (document.getElementById('aggUnit') || {}).value || '';
@@ -5369,6 +6014,9 @@ function requestAggregateScope_(options, callbacks) {
                 aggregateScopeFetchKey = '';
             if (!opts.subject && !opts.unitId) {
                 writeAggregatePreloadCache_(rows);
+            }
+            else {
+                scheduleAggregateBackgroundPreload('after-scoped-records');
             }
             renderAggregateDataSet_(rows, buildAggregateScopeMeta_(opts));
             if (typeof cb.onSuccess === 'function')
