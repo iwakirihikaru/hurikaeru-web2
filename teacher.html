@@ -771,7 +771,7 @@ button:not([disabled]):active,button.is-pressed{transform:translateY(1px);filter
           <div class="start-row status-start-row">
             <select id="startUnit" onchange="onStartUnitChange()"><option value="">単元を選択…</option></select>
             <select id="startPeriod" onchange="onStartPeriodManualChange()"><option value="">時間目を選択…</option></select>
-            <button class="btn-start" onclick="startLesson()">▶️ 授業開始</button>
+            <button id="startLessonBtn" class="btn-start" onclick="startLesson()">▶️ 授業開始</button>
             <button class="btn-update" type="button" onclick="openUnitSettingsTab()">🧩 単元設定へ</button>
             <button class="btn-medal" id="awardMedalsBtn" onclick="awardMedals()">🏅 メダル発表</button>
           </div>
@@ -3260,11 +3260,37 @@ function startLesson() {
         alert('単元と時間目を選択してください');
         return;
     }
+    var btn = document.getElementById('startLessonBtn');
+    var defaultLabel = btn ? (btn.dataset.defaultLabel || btn.textContent || '▶️ 授業開始') : '';
+    if (btn) {
+        btn.dataset.defaultLabel = defaultLabel;
+        btn.disabled = true;
+        btn.textContent = '⏳ 授業開始中…';
+    }
+    var selectedUnit = allUnits.find(function (unit) { return String(unit && unit.id || '') === String(unitId); }) || null;
+    showToast('授業を開始しています…');
     google.script.run
         .withSuccessHandler(function (res) {
+        if (btn) {
+            btn.textContent = '✅ 開始しました';
+            setTimeout(function () {
+                btn.disabled = false;
+                btn.textContent = btn.dataset.defaultLabel || defaultLabel;
+            }, 1800);
+        }
         invalidateTeacherDataRequests_();
         lastTeacherStartAtMs = Date.now();
         teacherEndingLesson = false;
+        activeUnitId = String(unitId);
+        activePeriod = Number(period);
+        clearTeacherStatusPreloadCache_();
+        if (selectedUnit) {
+            renderActiveBanner({
+                unitId: unitId,
+                period: Number(period),
+                unit: selectedUnit,
+            });
+        }
         if (res && res.active) {
             applyTeacherInitData({
                 active: res.active,
@@ -3276,6 +3302,13 @@ function startLesson() {
         }
         loadStatusInit({ lightweight: false, startPolling: true });
         showToast('授業を開始しました！', { tone: 'success' });
+    })
+        .withFailureHandler(function (err) {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = btn.dataset.defaultLabel || defaultLabel;
+        }
+        showToast(err && err.message ? "\u6388\u696D\u958B\u59CB\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat(err.message) : '授業開始に失敗しました');
     })
         .teacherStartLesson(unitId, parseInt(period));
 }
@@ -3816,6 +3849,68 @@ function collectTeacherDraftValues_(responseId, row) {
     }
     return { comment: comment, rank: rank };
 }
+function collectTeacherFeedbackReturnDraftItems_(responseIds) {
+    return (Array.isArray(responseIds) ? responseIds : [])
+        .map(function (value) { return String(value || '').trim(); })
+        .filter(Boolean)
+        .filter(function (value, index, array) { return array.indexOf(value) === index; })
+        .map(function (responseId) {
+        var row = findTeacherDraftRow_(responseId);
+        var values = collectTeacherDraftValues_(responseId, row);
+        return {
+            responseId: responseId,
+            draftComment: values.comment || '',
+            draftRank: values.rank || '',
+        };
+    })
+        .filter(function (item) { return String(item.draftComment || '').trim(); });
+}
+function applyTeacherFeedbackReturnedOptimistic_(responseIds, draftItems) {
+    var returnedAt = new Date().toISOString();
+    var ids = (Array.isArray(responseIds) ? responseIds : [])
+        .map(function (value) { return String(value || '').trim(); })
+        .filter(Boolean);
+    if (!ids.length)
+        return;
+    var idSet = new Set(ids);
+    var draftMap = {};
+    (Array.isArray(draftItems) ? draftItems : []).forEach(function (item) {
+        var responseId = String(item && item.responseId || '').trim();
+        if (responseId)
+            draftMap[responseId] = item;
+    });
+    latestStatusRows = (Array.isArray(latestStatusRows) ? latestStatusRows : []).map(function (student) {
+        var responseId = String(student && student.responseId || '').trim();
+        if (!idSet.has(responseId))
+            return student;
+        var values = collectTeacherDraftValues_(responseId, findTeacherDraftRow_(responseId));
+        var draft = draftMap[responseId] || {};
+        var nextComment = String(draft.draftComment || draft.comment || values.comment || student.comment || '');
+        var nextRank = String(draft.draftRank || draft.rank || values.rank || student.rank || '');
+        var next = Object.assign({}, student, {
+            comment: nextComment,
+            rank: nextRank,
+            draftComment: nextComment,
+            draftRank: nextRank,
+            draftStatus: 'returned',
+            draftUpdatedAt: returnedAt,
+            draftReturnedAt: returnedAt,
+            aiStatus: 'done',
+        });
+        var entry = getTeacherDraftState_(responseId);
+        if (entry) {
+            entry.comment = next.draftComment;
+            entry.rank = next.draftRank;
+            entry.commentDirty = false;
+            entry.rankDirty = false;
+        }
+        return next;
+    });
+    renderStatus({ students: latestStatusRows, meta: latestStatusMeta });
+}
+function scheduleTeacherStatusRefreshAfterReturn_() {
+    setTimeout(function () { return loadStatus(); }, 900);
+}
 function updateTeacherFeedbackDraftFromRow(textarea) {
     var responseId = String(textarea && textarea.dataset && textarea.dataset.responseId || '').trim();
     if (!responseId)
@@ -3894,6 +3989,10 @@ function generateTeacherFeedbackDraftsFromStatus(onlyMissing) {
     var autoReturn = Boolean((document.getElementById('teacherFeedbackAutoReturn') || {}).checked);
     var medalMode = getTeacherFeedbackMedalMode();
     var missingOnly = onlyMissing !== false;
+    if (autoReturn && medalMode !== 'auto_award') {
+        generateAndReturnTeacherFeedbackChunks_(missingOnly, includeRank);
+        return;
+    }
     var startedAt = Date.now();
     var btn = setActionButtonBusy_(missingOnly ? 'teacherFeedbackGenerateBtn' : 'teacherFeedbackGenerateAllBtn', autoReturn ? '⏳ 生成して返却中…' : '⏳ 生成中…');
     showToast(autoReturn
@@ -3922,6 +4021,66 @@ function generateTeacherFeedbackDraftsFromStatus(onlyMissing) {
         showToast(err && err.message || 'AI下書き生成に失敗しました');
     })
         .generateTeacherFeedbackDrafts(activeUnitId, activePeriod, includeRank, autoReturn, [], missingOnly, medalMode);
+}
+function generateAndReturnTeacherFeedbackChunks_(missingOnly, includeRank) {
+    var targetIds = (Array.isArray(latestStatusRows) ? latestStatusRows : [])
+        .filter(function (row) { return canTeacherFeedbackGenerateForStudent(row); })
+        .filter(function (row) { return missingOnly ? !String(row.comment || '').trim() : true; })
+        .map(function (row) { return String(row.responseId || '').trim(); })
+        .filter(Boolean)
+        .filter(function (value, index, array) { return array.indexOf(value) === index; });
+    if (!targetIds.length) {
+        showToast('AIコメントを作れる記録がありません');
+        return;
+    }
+    var chunkSize = 6;
+    var chunks = [];
+    for (var i = 0; i < targetIds.length; i += chunkSize) {
+        chunks.push(targetIds.slice(i, i + chunkSize));
+    }
+    var btn = setActionButtonBusy_(missingOnly ? 'teacherFeedbackGenerateBtn' : 'teacherFeedbackGenerateAllBtn', '⏳ 生成して返却中…');
+    var startedAt = Date.now();
+    var completed = 0;
+    var updatedCount = 0;
+    var returnedCount = 0;
+    var skippedExistingCount = 0;
+    var runChunk = function (index) {
+        if (index >= chunks.length) {
+            var msg = "AI\u30B3\u30E1\u30F3\u30C8\u3092 ".concat(updatedCount, "\u4EBA\u5206\u751F\u6210\u3057\u3001").concat(returnedCount, "\u4EBA\u3078\u8FD4\u5374\u3057\u307E\u3057\u305F").concat(skippedExistingCount ? " / \u5BFE\u8C61\u5916 ".concat(skippedExistingCount, "\u4EBA") : '', " / ").concat(formatElapsedSeconds_(startedAt));
+            showToast(msg);
+            setTeacherFeedbackResult("\u5B8C\u4E86: ".concat(msg));
+            setActionButtonDone_(btn, '✅ 完了');
+            scheduleTeacherStatusRefreshAfterReturn_();
+            return;
+        }
+        var chunk = chunks[index];
+        setTeacherFeedbackResult("\u751F\u6210\u3057\u3066\u8FD4\u5374\u4E2D: ".concat(completed, "/").concat(targetIds.length, "\u4EBA\u5B8C\u4E86"));
+        google.script.run
+            .withSuccessHandler(function (res) {
+            if (!(res && res.ok)) {
+                resetActionButton_(btn);
+                showToast(res && res.error || 'AI生成と返却に失敗しました');
+                scheduleTeacherStatusRefreshAfterReturn_();
+                return;
+            }
+            updatedCount += Number(res.updatedCount || 0);
+            returnedCount += Number(res.returnedCount || 0);
+            skippedExistingCount += Number(res.skippedExistingCount || 0);
+            completed += chunk.length;
+            if (Array.isArray(res.returnedIds) && res.returnedIds.length) {
+                applyTeacherFeedbackReturnedOptimistic_(res.returnedIds, res.drafts);
+            }
+            runChunk(index + 1);
+        })
+            .withFailureHandler(function (err) {
+            resetActionButton_(btn);
+            showToast(err && err.message || 'AI生成と返却に失敗しました');
+            scheduleTeacherStatusRefreshAfterReturn_();
+        })
+            .generateTeacherFeedbackDrafts(activeUnitId, activePeriod, includeRank, true, chunk, missingOnly, 'none');
+    };
+    showToast("AI\u30B3\u30E1\u30F3\u30C8\u3092".concat(chunks.length, "\u56DE\u306B\u5206\u3051\u3066\u3001\u3067\u304D\u305F\u9806\u306B\u8FD4\u5374\u3057\u307E\u3059\u2026"));
+    runChunk(0);
 }
 function generateTeacherFeedbackDraftForRow(responseId) {
     if (!activeUnitId || !activePeriod || !responseId)
@@ -3961,30 +4120,28 @@ function returnTeacherFeedbackDraftsFromStatus() {
         return;
     }
     var btn = setActionButtonBusy_('teacherFeedbackReturnBtn', '⏳ 一括返却中…');
+    var draftItems = collectTeacherFeedbackReturnDraftItems_(targetResponseIds);
     showToast(medalMode === 'auto_award' ? 'AI下書きを返却してメダルを処理しています…' : 'AI下書きを返却しています…');
-    flushTeacherFeedbackDrafts_(targetResponseIds, function () {
-        google.script.run
-            .withSuccessHandler(function (res) {
-            if (!(res && res.ok)) {
-                resetActionButton_(btn);
-                showToast(res && res.error || '返却に失敗しました');
-                return;
-            }
-            var msg = "".concat(res.returnedCount || 0, "\u4EBA\u3078\u8FD4\u5374\u3057\u307E\u3057\u305F").concat(res.medalAwarded ? ' / メダル発表まで完了' : '');
-            showToast(msg);
-            setTeacherFeedbackResult("\u5B8C\u4E86: ".concat(msg));
-            setActionButtonDone_(btn, '✅ 完了');
-            loadStatus();
-        })
-            .withFailureHandler(function (err) {
+    google.script.run
+        .withSuccessHandler(function (res) {
+        if (!(res && res.ok)) {
             resetActionButton_(btn);
-            showToast(err && err.message || '返却に失敗しました');
-        })
-            .returnTeacherFeedbackDrafts(activeUnitId, activePeriod, targetResponseIds, medalMode, { source: 'teacher_bulk_return', skipEventLogs: true });
-    }, function (err) {
+            showToast(res && res.error || '返却に失敗しました');
+            return;
+        }
+        var returnedIds = Array.isArray(res.returnedIds) && res.returnedIds.length ? res.returnedIds : targetResponseIds;
+        applyTeacherFeedbackReturnedOptimistic_(returnedIds);
+        var msg = "".concat(res.returnedCount || 0, "\u4EBA\u3078\u8FD4\u5374\u3057\u307E\u3057\u305F").concat(res.medalAwarded ? ' / メダル発表まで完了' : '');
+        showToast(msg);
+        setTeacherFeedbackResult("\u5B8C\u4E86: ".concat(msg));
+        setActionButtonDone_(btn, '✅ 完了');
+        scheduleTeacherStatusRefreshAfterReturn_();
+    })
+        .withFailureHandler(function (err) {
         resetActionButton_(btn);
-        showToast(err && err.message || '返却前の保存に失敗しました');
-    });
+        showToast(err && err.message || '返却に失敗しました');
+    })
+        .returnTeacherFeedbackDrafts(activeUnitId, activePeriod, targetResponseIds, medalMode, { source: 'teacher_bulk_return', skipEventLogs: true, draftItems: draftItems });
 }
 function clearTeacherFeedbackDraftsFromStatus() {
     if (!activeUnitId || !activePeriod) {
@@ -4163,26 +4320,24 @@ function returnTeacherFeedbackDraftForRow(responseId) {
     var row = findTeacherDraftRow_(responseId);
     if (isTeacherDraftRowBusy_(row))
         return;
-    flushTeacherFeedbackDrafts_([responseId], function () {
-        setTeacherDraftRowBusy_(responseId, true, '返却中');
-        google.script.run
-            .withSuccessHandler(function (res) {
-            if (!(res && res.ok)) {
-                setTeacherDraftRowBusy_(responseId, false);
-                showToast(res && res.error || '返却に失敗しました');
-                return;
-            }
-            showToast('返却しました');
-            loadStatus();
-        })
-            .withFailureHandler(function (err) {
+    var draftItems = collectTeacherFeedbackReturnDraftItems_([responseId]);
+    setTeacherDraftRowBusy_(responseId, true, '返却中');
+    google.script.run
+        .withSuccessHandler(function (res) {
+        if (!(res && res.ok)) {
             setTeacherDraftRowBusy_(responseId, false);
-            showToast(err && err.message || '返却に失敗しました');
-        })
-            .returnTeacherFeedbackDrafts(activeUnitId, activePeriod, [responseId]);
-    }, function (err) {
-        showToast(err && err.message || '返却前の保存に失敗しました');
-    });
+            showToast(res && res.error || '返却に失敗しました');
+            return;
+        }
+        applyTeacherFeedbackReturnedOptimistic_(Array.isArray(res.returnedIds) && res.returnedIds.length ? res.returnedIds : [responseId]);
+        showToast('返却しました');
+        scheduleTeacherStatusRefreshAfterReturn_();
+    })
+        .withFailureHandler(function (err) {
+        setTeacherDraftRowBusy_(responseId, false);
+        showToast(err && err.message || '返却に失敗しました');
+    })
+        .returnTeacherFeedbackDrafts(activeUnitId, activePeriod, [responseId], 'none', { source: 'teacher_row_return', skipEventLogs: true, draftItems: draftItems });
 }
 function clearTeacherFeedbackDraftForRow(responseId) {
     if (!activeUnitId || !activePeriod)

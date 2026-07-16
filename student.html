@@ -463,6 +463,7 @@ let currentStudentUnitInfo = null;
 let currentStudentName = '';
 let currentStudentCustoms = [];
 let currentStudentStateKey = '';
+let studentActiveReloading = false;
 const AUTO_SAVE_MS = 30000;
 const POLL_IDLE_MS = 4000;
 const POLL_WAITING_AI_MS = 2500;
@@ -722,6 +723,12 @@ let studentAppBootStarted=false;
 let studentEntryOptionsLoaded=Array.isArray(bootstrapStudentOptions.students) && bootstrapStudentOptions.students.length>0;
 let studentEntryOptionsLoading=!studentEntryOptionsLoaded;
 
+function logStudentApiTiming_(label,payload){
+  const timing=payload && payload.timing;
+  if(!timing || typeof console==='undefined' || typeof console.info!=='function') return;
+  console.info('[student-api]', label, timing);
+}
+
 function getInitialStudentOptions_(){
   const current=normalizeStudentEntryStudents_(bootstrapStudentOptions);
   if(current.length){
@@ -741,6 +748,7 @@ function getInitialStudentOptions_(){
 
 function applyStudentBootstrapData_(data, options){
   const opts=options||{};
+  logStudentApiTiming_(opts.initial?'bootstrap':'entryOptions', data);
   const normalizedStudents=normalizeStudentEntryStudents_(data);
   const hasStudents=Boolean(normalizedStudents.length);
   const hasClassSnapshot=Boolean(data && data.classSnapshot && typeof data.classSnapshot==='object');
@@ -832,6 +840,7 @@ function scheduleStudentClassSnapshotPreload_(){
     google.script.run
       .withSuccessHandler(payload=>{
         studentClassSnapshotPreloadBusy=false;
+        logStudentApiTiming_('classSnapshotPreload', payload);
         const snapshot=payload && payload.classSnapshot;
         if(snapshot && typeof snapshot==='object'){
           bootstrapStudentOptions.classSnapshot=snapshot;
@@ -1040,6 +1049,7 @@ function selectNumber(num, options){
     .withSuccessHandler(d=>{
       initBusy=false;
       setNumberSelectionBusy_(num,false);
+      logStudentApiTiming_('studentInit', d);
       onInit(d);
     })
     .withFailureHandler(e=>{
@@ -1069,7 +1079,7 @@ function onInit(d){
         initBusy=true;
         document.querySelectorAll('.period-btn').forEach(btn=>btn.disabled=true);
         google.script.run
-          .withSuccessHandler(d2=>{initBusy=false;loadMain(d2);})
+          .withSuccessHandler(d2=>{initBusy=false;logStudentApiTiming_('studentInitPeriod', d2);loadMain(d2);})
           .withFailureHandler(e=>{
             initBusy=false;
             document.querySelectorAll('.period-btn').forEach(btn=>btn.disabled=false);
@@ -1170,6 +1180,7 @@ function loadStudentState(options){
   }
   google.script.run
     .withSuccessHandler(payload=>{
+      logStudentApiTiming_('studentLoadState', payload);
       const identity=normalizeStudentIdentity_(payload);
       const normalizedPayload=Object.assign({}, payload||{}, { num: identity.num, name: identity.name });
       writeStudentCache_('state',cacheKey,normalizedPayload);
@@ -1219,6 +1230,7 @@ function loadPreviousReview(){
   }
   google.script.run
     .withSuccessHandler(res=>{
+      logStudentApiTiming_('getStudentPreviousReview', res);
       const text=String(res?.prevReview||'').trim();
       const previousNextGoal=String(res?.previousNextGoal||'').trim();
       writeStudentCache_('prevReview',cacheKey,res||{prevReview:'',previousNextGoal:''});
@@ -1817,6 +1829,7 @@ function refreshTimeline(options){
   const cacheKey=[myUnitId,myPeriod,myNum].join('_');
   google.script.run
     .withSuccessHandler(payload=>{
+      logStudentApiTiming_('getTimeline', payload);
       writeStudentCache_('timeline',cacheKey,payload);
       const me=applyTimelinePayload(payload);
       pollBusy=false;
@@ -1838,6 +1851,7 @@ function refreshTimeline(options){
 }
 
 function applyTimelinePayload(payload){
+  if(handleStudentActiveLessonChange_(payload)) return null;
   const rows=Array.isArray(payload)?payload:(payload?.rows||[]);
   lastTimelineServerNow=String(payload?.serverNow||'');
   teacherTimelineFieldKey = payload?.teacherTimelineFieldKey || teacherTimelineFieldKey || '';
@@ -1879,6 +1893,31 @@ function applyTimelinePayload(payload){
   }
   syncStudentTabState_();
   return me;
+}
+
+function handleStudentActiveLessonChange_(payload){
+  const active=payload && payload.active;
+  if(!active || !myNum || studentActiveReloading) return false;
+  const nextUnitId=String(active.unitId||'').trim();
+  const nextPeriod=Number(active.period||0);
+  if(!nextUnitId || nextPeriod<=0) return false;
+  if(String(myUnitId||'')===nextUnitId && Number(myPeriod||0)===nextPeriod) return false;
+  studentActiveReloading=true;
+  stopPolling();
+  const note=document.getElementById('submitNote');
+  if(note) note.textContent='先生が新しい授業を開始しました。画面を更新しています…';
+  google.script.run
+    .withSuccessHandler(d=>{
+      studentActiveReloading=false;
+      logStudentApiTiming_('studentInitActiveChanged', d);
+      loadMain(d);
+    })
+    .withFailureHandler(()=>{
+      studentActiveReloading=false;
+      scheduleNextPoll(POLL_IDLE_MS);
+    })
+    .studentInit(myNum,0);
+  return true;
 }
 
 function syncStudentTabState_(){
