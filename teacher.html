@@ -3179,8 +3179,11 @@ function renderActiveBanner(active) {
     var period = Number(active && active.period || activePeriod || 0);
     var unitId = String(active && active.unitId || activeUnitId || '').trim();
     var unit = (active && active.unit) || allUnits.find(function (u) { return String(u && u.id || '').trim() === unitId; }) || null;
-    if (unit && period > 0) {
-        el.innerHTML = "<div class=\"lesson-banner\">\n      <div class=\"lesson-banner-top\">\n        <div>\n          <div class=\"lbl\">\u2705 \u6388\u696D\u4E2D</div>\n          <div class=\"name\">".concat(esc(unit.subject), "\uFF1A").concat(esc(unit.name), "</div>\n          <div class=\"meta\">").concat(period, "\u3058\u304B\u3093\u3081</div>\n        </div>\n        <div class=\"lesson-banner-actions\">\n          <button class=\"btn-subtle lesson-action-btn\" type=\"button\" onclick=\"openLessonFieldEditor()\">\uD83D\uDD52 \u3053\u306E\u6642\u9593\u3060\u3051\u9805\u76EE\u3092\u7DE8\u96C6</button>\n          <button class=\"btn-ai lesson-action-btn\" type=\"button\" onclick=\"genStatusSummary()\">\uD83E\uDD16 \u3053\u306E\u6642\u9593\u306E\u3075\u308A\u304B\u3048\u308A\u30EC\u30DD\u30FC\u30C8</button>\n          <button class=\"btn-end lesson-action-btn\" type=\"button\" onclick=\"endLesson()\">\uD83D\uDD1A \u6388\u696D\u7D42\u4E86</button>\n        </div>\n      </div>\n      <div class=\"stat-row lesson-banner-stats\">\n        <div class=\"stat-box\"><div class=\"stat-num\" id=\"statTotal\">-</div><div class=\"stat-lbl\">\u5168\u54E1</div></div>\n        <div class=\"stat-box\"><div class=\"stat-num\" id=\"statWritten\">-</div><div class=\"stat-lbl\">\u8A18\u5165\u4E2D</div></div>\n        <div class=\"stat-box\"><div class=\"stat-num\" id=\"statSubmitted\">-</div><div class=\"stat-lbl\">\u63D0\u51FA\u6E08</div></div>\n        <div class=\"stat-box\"><div class=\"stat-num\" id=\"statAI\">-</div><div class=\"stat-lbl\">AI\u5B8C\u4E86</div></div>\n      </div>\n    </div>\n    <div class=\"ai-report\" id=\"statusAiReport\" style=\"display:none;\"></div>");
+    if ((unit || unitId) && period > 0) {
+        var unitLabel = unit
+            ? "".concat(esc(unit.subject), "\uFF1A").concat(esc(unit.name))
+            : "\u5358\u5143 ".concat(esc(unitId));
+        el.innerHTML = "<div class=\"lesson-banner\">\n      <div class=\"lesson-banner-top\">\n        <div>\n          <div class=\"lbl\">\u2705 \u6388\u696D\u4E2D</div>\n          <div class=\"name\">".concat(unitLabel, "</div>\n          <div class=\"meta\">").concat(period, "\u3058\u304B\u3093\u3081</div>\n        </div>\n        <div class=\"lesson-banner-actions\">\n          <button class=\"btn-subtle lesson-action-btn\" type=\"button\" onclick=\"openLessonFieldEditor()\">\uD83D\uDD52 \u3053\u306E\u6642\u9593\u3060\u3051\u9805\u76EE\u3092\u7DE8\u96C6</button>\n          <button class=\"btn-ai lesson-action-btn\" type=\"button\" onclick=\"genStatusSummary()\">\uD83E\uDD16 \u3053\u306E\u6642\u9593\u306E\u3075\u308A\u304B\u3048\u308A\u30EC\u30DD\u30FC\u30C8</button>\n          <button class=\"btn-end lesson-action-btn\" type=\"button\" onclick=\"endLesson()\">\uD83D\uDD1A \u6388\u696D\u7D42\u4E86</button>\n        </div>\n      </div>\n      <div class=\"stat-row lesson-banner-stats\">\n        <div class=\"stat-box\"><div class=\"stat-num\" id=\"statTotal\">-</div><div class=\"stat-lbl\">\u5168\u54E1</div></div>\n        <div class=\"stat-box\"><div class=\"stat-num\" id=\"statWritten\">-</div><div class=\"stat-lbl\">\u8A18\u5165\u4E2D</div></div>\n        <div class=\"stat-box\"><div class=\"stat-num\" id=\"statSubmitted\">-</div><div class=\"stat-lbl\">\u63D0\u51FA\u6E08</div></div>\n        <div class=\"stat-box\"><div class=\"stat-num\" id=\"statAI\">-</div><div class=\"stat-lbl\">AI\u5B8C\u4E86</div></div>\n      </div>\n    </div>\n    <div class=\"ai-report\" id=\"statusAiReport\" style=\"display:none;\"></div>");
     }
     else {
         el.innerHTML = "<div class=\"lesson-banner\" style=\"background:linear-gradient(135deg,#FAFAFA,#F1F5F9);border-color:#CFD8DC;\">\n      <div class=\"lesson-banner-top\">\n        <div>\n          <div class=\"lbl\" style=\"color:#607D8B;\">\u6388\u696D\u5F85\u6A5F\u4E2D</div>\n          <div class=\"name\" style=\"font-size:16px;\">\u73FE\u5728\u30A2\u30AF\u30C6\u30A3\u30D6\u306A\u6388\u696D\u306F\u3042\u308A\u307E\u305B\u3093\u3002</div>\n          <div class=\"meta\">\u5358\u5143\u3068\u6642\u9593\u76EE\u3092\u9078\u3093\u3067\u6388\u696D\u3092\u958B\u59CB\u3057\u3066\u304F\u3060\u3055\u3044\u3002</div>\n        </div>\n      </div>\n      <div class=\"stat-row lesson-banner-stats\">\n        <div class=\"stat-box\"><div class=\"stat-num\" id=\"statTotal\">0</div><div class=\"stat-lbl\">\u5168\u54E1</div></div>\n        <div class=\"stat-box\"><div class=\"stat-num\" id=\"statWritten\">0</div><div class=\"stat-lbl\">\u8A18\u5165\u4E2D</div></div>\n        <div class=\"stat-box\"><div class=\"stat-num\" id=\"statSubmitted\">0</div><div class=\"stat-lbl\">\u63D0\u51FA\u6E08</div></div>\n        <div class=\"stat-box\"><div class=\"stat-num\" id=\"statAI\">0</div><div class=\"stat-lbl\">AI\u5B8C\u4E86</div></div>\n      </div>\n    </div>";
@@ -3476,9 +3479,25 @@ function loadStatus() {
     })
         .getLessonStatus(requestUnitId, requestPeriod);
 }
+function applyActiveFromStatusMeta_(meta) {
+    var unitId = String(meta && meta.unitId || '').trim();
+    var period = Number(meta && meta.period || 0);
+    if (!unitId || period <= 0 || teacherEndingLesson)
+        return false;
+    if (String(activeUnitId || '') === unitId && Number(activePeriod || 0) === period)
+        return false;
+    activeUnitId = unitId;
+    activePeriod = period;
+    teacherActiveDebug = "status-meta resolved=".concat(activeUnitId, "/").concat(activePeriod);
+    renderActiveBanner({ unitId: unitId, period: period });
+    renderTimelineFieldSelect({ unitId: unitId, period: period });
+    populateUnitSelects();
+    return true;
+}
 function renderStatus(d) {
     latestStatusRows = Array.isArray(d && d.students) ? d.students : [];
     latestStatusMeta = d && d.meta || {};
+    applyActiveFromStatusMeta_(latestStatusMeta);
     if (!latestStatusRows.length && !(latestStatusMeta && (latestStatusMeta.unitId || latestStatusMeta.lessonId))) {
         clearRenderedStatus_();
         return;
