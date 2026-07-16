@@ -1537,6 +1537,7 @@ var teacherHelpData = null;
 var teacherHelpLoading = false;
 var teacherHelpAutoChecked = false;
 var teacherShellRefreshQueued = false;
+var teacherShellInitLoading = false;
 var unitProgressByUnitId = {};
 var teacherDataEpoch = 0;
 var lastTeacherStartAtMs = 0;
@@ -1813,6 +1814,7 @@ function loadStatusInit(options) {
             startStatusPoll(statusRefreshStarted || Boolean(d && d.status && Array.isArray(d.status.students) && d.status.students.length));
         }
         scheduleTeacherUnitProgressRefresh_(d);
+        ensureTeacherShellInitAfterStatus_(requestEpoch);
     })
         .withFailureHandler(function (err) {
         if (requestEpoch !== teacherDataEpoch)
@@ -1821,8 +1823,34 @@ function loadStatusInit(options) {
         if (opts.startPolling) {
             startStatusPoll(false);
         }
+        ensureTeacherShellInitAfterStatus_(requestEpoch);
     });
     runner.teacherStatusSnapshot();
+}
+function ensureTeacherShellInitAfterStatus_(requestEpoch) {
+    if (Array.isArray(allUnits) && allUnits.length)
+        return;
+    if (teacherShellInitLoading)
+        return;
+    teacherShellInitLoading = true;
+    google.script.run
+        .withSuccessHandler(function (d) {
+        teacherShellInitLoading = false;
+        if (requestEpoch !== teacherDataEpoch)
+            return;
+        applyTeacherInitData(d, {
+            includeRoster: true,
+            renderUnitList: false,
+            schedulePreload: true,
+            source: 'teacherInitAfterStatus',
+        });
+        scheduleTeacherUnitProgressRefresh_(d);
+    })
+        .withFailureHandler(function (err) {
+        teacherShellInitLoading = false;
+        console.warn('teacherInitAfterStatus failed', err);
+    })
+        .teacherInit();
 }
 function scheduleTeacherUnitProgressRefresh_(data) {
     if (!(data && data.progressNeedsRefresh))
