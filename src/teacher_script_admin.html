@@ -1,0 +1,477 @@
+<script>
+function renderRosterEditor(){
+  const body=document.getElementById('rosterBody');
+  if(!rosterEntries.length){
+    rosterEntries=[{studentId:'',number:1,name:'',active:true}];
+  }
+  body.innerHTML=rosterEntries.map((row,idx)=>`
+    <tr>
+      <td>${idx+1}</td>
+      <td><input class="inp" type="number" min="1" value="${row.number||''}" onchange="updateRosterField(${idx},'number',this.value)"></td>
+      <td><input class="inp" type="text" value="${esc(row.name||'')}" onchange="updateRosterField(${idx},'name',this.value)"></td>
+      <td style="text-align:center;"><input type="checkbox" ${row.active!==false?'checked':''} onchange="updateRosterField(${idx},'active',this.checked)"></td>
+      <td><button class="btn-remove" onclick="removeRosterRow(${idx})">✕</button></td>
+    </tr>
+  `).join('');
+}
+
+function loadRosterEditor(){
+  const cachedRoster=normalizeRosterPreload_(preloadCache.roster);
+  if(cachedRoster){
+    rosterEntries=cachedRoster.roster;
+    preloadCache.roster=cachedRoster;
+    renderRosterEditor();
+    ensureRosterPreload(true, {
+      onSuccess:()=>renderRosterEditor(),
+    });
+    return;
+  }
+  clearRosterPreload_(true);
+  renderRosterEditor();
+  ensureRosterPreload(true, {
+    onSuccess:()=>renderRosterEditor(),
+    onEmpty:()=>renderRosterEditor(),
+  });
+}
+
+function updateRosterField(idx,key,value){
+  rosterEntries[idx][key]=key==='number'?Number(value):value;
+}
+
+function addRosterRow(){
+  const nextNumber=(rosterEntries.reduce((max,row)=>Math.max(max,Number(row.number)||0),0)||0)+1;
+  rosterEntries.push({studentId:'',number:nextNumber,name:'',active:true});
+  renderRosterEditor();
+}
+
+function removeRosterRow(idx){
+  rosterEntries.splice(idx,1);
+  renderRosterEditor();
+}
+
+function saveRoster(){
+  const cleaned=rosterEntries
+    .map(row=>({
+      studentId:row.studentId||'',
+      number:Number(row.number)||0,
+      name:String(row.name||'').trim(),
+      active:row.active!==false,
+    }))
+    .filter(row=>row.number>0);
+  const dup=new Set();
+  for(const row of cleaned){
+    if(dup.has(row.number)){alert('出席番号が重複しています');return;}
+    dup.add(row.number);
+  }
+  google.script.run
+    .withSuccessHandler(()=>{
+      preloadCache.roster={ roster:cleaned.map(row=>({...row})) };
+      persistTeacherPreloadCache_();
+      loadRosterEditor();
+      alert('名簿を保存しました！');
+    })
+    .saveRosterEntries(cleaned);
+}
+
+// =====================================
+//  教科デフォルト編集
+// =====================================
+function loadSubjectEditor(){
+  if(preloadCache.editor){
+    applyTeacherEditorData(preloadCache.editor);
+    return;
+  }
+  ensureEditorPreload();
+  google.script.run.withSuccessHandler(d=>{
+    preloadCache.editor=d||{ presets:[], subjectDefaults:{}, subjects:[], recentCustomPresets:[] };
+    persistTeacherPreloadCache_();
+    applyTeacherEditorData(preloadCache.editor);
+  }).teacherEditorInit();
+}
+
+function applyTeacherEditorData(d){
+  subjectDefaults=d.subjectDefaults||{};
+  allPresets     =d.presets||[];
+  allSubjects    =d.subjects||[];
+  recentCustomPresets=d.recentCustomPresets||[];
+  renderSubjectTabs();
+  selectSubjectTab(currentSubject || allSubjects[0] || '算数');
+  renderPresetBtns();
+  const editUnitId=(document.getElementById('editUnitId')||{}).value||'';
+  if(!editUnitId && editingFields.length===0){
+    applySubjectDefault((document.getElementById('fSubject')||{}).value || currentSubject || '算数');
+  }
+}
+
+function renderSubjectTabs(){
+  const container=document.getElementById('subjectTabs');
+  const subjects=(allSubjects&&allSubjects.length?allSubjects:Object.keys(subjectDefaults));
+  container.innerHTML=subjects.map(s=>
+    `<div class="stab ${s===currentSubject?'active':''}" onclick="selectSubjectTab('${esc(s)}')">${esc(s)}</div>`
+  ).join('');
+}
+
+function selectSubjectTab(subject){
+  currentSubject=subject;
+  document.querySelectorAll('.stab').forEach(t=>{
+    t.classList.toggle('active',t.textContent===subject);
+  });
+  subjectEditingFields=(subjectDefaults[subject]||[]).map(f=>({...f,enabled:f.enabled!==false}));
+  renderSubjectFieldEditor(subject);
+}
+
+function renderSubjectFieldEditor(subject){
+  const el=document.getElementById('subjectFieldEditor');
+  const presetMap=new Map(allPresets.map(p=>[p.key,p]));
+  const customFields=subjectEditingFields.filter(f=>!presetMap.has(f.key));
+  el.innerHTML=`<p class="subject-help">「${subject}」のデフォルト項目です。プリセットのON/OFFに加えて、カスタム項目もここで管理できます。</p><div class="subject-preset-list">`+
+    allPresets.map(p=>{
+      const on=subjectEditingFields.some(f=>f.key===p.key&&f.enabled!==false);
+      return `<label style="display:flex;align-items:center;gap:8px;padding:8px;border-radius:8px;
+        background:${on?'#E8F5E9':'#F5F5F5'};margin-bottom:6px;cursor:pointer;">
+        <input type="checkbox" value="${p.key}" ${on?'checked':''} onchange="toggleSubjectPreset('${p.key}', this.checked)">
+        ${p.emoji} <span style="font-weight:bold;">${esc(p.label)}</span>
+        <span style="font-size:11px;color:var(--muted);">${typeLabel(p.type)}${formatFieldCategorySuffix(p)}</span>
+      </label>`;
+    }).join('')+
+    `</div><div class="subject-custom-list">`+
+    (customFields.length ? customFields.map((f,idx)=>`
+      <div class="field-item enabled">
+        <span class="f-emoji">${f.emoji||'🆕'}</span>
+        <div style="flex:1;min-width:0;">
+          <div class="subject-custom-head">
+            <div class="f-label">${esc(f.label)}</div>
+            <button class="btn-remove" type="button" onclick="removeSubjectCustomField(${idx})">✕</button>
+          </div>
+          <div class="subject-custom-meta">${typeLabel(f.type)}${formatFieldCategorySuffix(f)}${f.options?` / ${esc(f.options)}`:''}</div>
+        </div>
+      </div>
+    `).join('') : '<div class="subject-empty">この教科のカスタム項目はまだありません。</div>')+
+    `</div>`;
+}
+
+function toggleSubjectPreset(key, checked){
+  const preset=allPresets.find(p=>p.key===key);
+  if(!preset) return;
+  const idx=subjectEditingFields.findIndex(f=>f.key===key);
+  if(checked){
+    if(idx<0) subjectEditingFields.push({...preset, enabled:true});
+    else subjectEditingFields[idx].enabled=true;
+  } else if(idx>=0){
+    subjectEditingFields.splice(idx,1);
+  }
+  subjectDefaults[currentSubject]=subjectEditingFields.map(f=>({...f}));
+  renderSubjectFieldEditor(currentSubject);
+}
+
+function saveSubjectDefault(){
+  subjectDefaults[currentSubject]=subjectEditingFields.map(f=>({...f}));
+  google.script.run
+    .withSuccessHandler(()=>{
+      preloadCache.editor={
+        ...(preloadCache.editor||{}),
+        presets:allPresets.slice(),
+        subjectDefaults:{...subjectDefaults},
+        subjects:allSubjects.slice(),
+        recentCustomPresets:recentCustomPresets.slice(),
+      };
+      persistTeacherPreloadCache_();
+      alert(`「${currentSubject}」のデフォルトを保存しました！`);
+    })
+    .updateSubjectDefault(currentSubject,subjectEditingFields);
+}
+
+function addSubjectCustomField(){
+  const field=createCustomFieldFromInputs('sf', subjectEditingFields);
+  if(!field) return;
+  subjectEditingFields.push(field);
+  rememberRecentCustomPreset(field);
+  subjectDefaults[currentSubject]=subjectEditingFields.map(f=>({...f}));
+  renderSubjectFieldEditor(currentSubject);
+  renderPresetBtns();
+}
+
+function autoTagSubjectFields(){
+  const result=autoTagFieldCollection(subjectEditingFields);
+  subjectEditingFields=result.fields;
+  subjectDefaults[currentSubject]=subjectEditingFields.map(f=>({...f}));
+  renderSubjectFieldEditor(currentSubject);
+  alert(result.updated?`観点タグを ${result.updated} 項目に設定しました。`:'追加で設定できる観点タグはありませんでした。');
+}
+
+function removeSubjectCustomField(index){
+  const presetMap=new Map(allPresets.map(p=>[p.key,p]));
+  const customIndexes=subjectEditingFields
+    .map((field,idx)=>({field,idx}))
+    .filter(row=>!presetMap.has(row.field.key));
+  const target=customIndexes[index];
+  if(!target) return;
+  subjectEditingFields.splice(target.idx,1);
+  subjectDefaults[currentSubject]=subjectEditingFields.map(f=>({...f}));
+  renderSubjectFieldEditor(currentSubject);
+}
+
+function typeLabel(t){
+  return {
+    text:'自由記述',
+    select:'選択肢',
+    radio:'ラジオ',
+    review:'ふりかえり',
+    number:'数値',
+    student_select:'児童名簿（1人）',
+    student_multi:'児童名簿（複数）',
+  }[t]||t;
+}
+
+// =====================================
+//  プロンプト
+// =====================================
+function loadPrompts(){
+  if(preloadCache.prompts){
+    applyPromptData(preloadCache.prompts);
+    return;
+  }
+  ensurePromptPreload();
+  google.script.run.withSuccessHandler(d=>{
+    preloadCache.prompts=d||{ globalCfg:{}, aiQueue:null };
+    persistTeacherPreloadCache_();
+    applyPromptData(preloadCache.prompts);
+  }).teacherPromptInit();
+}
+
+function applyPromptData(d){
+  const cfg=d.globalCfg||{};
+  applyTeacherHelpData(d.help||{});
+  document.getElementById('pComment').value=cfg.prompt_comment||'';
+  document.getElementById('pScore').value  =cfg.prompt_score||'';
+  document.getElementById('pPortfolio').value=cfg.prompt_portfolio||'';
+  document.getElementById('pUnitSummary').value=cfg.prompt_unit_summary||'';
+  document.getElementById('pAssessment').value=cfg.prompt_assessment||'';
+  document.getElementById('pMedal').value  =cfg.medal_top||'5';
+  document.getElementById('pStudentAiAutoSubmit').checked=cfg.student_ai_submit_enabled===true;
+  const aiModeParts=[
+    `児童AI: ${cfg.student_ai_enabled?'ON':'OFF'}`,
+    `提出時自動投入: ${cfg.student_ai_submit_enabled?'ON':'OFF'}`,
+    `先生AI: ${cfg.teacher_ai_enabled?'ON':'OFF'}`,
+    cfg.api_key_configured?`APIキー設定済み: ${cfg.api_key_masked}`:'APIキー未設定'
+  ];
+  document.getElementById('apiKeyStatus').textContent=aiModeParts.join(' / ');
+  document.getElementById('pApiKey').value='';
+  renderAiQueue(d.aiQueue||null);
+  syncTeacherAiUi_();
+}
+
+function openAiLogsTab(){
+  const tabBtn=document.querySelector(".tab[onclick*=\"'logs'\"]");
+  switchTab('logs', tabBtn||null);
+}
+
+function loadAiQueuePanel(){
+  google.script.run
+    .withSuccessHandler(renderAiQueue)
+    .withFailureHandler(err=>{
+      const queueMeta=document.getElementById('aiQueueMeta');
+      if(queueMeta) queueMeta.textContent=`AIキュー取得失敗: ${(err && err.message)||err||'unknown'}`;
+    })
+    .getAiQueueStatus();
+}
+
+function renderAiQueue(queue){
+  const data=queue||{};
+  const queueMeta=document.getElementById('aiQueueMeta');
+  if(queueMeta){
+    if(data.disabled){
+      queueMeta.textContent='児童AIコメントはこの先生では無効です。';
+      return;
+    }
+    const parts=[];
+    if(Number(data.pending||0) > 0) parts.push(`AI待ち ${data.pending}件`);
+    if(Number(data.processing||0) > 0) parts.push(`AI処理中 ${data.processing}件`);
+    if(Number(data.error||0) > 0) parts.push(`AI失敗 ${data.error}件`);
+    if(Number(data.persistRetryItems||0) > 0) parts.push(`保存再試行 ${data.persistRetryItems}件`);
+    queueMeta.textContent=parts.length ? parts.join(' / ') : 'AI保守の滞留はありません。';
+  }
+}
+
+function loadAiLogs(){
+  const meta=document.getElementById('aiLogMeta');
+  const box=document.getElementById('aiLogText');
+  if(!meta||!box) return;
+  const scope=(document.getElementById('aiLogScope')||{}).value||'current';
+  const limit=Math.max(20, Number((document.getElementById('aiLogLimit')||{}).value||60) || 60);
+  meta.textContent='AIログを読み込み中…';
+  box.value='';
+  google.script.run
+    .withSuccessHandler(res=>{
+      const data=res||{};
+      box.value=String(data.text||'');
+      meta.textContent=[
+        data.scopeLabel||'',
+        `${Number(data.rowCount||0)}件`,
+        data.build?`build ${data.build}`:'',
+      ].filter(Boolean).join(' / ');
+    })
+    .withFailureHandler(err=>{
+      meta.textContent=`AIログ取得失敗: ${(err && err.message)||err||'unknown'}`;
+      box.value='';
+    })
+    .getAiLogSnapshot(scope, limit, activeUnitId||'', activePeriod||0);
+}
+
+function copyAiLogText(){
+  const box=document.getElementById('aiLogText');
+  const text=String(box ? box.value||'' : '').trim();
+  if(!text){
+    alert('コピーするログがありません。先に読込してください。');
+    return;
+  }
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text)
+      .then(()=>alert('AIログをコピーしました。'))
+      .catch(()=>fallbackCopyAiLogText_(box));
+    return;
+  }
+  fallbackCopyAiLogText_(box);
+}
+
+function fallbackCopyAiLogText_(box){
+  try{
+    box.focus();
+    box.select();
+    document.execCommand('copy');
+    alert('AIログをコピーしました。');
+  }catch(_err){
+    alert('コピーに失敗しました。ログ欄を手動で選択してください。');
+  }
+}
+
+function retryAiErrors(){
+  const btn=document.getElementById('retryAiBtn');
+  btn.disabled=true;
+  google.script.run
+    .withSuccessHandler(res=>{
+      btn.disabled=false;
+      renderAiQueue(res && res.queue || null);
+      alert(`再実行対象 ${res && res.retried || 0} 件 / stale復旧 ${res && res.staleReset || 0} 件`);
+    })
+    .withFailureHandler(err=>{
+      btn.disabled=false;
+      alert(`再実行に失敗しました: ${(err && err.message)||err||'unknown'}`);
+    })
+    .retryFailedAiResponses();
+}
+
+function seedAiLoadTestFromTeacher(){
+  if(!activeUnitId||!activePeriod){
+    alert('先に授業を選んでください。');
+    return;
+  }
+  const raw=window.prompt('何件のダミー提出を流しますか？', '12');
+  if(raw===null) return;
+  const count=Math.max(1, Number(raw)||0);
+  if(!count){
+    alert('件数を数字で入力してください。');
+    return;
+  }
+  const btn=document.getElementById('seedAiLoadTestBtn');
+  if(btn) btn.disabled=true;
+  google.script.run
+    .withSuccessHandler(res=>{
+      if(btn) btn.disabled=false;
+      if(!(res && res.ok)){
+        alert(`AIテスト投入に失敗しました: ${res && res.error || 'unknown'}`);
+        return;
+      }
+      renderAiQueue(res && res.queue || null);
+      const processed=res && res.count || 0;
+      alert(`AIテストを ${processed} 件投入しました。${res && res.kickStatus ? ` / kick=${res.kickStatus}` : ''}`);
+      loadStatus();
+    })
+    .withFailureHandler(err=>{
+      if(btn) btn.disabled=false;
+      alert(`AIテスト投入に失敗しました: ${(err && err.message)||err||'unknown'}`);
+    })
+    .seedAiLoadTest(activeUnitId, activePeriod, count);
+}
+
+function clearAiLoadTestFromTeacher(){
+  if(!activeUnitId||!activePeriod){
+    alert('先に授業を選んでください。');
+    return;
+  }
+  if(!window.confirm('この授業の [AI_LOAD_TEST] つきテスト行を削除します。よいですか？')) return;
+  const btn=document.getElementById('clearAiLoadTestBtn');
+  if(btn) btn.disabled=true;
+  google.script.run
+    .withSuccessHandler(res=>{
+      if(btn) btn.disabled=false;
+      renderAiQueue(res && res.queue || null);
+      alert(`テスト行を削除しました。Responses ${res && res.removedResponses || 0} 件 / History ${res && res.removedHistory || 0} 件`);
+      loadStatus();
+    })
+    .withFailureHandler(err=>{
+      if(btn) btn.disabled=false;
+      alert(`テスト削除に失敗しました: ${(err && err.message)||err||'unknown'}`);
+    })
+    .clearAiLoadTest(activeUnitId, activePeriod);
+}
+
+function purgeAiLogs(){
+  const days=Math.max(1, Number((document.getElementById('aiLogRetentionDays')||{}).value||90) || 90);
+  if(!window.confirm(`${days}日より前のAIログを削除します。よいですか？`)) return;
+  google.script.run
+    .withSuccessHandler(res=>{
+      alert(`AIログを整理しました。削除 ${res && res.deleted || 0} 件 / 残り ${res && res.remaining || 0} 件`);
+      loadAiLogs();
+    })
+    .withFailureHandler(err=>{
+      alert(`AIログ整理に失敗しました: ${(err && err.message)||err||'unknown'}`);
+    })
+    .purgeAiLogsOlderThan(days);
+}
+
+function savePrompts(){
+  const nextPromptCache={
+    globalCfg:{
+      medal_top:document.getElementById('pMedal').value,
+      prompt_comment:document.getElementById('pComment').value,
+      prompt_score:document.getElementById('pScore').value,
+      prompt_portfolio:document.getElementById('pPortfolio').value,
+      prompt_unit_summary:document.getElementById('pUnitSummary').value,
+      prompt_assessment:document.getElementById('pAssessment').value,
+      student_ai_enabled:(((preloadCache.prompts && preloadCache.prompts.globalCfg) || {}).student_ai_enabled)===true,
+      student_ai_submit_enabled:Boolean(document.getElementById('pStudentAiAutoSubmit').checked),
+      teacher_ai_enabled:(((preloadCache.prompts && preloadCache.prompts.globalCfg) || {}).teacher_ai_enabled)===true,
+      api_key_configured:Boolean(document.getElementById('pApiKey').value || (((preloadCache.prompts && preloadCache.prompts.globalCfg) || {}).api_key_configured)),
+      api_key_masked:(((preloadCache.prompts && preloadCache.prompts.globalCfg) || {}).api_key_masked)||'',
+    },
+    aiQueue:(preloadCache.prompts||{}).aiQueue||null,
+  };
+  google.script.run
+    .withSuccessHandler(res=>{
+      const savedCfg=(res && res.globalCfg) || {};
+      nextPromptCache.globalCfg={
+        ...nextPromptCache.globalCfg,
+        ...savedCfg,
+      };
+      preloadCache.prompts=nextPromptCache;
+      persistTeacherPreloadCache_();
+      applyPromptData(preloadCache.prompts);
+      alert('プロンプトを保存しました！');
+    })
+    .saveGlobalSettings(
+      document.getElementById('pMedal').value,
+      document.getElementById('pComment').value,
+      document.getElementById('pScore').value,
+      document.getElementById('pPortfolio').value,
+      document.getElementById('pUnitSummary').value,
+      document.getElementById('pAssessment').value,
+      document.getElementById('pApiKey').value,
+      document.getElementById('pStudentAiAutoSubmit').checked
+    );
+}
+
+// =====================================
+//  児童別ポートフォリオ
+// =====================================
+</script>

@@ -1,0 +1,1822 @@
+<script>
+var __assign = (this && this.__assign) || function () {
+    __assign = Object.assign || function(t) {
+        for (var s, i = 1, n = arguments.length; i < n; i++) {
+            s = arguments[i];
+            for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p))
+                t[p] = s[p];
+        }
+        return t;
+    };
+    return __assign.apply(this, arguments);
+};
+var latestStatusRows = [];
+var latestStatusMeta = {};
+var teacherStatusRequestSeq = 0;
+var teacherFeedbackResultTimer = null;
+var unitSaveState = { busy: false, requestToken: '' };
+var lessonFieldEditState = { mode: 'unit', unitId: '', period: 0 };
+var teacherDraftLocalState = {};
+var unitListPage = 1;
+var lastUnitListSignature = '';
+var UNIT_LIST_PAGE_SIZE = 10;
+var TEACHER_FEEDBACK_PREFS_KEY = 'teacher_feedback_prefs_v1';
+var teacherFeedbackPrefsLoaded = false;
+function formatStatusTimingLine_(label, timing, keys) {
+    if (!timing || typeof timing !== 'object' || !Array.isArray(keys) || !keys.length)
+        return '';
+    var parts = keys
+        .map(function (key) {
+        var value = Number(timing[key] || 0);
+        if (!Number.isFinite(value) || value <= 0)
+            return '';
+        var name = String(key || '').replace(/Ms$/, '');
+        return "".concat(name, " ").concat(value, "ms");
+    })
+        .filter(Boolean);
+    if (!parts.length)
+        return '';
+    return "".concat(label, ": ").concat(parts.join(' / '));
+}
+function formatResponseReadMetaLine_(meta) {
+    if (!meta || typeof meta !== 'object')
+        return '';
+    var mode = String(meta.mode || '').trim();
+    if (!mode)
+        return '';
+    var parts = ["response ".concat(mode)];
+    if (Number.isFinite(Number(meta.masterCount)))
+        parts.push("master ".concat(Number(meta.masterCount || 0)));
+    if (Number.isFinite(Number(meta.mergedCount)))
+        parts.push("merged ".concat(Number(meta.mergedCount || 0)));
+    return parts.join(' / ');
+}
+function formatUnitsReadMetaLine_(meta) {
+    if (!meta || typeof meta !== 'object')
+        return '';
+    var mode = String(meta.mode || '').trim();
+    if (!mode)
+        return '';
+    var parts = ["units ".concat(mode)];
+    var masterReadPath = String(meta.masterReadPath || '').trim();
+    if (masterReadPath)
+        parts.push(masterReadPath);
+    if (Number.isFinite(Number(meta.masterCount)))
+        parts.push("master ".concat(Number(meta.masterCount || 0)));
+    if (Number.isFinite(Number(meta.mergedCount)))
+        parts.push("merged ".concat(Number(meta.mergedCount || 0)));
+    if (meta.cached === true)
+        parts.push('cached');
+    return parts.join(' / ');
+}
+function renderStatusPerfDebug_() {
+    var el = document.getElementById('statusPerfDebug');
+    if (!el)
+        return;
+    var lessonTiming = latestStatusMeta && latestStatusMeta.timing || null;
+    var requestTiming = latestStatusMeta && latestStatusMeta.serverRequestTiming || null;
+    var responseReadMeta = latestStatusMeta && latestStatusMeta.responseReadMeta || null;
+    var unitsReadMeta = (latestStatusMeta && latestStatusMeta.unitsReadMeta)
+        || window.__teacherUnitsReadMeta
+        || null;
+    var lines = [
+        formatStatusTimingLine_('表示データ', lessonTiming, ['totalMs', 'snapshotMs', 'responsesMs', 'draftsMs', 'rosterMs', 'studentBuildMs']),
+        formatStatusTimingLine_('初回読込', requestTiming, ['totalMs', 'unitsMs', 'activeMs', 'unitProgressMs', 'lessonStatusMs']),
+        formatUnitsReadMetaLine_(unitsReadMeta),
+        formatResponseReadMetaLine_(responseReadMeta),
+    ].filter(Boolean);
+    if (!lines.length) {
+        el.style.display = 'none';
+        el.textContent = '';
+        return;
+    }
+    el.style.display = 'block';
+    el.textContent = lines.join(' | ');
+}
+function loadTeacherFeedbackPrefs_() {
+    try {
+        var raw = localStorage.getItem(TEACHER_FEEDBACK_PREFS_KEY);
+        var parsed = raw ? JSON.parse(raw) : {};
+        return parsed && typeof parsed === 'object' ? parsed : {};
+    }
+    catch (_err) {
+        return {};
+    }
+}
+function saveTeacherFeedbackPrefs_() {
+    try {
+        localStorage.setItem(TEACHER_FEEDBACK_PREFS_KEY, JSON.stringify({
+            rankMode: (document.getElementById('teacherFeedbackRankMode') || {}).value || 'with_rank',
+            autoReturn: Boolean((document.getElementById('teacherFeedbackAutoReturn') || {}).checked),
+            medalMode: (document.getElementById('teacherFeedbackMedalMode') || {}).value || 'auto_award',
+        }));
+    }
+    catch (_err) { }
+}
+function applyTeacherFeedbackPrefs_() {
+    if (teacherFeedbackPrefsLoaded)
+        return;
+    teacherFeedbackPrefsLoaded = true;
+    var prefs = loadTeacherFeedbackPrefs_();
+    var rankMode = document.getElementById('teacherFeedbackRankMode');
+    var autoReturn = document.getElementById('teacherFeedbackAutoReturn');
+    var medalMode = document.getElementById('teacherFeedbackMedalMode');
+    if (rankMode)
+        rankMode.value = String(prefs.rankMode || 'with_rank');
+    if (autoReturn)
+        autoReturn.checked = Boolean(prefs.autoReturn);
+    if (medalMode)
+        medalMode.value = String(prefs.medalMode || 'auto_award');
+}
+function bindTeacherFeedbackPrefs_() {
+    applyTeacherFeedbackPrefs_();
+    ['teacherFeedbackRankMode', 'teacherFeedbackAutoReturn', 'teacherFeedbackMedalMode'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (!el || el.dataset.prefBound === '1')
+            return;
+        el.dataset.prefBound = '1';
+        el.addEventListener('change', saveTeacherFeedbackPrefs_);
+    });
+}
+function loadStatus() {
+    bindTeacherFeedbackPrefs_();
+    if (!activeUnitId || !activePeriod)
+        return;
+    if (preloadCache.statusLoading)
+        return;
+    preloadCache.statusLoading = true;
+    var requestSeq = ++teacherStatusRequestSeq;
+    var requestUnitId = String(activeUnitId || '');
+    var requestPeriod = Number(activePeriod || 0);
+    google.script.run
+        .withSuccessHandler(function (d) {
+        preloadCache.statusLoading = false;
+        if (requestSeq !== teacherStatusRequestSeq)
+            return;
+        if (String(activeUnitId || '') !== requestUnitId || Number(activePeriod || 0) !== requestPeriod)
+            return;
+        var meta = d && d.meta || {};
+        var responseUnitId = String(meta.unitId || requestUnitId);
+        var responsePeriod = Number(meta.period || requestPeriod);
+        if (responseUnitId !== requestUnitId || responsePeriod !== requestPeriod)
+            return;
+        renderStatus(d);
+    })
+        .withFailureHandler(function () {
+        preloadCache.statusLoading = false;
+    })
+        .getLessonStatus(requestUnitId, requestPeriod);
+}
+function applyActiveFromStatusMeta_(meta) {
+    var unitId = String(meta && meta.unitId || '').trim();
+    var period = Number(meta && meta.period || 0);
+    if (!unitId || period <= 0 || teacherEndingLesson)
+        return false;
+    if (String(activeUnitId || '') === unitId && Number(activePeriod || 0) === period)
+        return false;
+    activeUnitId = unitId;
+    activePeriod = period;
+    teacherActiveDebug = "status-meta resolved=".concat(activeUnitId, "/").concat(activePeriod);
+    renderActiveBanner({
+        unitId: unitId,
+        period: period,
+        unitName: String(meta && meta.unitName || '').trim(),
+        subject: String(meta && meta.subject || '').trim(),
+    });
+    renderTimelineFieldSelect({ unitId: unitId, period: period });
+    populateUnitSelects();
+    return true;
+}
+function renderStatus(d) {
+    latestStatusRows = Array.isArray(d && d.students) ? d.students : [];
+    latestStatusMeta = d && d.meta || {};
+    applyActiveFromStatusMeta_(latestStatusMeta);
+    if (!latestStatusRows.length && !(latestStatusMeta && (latestStatusMeta.unitId || latestStatusMeta.lessonId))) {
+        clearRenderedStatus_();
+        return;
+    }
+    writeTeacherStatusPreloadCache_({
+        meta: latestStatusMeta,
+        students: latestStatusRows,
+    });
+    renderStatusPerfDebug_();
+    var st = latestStatusRows;
+    var aiReturnedCount = st.filter(function (s) { return String(s.comment || '').trim(); }).length;
+    var draftCount = st.filter(function (s) { return hasTeacherDraft(s); }).length;
+    document.getElementById('statTotal').textContent = st.length;
+    document.getElementById('statWritten').textContent = st.filter(function (s) { return (s.writtenCount || 0) > 0; }).length;
+    document.getElementById('statSubmitted').textContent = st.filter(function (s) { return s.submitted; }).length;
+    document.getElementById('statAI').textContent = aiReturnedCount;
+    syncTeacherFeedbackControls(st, draftCount);
+    if (!st.length) {
+        document.getElementById('statusBody').innerHTML = '<tr><td colspan="2" style="text-align:center;padding:18px;color:#78909C;">授業を開始すると、ここに児童の記録とフィードバックが表示されます。</td></tr>';
+        return;
+    }
+    document.getElementById('statusBody').innerHTML = st.map(function (s) { return "\n    <tr>\n      <td data-label=\"\u5150\u7AE5 / \u63D0\u51FA\u5185\u5BB9\" class=\"status-student-cell\">".concat(renderStatusStudentCell(s), "</td>\n      <td data-label=\"\u30D5\u30A3\u30FC\u30C9\u30D0\u30C3\u30AF\" class=\"status-comment-cell\">").concat(renderStatusComment(s), "</td>\n    </tr>"); }).join('');
+}
+function renderStatusStudentCell(student) {
+    return "\n    <div class=\"status-student-stack\">\n      <div class=\"status-student-head\">\n        <span class=\"status-name-text\">".concat(esc(formatStatusStudentName(student)), "</span>\n      </div>\n      <div class=\"status-student-meta\">\n        <span>").concat(renderUnderstandingChip(student.understanding), "</span>\n        <span class=\"status-inline-block\">").concat(renderMedal(student.medal, student.medalColor), "</span>\n      </div>\n      ").concat(renderStatusEntries(student), "\n    </div>");
+}
+function formatStatusStudentName(student) {
+    var num = String(student && student.num || '').trim();
+    var name = safeStudentName(student);
+    return num ? "".concat(num, ". ").concat(name) : name;
+}
+function safeStudentName(student) {
+    return String(student && student.name || '').trim() || "".concat(student && student.num || '', "\u3070\u3093");
+}
+function renderStatusEntries(student) {
+    var entries = Array.isArray(student.entries) ? student.entries : [];
+    if (!entries.length) {
+        return '<span class="status-comment-empty">まだ入力がありません</span>';
+    }
+    return "<div class=\"status-field-list\">".concat(entries.map(function (entry) { return "\n    <div class=\"status-field-item\">\n      <span class=\"status-field-label\">".concat(esc(((entry.emoji || '') ? "".concat(entry.emoji, " ") : '') + (entry.label || entry.key || '項目')), "</span>\n      <span class=\"status-field-value\">").concat(renderStatusEntryValue(entry), "</span>\n    </div>\n  "); }).join(''), "</div>");
+}
+function renderStatusEntryValue(entry) {
+    var value = String(entry && entry.value || '');
+    if (String(entry && entry.type || '') === 'review') {
+        return renderTeacherReviewText_(value, [entry]);
+    }
+    return esc(value).replace(/\n/g, '<br>');
+}
+function renderStatusComment(student) {
+    var comment = String(student.comment || '').trim();
+    var rank = String(student.rank || '').trim();
+    var draftComment = String(student.draftComment || '').trim();
+    var draftRank = String(student.draftRank || '').trim();
+    var showStateInActions = Boolean(canTeacherFeedbackGenerateForStudent(student) && latestStatusMeta.teacherAiEnabled);
+    var stateHtml = "<span class=\"status-ai-state-chip\">".concat(renderStudentAiState(student), "</span>");
+    var parts = [];
+    if (comment || rank) {
+        parts.push("\n      <div class=\"status-meta-stack\">\n        <div class=\"status-comment-head\">\n          ".concat(rank ? "<span class=\"rank-chip r-".concat(rank.replace('+', 'p'), "\">").concat(rank, "</span>") : '<span class="status-comment-empty">ランクなし</span>', "\n          ").concat(showStateInActions ? '' : stateHtml, "\n        </div>\n        <div class=\"status-comment-text\">").concat(esc(comment || 'コメントなし'), "</div>\n      </div>"));
+    }
+    else {
+        parts.push(showStateInActions ? '' : "<div class=\"status-comment-head\">".concat(stateHtml, "</div>"));
+    }
+    if (canTeacherFeedbackGenerateForStudent(student)) {
+        parts.push(renderTeacherDraftEditor(student, draftComment, draftRank));
+    }
+    return parts.join('');
+}
+function clearRenderedStatus_() {
+    latestStatusRows = [];
+    latestStatusMeta = {};
+    var totalEl = document.getElementById('statTotal');
+    var writtenEl = document.getElementById('statWritten');
+    var submittedEl = document.getElementById('statSubmitted');
+    var aiEl = document.getElementById('statAI');
+    if (totalEl)
+        totalEl.textContent = '0';
+    if (writtenEl)
+        writtenEl.textContent = '0';
+    if (submittedEl)
+        submittedEl.textContent = '0';
+    if (aiEl)
+        aiEl.textContent = '0';
+    syncTeacherFeedbackControls([], 0);
+    renderStatusPerfDebug_();
+    var body = document.getElementById('statusBody');
+    if (body) {
+        body.innerHTML = '<tr><td colspan="2" style="text-align:center;padding:18px;color:#78909C;">授業を開始すると、ここに児童の記録とフィードバックが表示されます。</td></tr>';
+    }
+}
+function renderTeacherDraftEditor(student, draftComment, draftRank) {
+    var responseId = String(student.responseId || '').trim();
+    if (!responseId) {
+        return '<div class="status-draft-note">自動保存で記入が入ると下書きを作れます。</div>';
+    }
+    var draftViewState = syncTeacherDraftLocalState_(responseId, draftComment, draftRank);
+    draftComment = draftViewState.comment;
+    draftRank = draftViewState.rank;
+    var hasDraft = draftComment || draftRank;
+    var staleDraft = isTeacherDraftStaleForStudent(student);
+    var canGenerateAi = Boolean(latestStatusMeta.teacherAiEnabled &&
+        canTeacherFeedbackGenerateForStudent(student) &&
+        (staleDraft || (!hasDraft && !String(student.comment || '').trim())));
+    return "\n    <div class=\"status-draft-box\">\n      <div class=\"status-draft-head\">\n        <span>".concat(staleDraft ? '再提出あり / 再生成候補' : (hasDraft ? 'AI下書き確認中' : '教師下書き欄'), "</span>\n        <span class=\"status-draft-status").concat(draftViewState.dirty ? ' is-dirty' : '', "\">").concat(draftViewState.dirty ? '未保存' : (student.draftUpdatedAt ? esc(formatStatusTimestamp(student.draftUpdatedAt)) : '未生成'), "</span>\n      </div>\n      <textarea class=\"status-draft-textarea").concat(draftViewState.commentDirty ? ' is-dirty' : '', "\" data-response-id=\"").concat(escAttr(responseId), "\" placeholder=\"AI\u4E0B\u66F8\u304D\u3084\u624B\u5165\u529B\u30B3\u30E1\u30F3\u30C8\u3092\u3053\u3053\u3067\u78BA\u8A8D\u30FB\u4FEE\u6B63\" oninput=\"updateTeacherFeedbackDraftFromRow(this)\">").concat(esc(draftComment), "</textarea>\n      <select class=\"status-draft-rank").concat(draftViewState.rankDirty ? ' is-dirty' : '', "\" data-response-id=\"").concat(escAttr(responseId), "\" onchange=\"updateTeacherFeedbackDraftRankFromRow(this)\">\n        ").concat(buildTeacherDraftRankOptions(draftRank), "\n      </select>\n      <div class=\"status-draft-medal-row\">\n        <span class=\"status-draft-medal-label\">\u624B\u52D5\u30E1\u30C0\u30EB</span>\n        <select class=\"status-draft-medal\" data-response-id=\"").concat(escAttr(responseId), "\" onchange=\"saveTeacherFeedbackMedalFromRow(this)\">\n          ").concat(buildTeacherDraftMedalOptions(student.medal), "\n        </select>\n      </div>\n      <div class=\"status-draft-actions\">\n        ").concat(canGenerateAi ? "<button class=\"btn-ai\" type=\"button\" onclick=\"generateTeacherFeedbackDraftForRow('".concat(escAttr(responseId), "')\">\u3053\u306E\u5150\u7AE5\u3092AI\u4E0B\u66F8\u304D</button>") : '', "\n        <button class=\"btn-subtle\" type=\"button\" onclick=\"saveTeacherFeedbackDraftForRow('").concat(escAttr(responseId), "')\">\uD83D\uDCBE \u4E0B\u66F8\u304D\u3092\u4FDD\u5B58</button>\n        <button class=\"btn-update\" type=\"button\" onclick=\"returnTeacherFeedbackDraftForRow('").concat(escAttr(responseId), "')\">\u3053\u306E\u5150\u7AE5\u3092\u8FD4\u5374</button>\n        <button class=\"btn-cancel\" type=\"button\" onclick=\"clearTeacherFeedbackDraftForRow('").concat(escAttr(responseId), "')\">\u4E0B\u66F8\u304D\u3092\u6D88\u3059</button>\n        <span class=\"status-ai-state-chip\">").concat(renderStudentAiState(student), "</span>\n      </div>\n    </div>");
+}
+function buildTeacherDraftRankOptions(selected) {
+    var current = String(selected || '').trim().toUpperCase();
+    var ranks = ['', 'C', 'C+', 'B', 'B+', 'A', 'A+', 'S', 'S+'];
+    return ranks.map(function (rank) { return "<option value=\"".concat(escAttr(rank), "\"").concat(rank === current ? ' selected' : '', ">").concat(rank || 'ランクなし', "</option>"); }).join('');
+}
+function buildTeacherDraftMedalOptions(selected) {
+    var current = String(selected || '').trim();
+    var medals = ['', '🥇', '🥈', '🥉', '4th', '5th'];
+    var labels = {
+        '': 'メダルなし',
+        '🥇': '🥇 1位',
+        '🥈': '🥈 2位',
+        '🥉': '🥉 3位',
+        '4th': '4位',
+        '5th': '5位',
+    };
+    return medals.map(function (medal) { return "<option value=\"".concat(escAttr(medal), "\"").concat(medal === current ? ' selected' : '', ">").concat(labels[medal] || medal, "</option>"); }).join('');
+}
+function hasTeacherDraft(student) {
+    return String(student && student.draftStatus || '') === 'draft' && Boolean(String(student && student.draftComment || '').trim() || String(student && student.draftRank || '').trim());
+}
+function canTeacherFeedbackGenerateForStudent(student) {
+    return Boolean(student &&
+        String(student.responseId || '').trim() &&
+        (String(student.review || '').trim() || Number(student.writtenCount || 0) > 0));
+}
+function isTeacherDraftStaleForStudent(student) {
+    var responseAt = Date.parse(String(student && student.responseUpdatedAt || student && student.submittedAt || ''));
+    var draftAt = Date.parse(String(student && student.draftUpdatedAt || student && student.draftReturnedAt || ''));
+    if (!Number.isFinite(responseAt) || !Number.isFinite(draftAt))
+        return false;
+    return responseAt > draftAt;
+}
+function getTeacherFeedbackMedalMode() {
+    return (document.getElementById('teacherFeedbackMedalMode') || {}).value || 'none';
+}
+function formatElapsedSeconds_(startedAt) {
+    var ms = Math.max(0, Date.now() - Number(startedAt || 0));
+    var sec = (ms / 1000);
+    return sec >= 10 ? "".concat(sec.toFixed(0), "\u79D2") : "".concat(sec.toFixed(1), "\u79D2");
+}
+function setTeacherFeedbackResult(message) {
+    var el = document.getElementById('teacherFeedbackResult');
+    if (!el)
+        return;
+    el.textContent = String(message || '').trim();
+    el.classList.toggle('show', Boolean(el.textContent));
+    if (teacherFeedbackResultTimer) {
+        clearTimeout(teacherFeedbackResultTimer);
+        teacherFeedbackResultTimer = null;
+    }
+    if (el.textContent) {
+        teacherFeedbackResultTimer = setTimeout(function () {
+            el.classList.remove('show');
+            el.textContent = '';
+        }, 10000);
+    }
+}
+function setActionButtonBusy_(buttonId, busyLabel) {
+    var btn = document.getElementById(buttonId);
+    if (!btn)
+        return null;
+    if (!btn.dataset.defaultLabel)
+        btn.dataset.defaultLabel = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = busyLabel;
+    return btn;
+}
+function setActionButtonDone_(btn, doneLabel) {
+    if (!btn)
+        return;
+    var defaultLabel = btn.dataset.defaultLabel || btn.textContent;
+    btn.disabled = false;
+    btn.textContent = doneLabel;
+    setTimeout(function () {
+        btn.textContent = defaultLabel;
+        syncTeacherFeedbackControls(latestStatusRows, latestStatusRows.filter(function (row) { return hasTeacherDraft(row); }).length);
+    }, 2200);
+}
+function resetActionButton_(btn) {
+    if (!btn)
+        return;
+    btn.disabled = false;
+    btn.textContent = btn.dataset.defaultLabel || btn.textContent;
+}
+function findTeacherDraftRow_(responseId) {
+    var normalized = String(responseId || '').trim();
+    if (!normalized)
+        return null;
+    var field = document.querySelector(".status-draft-textarea[data-response-id=\"".concat(escAttr(normalized), "\"]"))
+        || document.querySelector(".status-draft-rank[data-response-id=\"".concat(escAttr(normalized), "\"]"));
+    return field ? field.closest('.status-draft-box') : null;
+}
+function getTeacherDraftState_(responseId) {
+    var normalized = String(responseId || '').trim();
+    if (!normalized)
+        return null;
+    if (!teacherDraftLocalState[normalized]) {
+        teacherDraftLocalState[normalized] = {
+            comment: '',
+            rank: '',
+            commentDirty: false,
+            rankDirty: false,
+        };
+    }
+    return teacherDraftLocalState[normalized];
+}
+function syncTeacherDraftLocalState_(responseId, serverComment, serverRank) {
+    var entry = getTeacherDraftState_(responseId);
+    var nextServerComment = String(serverComment || '');
+    var nextServerRank = String(serverRank || '');
+    if (!entry.commentDirty)
+        entry.comment = nextServerComment;
+    if (!entry.rankDirty)
+        entry.rank = nextServerRank;
+    return {
+        comment: entry.comment,
+        rank: entry.rank,
+        commentDirty: Boolean(entry.commentDirty),
+        rankDirty: Boolean(entry.rankDirty),
+        dirty: Boolean(entry.commentDirty || entry.rankDirty),
+    };
+}
+function syncTeacherDraftDirtyUi_(responseId) {
+    var row = findTeacherDraftRow_(responseId);
+    var entry = getTeacherDraftState_(responseId);
+    if (!row || !entry)
+        return;
+    var textarea = row.querySelector('.status-draft-textarea');
+    var rank = row.querySelector('.status-draft-rank');
+    var status = row.querySelector('.status-draft-status');
+    if (textarea)
+        textarea.classList.toggle('is-dirty', Boolean(entry.commentDirty));
+    if (rank)
+        rank.classList.toggle('is-dirty', Boolean(entry.rankDirty));
+    if (status) {
+        var isDirty = Boolean(entry.commentDirty || entry.rankDirty);
+        status.classList.toggle('is-dirty', isDirty);
+        if (isDirty)
+            status.textContent = '未保存';
+    }
+}
+function getTeacherDraftPendingCount_() {
+    var ids = new Set();
+    latestStatusRows.forEach(function (student) {
+        if (hasTeacherDraft(student) && String(student.responseId || '').trim()) {
+            ids.add(String(student.responseId || '').trim());
+        }
+    });
+    Object.keys(teacherDraftLocalState).forEach(function (responseId) {
+        var entry = teacherDraftLocalState[responseId];
+        if (entry && (entry.commentDirty || entry.rankDirty))
+            ids.add(responseId);
+    });
+    return ids.size;
+}
+function collectTeacherDraftValues_(responseId, row) {
+    var entry = getTeacherDraftState_(responseId);
+    var targetRow = row || findTeacherDraftRow_(responseId);
+    var textarea = targetRow ? targetRow.querySelector('.status-draft-textarea') : null;
+    var rankSelect = targetRow ? targetRow.querySelector('.status-draft-rank') : null;
+    var comment = textarea ? textarea.value || '' : (entry ? entry.comment || '' : '');
+    var rank = rankSelect ? rankSelect.value || '' : (entry ? entry.rank || '' : '');
+    if (entry) {
+        entry.comment = comment;
+        entry.rank = rank;
+    }
+    return { comment: comment, rank: rank };
+}
+function collectTeacherFeedbackReturnDraftItems_(responseIds) {
+    return (Array.isArray(responseIds) ? responseIds : [])
+        .map(function (value) { return String(value || '').trim(); })
+        .filter(Boolean)
+        .filter(function (value, index, array) { return array.indexOf(value) === index; })
+        .map(function (responseId) {
+        var row = findTeacherDraftRow_(responseId);
+        var values = collectTeacherDraftValues_(responseId, row);
+        return {
+            responseId: responseId,
+            draftComment: values.comment || '',
+            draftRank: values.rank || '',
+        };
+    })
+        .filter(function (item) { return String(item.draftComment || '').trim(); });
+}
+function applyTeacherFeedbackReturnedOptimistic_(responseIds, draftItems) {
+    var returnedAt = new Date().toISOString();
+    var ids = (Array.isArray(responseIds) ? responseIds : [])
+        .map(function (value) { return String(value || '').trim(); })
+        .filter(Boolean);
+    if (!ids.length)
+        return;
+    var idSet = new Set(ids);
+    var draftMap = {};
+    (Array.isArray(draftItems) ? draftItems : []).forEach(function (item) {
+        var responseId = String(item && item.responseId || '').trim();
+        if (responseId)
+            draftMap[responseId] = item;
+    });
+    latestStatusRows = (Array.isArray(latestStatusRows) ? latestStatusRows : []).map(function (student) {
+        var responseId = String(student && student.responseId || '').trim();
+        if (!idSet.has(responseId))
+            return student;
+        var values = collectTeacherDraftValues_(responseId, findTeacherDraftRow_(responseId));
+        var draft = draftMap[responseId] || {};
+        var nextComment = String(draft.draftComment || draft.comment || values.comment || student.comment || '');
+        var nextRank = String(draft.draftRank || draft.rank || values.rank || student.rank || '');
+        var next = Object.assign({}, student, {
+            comment: nextComment,
+            rank: nextRank,
+            draftComment: nextComment,
+            draftRank: nextRank,
+            draftStatus: 'returned',
+            draftUpdatedAt: returnedAt,
+            draftReturnedAt: returnedAt,
+            aiStatus: 'done',
+        });
+        var entry = getTeacherDraftState_(responseId);
+        if (entry) {
+            entry.comment = next.draftComment;
+            entry.rank = next.draftRank;
+            entry.commentDirty = false;
+            entry.rankDirty = false;
+        }
+        return next;
+    });
+    renderStatus({ students: latestStatusRows, meta: latestStatusMeta });
+}
+function scheduleTeacherStatusRefreshAfterReturn_() {
+    setTimeout(function () { return loadStatus(); }, 900);
+}
+function updateTeacherFeedbackDraftFromRow(textarea) {
+    var responseId = String(textarea && textarea.dataset && textarea.dataset.responseId || '').trim();
+    if (!responseId)
+        return;
+    var entry = getTeacherDraftState_(responseId);
+    if (!entry)
+        return;
+    entry.comment = textarea.value || '';
+    entry.commentDirty = true;
+    syncTeacherDraftDirtyUi_(responseId);
+}
+function updateTeacherFeedbackDraftRankFromRow(select) {
+    var responseId = String(select && select.dataset && select.dataset.responseId || '').trim();
+    if (!responseId)
+        return;
+    var entry = getTeacherDraftState_(responseId);
+    if (!entry)
+        return;
+    entry.rank = select.value || '';
+    entry.rankDirty = true;
+    syncTeacherDraftDirtyUi_(responseId);
+}
+function setTeacherDraftRowBusy_(responseId, isBusy, busyLabel) {
+    var row = findTeacherDraftRow_(responseId);
+    if (!row)
+        return;
+    row.dataset.busy = isBusy ? '1' : '';
+    var controls = row.querySelectorAll('textarea,select,button');
+    controls.forEach(function (control) { control.disabled = Boolean(isBusy); });
+    var chip = row.querySelector('.status-ai-state-chip');
+    if (chip && isBusy && busyLabel) {
+        if (!chip.dataset.defaultLabel)
+            chip.dataset.defaultLabel = chip.textContent || '';
+        chip.textContent = busyLabel;
+    }
+    else if (chip && !isBusy && chip.dataset.defaultLabel) {
+        chip.textContent = chip.dataset.defaultLabel;
+    }
+}
+function isTeacherDraftRowBusy_(row) {
+    return String(row && row.dataset && row.dataset.busy || '') === '1';
+}
+function syncTeacherFeedbackControls(st, draftCount) {
+    var enabled = Boolean(latestStatusMeta.teacherAiEnabled);
+    var targetCount = st.filter(function (s) { return canTeacherFeedbackGenerateForStudent(s); }).length;
+    var pendingDraftCount = Math.max(Number(draftCount || 0), getTeacherDraftPendingCount_());
+    var meta = document.getElementById('teacherFeedbackMeta');
+    var generateAllBtn = document.getElementById('teacherFeedbackGenerateAllBtn');
+    var generateBtn = document.getElementById('teacherFeedbackGenerateBtn');
+    var returnBtn = document.getElementById('teacherFeedbackReturnBtn');
+    var clearBtn = document.getElementById('teacherFeedbackClearBtn');
+    if (generateAllBtn)
+        generateAllBtn.disabled = !enabled || !targetCount;
+    if (generateBtn)
+        generateBtn.disabled = !enabled || !targetCount;
+    if (returnBtn)
+        returnBtn.disabled = !pendingDraftCount;
+    if (clearBtn)
+        clearBtn.disabled = !pendingDraftCount;
+    if (meta) {
+        meta.textContent = !enabled
+            ? "\u6559\u5E2BAI\u306F\u672A\u8A2D\u5B9A\u3067\u3059\u3002\u624B\u5165\u529B\u306E\u4E0B\u66F8\u304D\u4FDD\u5B58\u30FB\u8FD4\u5374\u30FB\u624B\u52D5\u30E1\u30C0\u30EB\u306F\u4F7F\u3048\u307E\u3059\u3002AI\u751F\u6210\u306F\u3001\u30D7\u30ED\u30F3\u30D7\u30C8\u30BF\u30D6\u3067API\u30AD\u30FC\u3092\u4FDD\u5B58\u3059\u308B\u3068\u6709\u52B9\u306B\u306A\u308A\u307E\u3059\u3002"
+            : "\u8A18\u5165\u3042\u308A ".concat(targetCount, "\u4EBA / \u8FD4\u5374\u5F85\u3061\u4E0B\u66F8\u304D ").concat(pendingDraftCount, "\u4EBA / \u8FD4\u5374\u6E08\u307F ").concat(st.filter(function (s) { return String(s.comment || '').trim(); }).length, "\u4EBA / \u8FFD\u8A18\u5F8C\u306F\u518D\u751F\u6210\u5BFE\u8C61\u306B\u306A\u308A\u307E\u3059");
+    }
+}
+function generateTeacherFeedbackDraftsFromStatus(onlyMissing) {
+    if (!activeUnitId || !activePeriod) {
+        showToast('単元と時間目を選択してください');
+        return;
+    }
+    if (!Boolean(latestStatusMeta.teacherAiEnabled)) {
+        showToast('AI未設定です。プロンプトタブでAPIキーを保存してください。');
+        return;
+    }
+    var includeRank = (document.getElementById('teacherFeedbackRankMode') || {}).value !== 'without_rank';
+    var autoReturn = Boolean((document.getElementById('teacherFeedbackAutoReturn') || {}).checked);
+    var medalMode = getTeacherFeedbackMedalMode();
+    var missingOnly = onlyMissing !== false;
+    if (autoReturn && medalMode !== 'auto_award') {
+        generateAndReturnTeacherFeedbackChunks_(missingOnly, includeRank);
+        return;
+    }
+    var startedAt = Date.now();
+    var btn = setActionButtonBusy_(missingOnly ? 'teacherFeedbackGenerateBtn' : 'teacherFeedbackGenerateAllBtn', autoReturn ? '⏳ 生成して返却中…' : '⏳ 生成中…');
+    showToast(autoReturn
+        ? (medalMode === 'auto_award' ? 'AI下書きを生成して返却し、メダルまで処理しています…' : 'AI下書きを生成して返却しています…')
+        : (missingOnly ? '未生成分のAI下書きを生成しています…' : 'AI下書きを一括生成しています…'));
+    google.script.run
+        .withSuccessHandler(function (res) {
+        if (!(res && res.ok)) {
+            resetActionButton_(btn);
+            showToast(res && res.error || 'AI下書き生成に失敗しました');
+            return;
+        }
+        var skipped = Number(res.skippedExistingCount || 0);
+        var medalText = res.medalAwarded ? ' / メダル発表まで完了' : '';
+        var elapsedText = formatElapsedSeconds_(startedAt);
+        var msg = autoReturn
+            ? "AI\u4E0B\u66F8\u304D ".concat(res.updatedCount || 0, "\u4EBA\u5206\u3092\u751F\u6210\u3057\u3001").concat(res.returnedCount || 0, "\u4EBA\u3078\u8FD4\u5374\u3057\u307E\u3057\u305F").concat(medalText).concat(skipped ? " / \u5BFE\u8C61\u5916 ".concat(skipped, "\u4EBA") : '', " / ").concat(elapsedText)
+            : "AI\u4E0B\u66F8\u304D\u3092 ".concat(res.updatedCount || 0, "\u4EBA\u5206\u751F\u6210\u3057\u307E\u3057\u305F").concat(skipped ? " / \u5BFE\u8C61\u5916 ".concat(skipped, "\u4EBA") : '', " / ").concat(elapsedText);
+        showToast(msg);
+        setTeacherFeedbackResult("\u5B8C\u4E86: ".concat(msg));
+        setActionButtonDone_(btn, '✅ 完了');
+        loadStatus();
+    })
+        .withFailureHandler(function (err) {
+        resetActionButton_(btn);
+        showToast(err && err.message || 'AI下書き生成に失敗しました');
+    })
+        .generateTeacherFeedbackDrafts(activeUnitId, activePeriod, includeRank, autoReturn, [], missingOnly, medalMode);
+}
+function generateAndReturnTeacherFeedbackChunks_(missingOnly, includeRank) {
+    var targetIds = (Array.isArray(latestStatusRows) ? latestStatusRows : [])
+        .filter(function (row) { return canTeacherFeedbackGenerateForStudent(row); })
+        .filter(function (row) { return missingOnly ? !String(row.comment || '').trim() : true; })
+        .map(function (row) { return String(row.responseId || '').trim(); })
+        .filter(Boolean)
+        .filter(function (value, index, array) { return array.indexOf(value) === index; });
+    if (!targetIds.length) {
+        showToast('AIコメントを作れる記録がありません');
+        return;
+    }
+    var chunkSize = 6;
+    var chunks = [];
+    for (var i = 0; i < targetIds.length; i += chunkSize) {
+        chunks.push(targetIds.slice(i, i + chunkSize));
+    }
+    var btn = setActionButtonBusy_(missingOnly ? 'teacherFeedbackGenerateBtn' : 'teacherFeedbackGenerateAllBtn', '⏳ 生成して返却中…');
+    var startedAt = Date.now();
+    var completed = 0;
+    var updatedCount = 0;
+    var returnedCount = 0;
+    var skippedExistingCount = 0;
+    var runChunk = function (index) {
+        if (index >= chunks.length) {
+            var msg = "AI\u30B3\u30E1\u30F3\u30C8\u3092 ".concat(updatedCount, "\u4EBA\u5206\u751F\u6210\u3057\u3001").concat(returnedCount, "\u4EBA\u3078\u8FD4\u5374\u3057\u307E\u3057\u305F").concat(skippedExistingCount ? " / \u5BFE\u8C61\u5916 ".concat(skippedExistingCount, "\u4EBA") : '', " / ").concat(formatElapsedSeconds_(startedAt));
+            showToast(msg);
+            setTeacherFeedbackResult("\u5B8C\u4E86: ".concat(msg));
+            setActionButtonDone_(btn, '✅ 完了');
+            scheduleTeacherStatusRefreshAfterReturn_();
+            return;
+        }
+        var chunk = chunks[index];
+        setTeacherFeedbackResult("\u751F\u6210\u3057\u3066\u8FD4\u5374\u4E2D: ".concat(completed, "/").concat(targetIds.length, "\u4EBA\u5B8C\u4E86"));
+        google.script.run
+            .withSuccessHandler(function (res) {
+            if (!(res && res.ok)) {
+                resetActionButton_(btn);
+                showToast(res && res.error || 'AI生成と返却に失敗しました');
+                scheduleTeacherStatusRefreshAfterReturn_();
+                return;
+            }
+            updatedCount += Number(res.updatedCount || 0);
+            returnedCount += Number(res.returnedCount || 0);
+            skippedExistingCount += Number(res.skippedExistingCount || 0);
+            completed += chunk.length;
+            if (Array.isArray(res.returnedIds) && res.returnedIds.length) {
+                applyTeacherFeedbackReturnedOptimistic_(res.returnedIds, res.drafts);
+            }
+            runChunk(index + 1);
+        })
+            .withFailureHandler(function (err) {
+            resetActionButton_(btn);
+            showToast(err && err.message || 'AI生成と返却に失敗しました');
+            scheduleTeacherStatusRefreshAfterReturn_();
+        })
+            .generateTeacherFeedbackDrafts(activeUnitId, activePeriod, includeRank, true, chunk, missingOnly, 'none');
+    };
+    showToast("AI\u30B3\u30E1\u30F3\u30C8\u3092".concat(chunks.length, "\u56DE\u306B\u5206\u3051\u3066\u3001\u3067\u304D\u305F\u9806\u306B\u8FD4\u5374\u3057\u307E\u3059\u2026"));
+    runChunk(0);
+}
+function generateTeacherFeedbackDraftForRow(responseId) {
+    if (!activeUnitId || !activePeriod || !responseId)
+        return;
+    if (!Boolean(latestStatusMeta.teacherAiEnabled)) {
+        showToast('AI未設定です。プロンプトタブでAPIキーを保存してください。');
+        return;
+    }
+    var includeRank = (document.getElementById('teacherFeedbackRankMode') || {}).value !== 'without_rank';
+    setTeacherDraftRowBusy_(responseId, true, 'AI下書き生成中');
+    showToast('この児童のAI下書きを生成しています…');
+    google.script.run
+        .withSuccessHandler(function (res) {
+        if (!(res && res.ok)) {
+            setTeacherDraftRowBusy_(responseId, false);
+            showToast(res && res.error || 'AI下書き生成に失敗しました');
+            return;
+        }
+        showToast("AI\u4E0B\u66F8\u304D\u3092 ".concat(res.updatedCount || 0, "\u4EBA\u5206\u751F\u6210\u3057\u307E\u3057\u305F"));
+        loadStatus();
+    })
+        .withFailureHandler(function (err) {
+        setTeacherDraftRowBusy_(responseId, false);
+        showToast(err && err.message || 'AI下書き生成に失敗しました');
+    })
+        .generateTeacherFeedbackDrafts(activeUnitId, activePeriod, includeRank, false, [responseId], false, 'none');
+}
+function returnTeacherFeedbackDraftsFromStatus() {
+    if (!activeUnitId || !activePeriod) {
+        showToast('単元と時間目を選択してください');
+        return;
+    }
+    var medalMode = getTeacherFeedbackMedalMode();
+    var targetResponseIds = getTeacherFeedbackReturnTargetIds_();
+    if (!targetResponseIds.length) {
+        showToast('返却できる下書きがありません');
+        return;
+    }
+    var btn = setActionButtonBusy_('teacherFeedbackReturnBtn', '⏳ 一括返却中…');
+    var draftItems = collectTeacherFeedbackReturnDraftItems_(targetResponseIds);
+    showToast(medalMode === 'auto_award' ? 'AI下書きを返却してメダルを処理しています…' : 'AI下書きを返却しています…');
+    google.script.run
+        .withSuccessHandler(function (res) {
+        if (!(res && res.ok)) {
+            resetActionButton_(btn);
+            showToast(res && res.error || '返却に失敗しました');
+            return;
+        }
+        var returnedIds = Array.isArray(res.returnedIds) && res.returnedIds.length ? res.returnedIds : targetResponseIds;
+        applyTeacherFeedbackReturnedOptimistic_(returnedIds);
+        var msg = "".concat(res.returnedCount || 0, "\u4EBA\u3078\u8FD4\u5374\u3057\u307E\u3057\u305F").concat(res.medalAwarded ? ' / メダル発表まで完了' : '');
+        showToast(msg);
+        setTeacherFeedbackResult("\u5B8C\u4E86: ".concat(msg));
+        setActionButtonDone_(btn, '✅ 完了');
+        scheduleTeacherStatusRefreshAfterReturn_();
+    })
+        .withFailureHandler(function (err) {
+        resetActionButton_(btn);
+        showToast(err && err.message || '返却に失敗しました');
+    })
+        .returnTeacherFeedbackDrafts(activeUnitId, activePeriod, targetResponseIds, medalMode, { source: 'teacher_bulk_return', skipEventLogs: true, draftItems: draftItems });
+}
+function clearTeacherFeedbackDraftsFromStatus() {
+    if (!activeUnitId || !activePeriod) {
+        showToast('単元と時間目を選択してください');
+        return;
+    }
+    var btn = setActionButtonBusy_('teacherFeedbackClearBtn', '⏳ 下書き削除中…');
+    teacherDraftLocalState = {};
+    google.script.run
+        .withSuccessHandler(function (res) {
+        var msg = "\u4E0B\u66F8\u304D\u3092 ".concat(res && res.clearedCount || 0, "\u4EF6\u30AF\u30EA\u30A2\u3057\u307E\u3057\u305F");
+        showToast(msg);
+        setTeacherFeedbackResult("\u5B8C\u4E86: ".concat(msg));
+        setActionButtonDone_(btn, '✅ 完了');
+        loadStatus();
+    })
+        .withFailureHandler(function (err) {
+        resetActionButton_(btn);
+        showToast(err && err.message || '下書きクリアに失敗しました');
+    })
+        .clearTeacherFeedbackDrafts(activeUnitId, activePeriod, []);
+}
+function getTeacherFeedbackReturnTargetIds_() {
+    return (Array.isArray(latestStatusRows) ? latestStatusRows : [])
+        .map(function (row) { return String(row && row.responseId || '').trim(); })
+        .filter(Boolean)
+        .filter(function (value, index, array) { return array.indexOf(value) === index; });
+}
+function persistTeacherFeedbackDraftForRow_(responseId, options) {
+    var normalized = String(responseId || '').trim();
+    if (!normalized)
+        return;
+    var opts = options || {};
+    var row = findTeacherDraftRow_(normalized);
+    if (isTeacherDraftRowBusy_(row) && opts.allowBusy !== true) {
+        if (typeof opts.onFailure === 'function')
+            opts.onFailure({ message: '他の処理が完了するまで待ってください。' });
+        return;
+    }
+    var entry = getTeacherDraftState_(normalized);
+    var values = collectTeacherDraftValues_(normalized, row);
+    var hasDirty = Boolean(entry && (entry.commentDirty || entry.rankDirty));
+    if (!hasDirty && opts.force !== true) {
+        if (typeof opts.onSuccess === 'function')
+            opts.onSuccess({ ok: true, skipped: true });
+        return;
+    }
+    setTeacherDraftRowBusy_(normalized, true, opts.busyLabel || '下書き保存中');
+    google.script.run
+        .withSuccessHandler(function (res) {
+        setTeacherDraftRowBusy_(normalized, false);
+        if (!(res && res.ok)) {
+            if (typeof opts.onFailure === 'function')
+                opts.onFailure({ message: res && res.error || '下書き保存に失敗しました' });
+            return;
+        }
+        if (entry) {
+            entry.comment = String(res.draft && res.draft.draftComment != null ? res.draft.draftComment : values.comment || '');
+            entry.rank = String(res.draft && res.draft.draftRank != null ? res.draft.draftRank : values.rank || '');
+            entry.commentDirty = false;
+            entry.rankDirty = false;
+        }
+        var textarea = row ? row.querySelector('.status-draft-textarea') : null;
+        var rankSelect = row ? row.querySelector('.status-draft-rank') : null;
+        if (textarea)
+            textarea.value = entry ? entry.comment : values.comment;
+        if (rankSelect)
+            rankSelect.value = entry ? entry.rank : values.rank;
+        syncTeacherDraftDirtyUi_(normalized);
+        var status = row ? row.querySelector('.status-draft-status') : null;
+        if (status)
+            status.textContent = '保存済み';
+        if (typeof opts.onSuccess === 'function')
+            opts.onSuccess(res);
+    })
+        .withFailureHandler(function (err) {
+        setTeacherDraftRowBusy_(normalized, false);
+        if (typeof opts.onFailure === 'function')
+            opts.onFailure(err);
+    })
+        .saveTeacherFeedbackDraft(normalized, values.comment || '', values.rank || '');
+}
+function saveTeacherFeedbackDraftForRow(responseId, options) {
+    persistTeacherFeedbackDraftForRow_(responseId, Object.assign({
+        busyLabel: '下書き保存中',
+        onSuccess: function () { showToast('下書きを保存しました'); },
+        onFailure: function (err) { showToast(err && err.message || '下書き保存に失敗しました'); },
+    }, options || {}));
+}
+function flushTeacherFeedbackDrafts_(responseIds, onSuccess, onFailure) {
+    var queue = (Array.isArray(responseIds) ? responseIds : [])
+        .map(function (value) { return String(value || '').trim(); })
+        .filter(Boolean)
+        .filter(function (value, index, array) { return array.indexOf(value) === index; })
+        .filter(function (value) {
+        var entry = getTeacherDraftState_(value);
+        return Boolean(entry && (entry.commentDirty || entry.rankDirty));
+    });
+    if (!queue.length) {
+        if (typeof onSuccess === 'function')
+            onSuccess();
+        return;
+    }
+    var payload = queue.map(function (responseId) {
+        var row = findTeacherDraftRow_(responseId);
+        var values = collectTeacherDraftValues_(responseId, row);
+        setTeacherDraftRowBusy_(responseId, true, '返却前に保存中');
+        return {
+            responseId: responseId,
+            draftComment: values.comment || '',
+            draftRank: values.rank || '',
+        };
+    });
+    google.script.run
+        .withSuccessHandler(function (res) {
+        queue.forEach(function (responseId) { return setTeacherDraftRowBusy_(responseId, false); });
+        if (!(res && res.ok)) {
+            if (typeof onFailure === 'function')
+                onFailure({ message: res && res.error || '返却前の保存に失敗しました' });
+            return;
+        }
+        var savedMap = {};
+        (Array.isArray(res.drafts) ? res.drafts : []).forEach(function (draft) {
+            var responseId = String(draft && draft.responseId || '').trim();
+            if (responseId)
+                savedMap[responseId] = draft;
+        });
+        queue.forEach(function (responseId) {
+            var entry = getTeacherDraftState_(responseId);
+            var row = findTeacherDraftRow_(responseId);
+            var values = collectTeacherDraftValues_(responseId, row);
+            var saved = savedMap[responseId] || {};
+            if (entry) {
+                entry.comment = String(saved.draftComment != null ? saved.draftComment : values.comment || '');
+                entry.rank = String(saved.draftRank != null ? saved.draftRank : values.rank || '');
+                entry.commentDirty = false;
+                entry.rankDirty = false;
+            }
+            var status = row ? row.querySelector('.status-draft-status') : null;
+            if (status)
+                status.textContent = '保存済み';
+            syncTeacherDraftDirtyUi_(responseId);
+        });
+        if (typeof onSuccess === 'function')
+            onSuccess(res);
+    })
+        .withFailureHandler(function (err) {
+        queue.forEach(function (responseId) { return setTeacherDraftRowBusy_(responseId, false); });
+        if (typeof onFailure === 'function')
+            onFailure(err);
+    })
+        .saveTeacherFeedbackDraftsBulk(payload);
+}
+function saveTeacherFeedbackMedalFromRow(select) {
+    var responseId = String(select && select.dataset && select.dataset.responseId || '').trim();
+    if (!responseId)
+        return;
+    var row = select.closest('.status-draft-box');
+    if (isTeacherDraftRowBusy_(row))
+        return;
+    setTeacherDraftRowBusy_(responseId, true, 'メダル保存中');
+    google.script.run
+        .withSuccessHandler(function () {
+        showToast('メダルを保存しました');
+        loadStatus();
+    })
+        .withFailureHandler(function (err) {
+        setTeacherDraftRowBusy_(responseId, false);
+        showToast(err && err.message || 'メダル保存に失敗しました');
+    })
+        .saveTeacherFeedbackMedal(responseId, select.value || '');
+}
+function returnTeacherFeedbackDraftForRow(responseId) {
+    if (!activeUnitId || !activePeriod)
+        return;
+    var row = findTeacherDraftRow_(responseId);
+    if (isTeacherDraftRowBusy_(row))
+        return;
+    var draftItems = collectTeacherFeedbackReturnDraftItems_([responseId]);
+    setTeacherDraftRowBusy_(responseId, true, '返却中');
+    google.script.run
+        .withSuccessHandler(function (res) {
+        if (!(res && res.ok)) {
+            setTeacherDraftRowBusy_(responseId, false);
+            showToast(res && res.error || '返却に失敗しました');
+            return;
+        }
+        applyTeacherFeedbackReturnedOptimistic_(Array.isArray(res.returnedIds) && res.returnedIds.length ? res.returnedIds : [responseId]);
+        showToast('返却しました');
+        scheduleTeacherStatusRefreshAfterReturn_();
+    })
+        .withFailureHandler(function (err) {
+        setTeacherDraftRowBusy_(responseId, false);
+        showToast(err && err.message || '返却に失敗しました');
+    })
+        .returnTeacherFeedbackDrafts(activeUnitId, activePeriod, [responseId], 'none', { source: 'teacher_row_return', skipEventLogs: true, draftItems: draftItems });
+}
+function clearTeacherFeedbackDraftForRow(responseId) {
+    if (!activeUnitId || !activePeriod)
+        return;
+    var row = findTeacherDraftRow_(responseId);
+    if (isTeacherDraftRowBusy_(row))
+        return;
+    delete teacherDraftLocalState[String(responseId || '').trim()];
+    setTeacherDraftRowBusy_(responseId, true, '下書き削除中');
+    google.script.run
+        .withSuccessHandler(function () { showToast('下書きを消しました'); loadStatus(); })
+        .withFailureHandler(function (err) {
+        setTeacherDraftRowBusy_(responseId, false);
+        showToast(err && err.message || '下書きクリアに失敗しました');
+    })
+        .clearTeacherFeedbackDrafts(activeUnitId, activePeriod, [responseId]);
+}
+function formatStatusTimestamp(value) {
+    var text = String(value || '').trim();
+    if (!text)
+        return '';
+    var d = new Date(text);
+    if (Number.isNaN(d.getTime()))
+        return text;
+    var hh = String(d.getHours()).padStart(2, '0');
+    var mi = String(d.getMinutes()).padStart(2, '0');
+    var ss = String(d.getSeconds()).padStart(2, '0');
+    return "".concat(hh, ":").concat(mi, ":").concat(ss);
+}
+function renderUnderstandingChip(value) {
+    var text = String(value || '').trim();
+    if (!text)
+        return '<span style="color:#90A4AE;font-size:12px;">未入力</span>';
+    var color = text.includes('よく') ? '#2E7D32'
+        : text.includes('だいたい') ? '#1976D2'
+            : text.includes('あまり') ? '#FB8C00'
+                : '#C62828';
+    return "<span style=\"display:inline-block;padding:4px 10px;border-radius:999px;background:".concat(color, ";color:#fff;font-size:11px;font-weight:bold;white-space:nowrap;\">").concat(esc(text), "</span>");
+}
+// =====================================
+//  単元一覧
+// =====================================
+function renderUnitList() {
+    var el = document.getElementById('unitList');
+    var summaryEl = document.getElementById('unitListSummary');
+    var pagerEl = document.getElementById('unitListPager');
+    if (!allUnits.length) {
+        if (summaryEl)
+            summaryEl.textContent = '単元はまだありません。右の「新しい単元を追加」から作成できます。';
+        if (pagerEl) {
+            pagerEl.style.display = 'none';
+            pagerEl.innerHTML = '';
+        }
+        el.innerHTML = '<p style="color:#999">単元がありません</p>';
+        return;
+    }
+    var subject = (document.getElementById('unitListSubjectFilter') || {}).value || '';
+    var keyword = ((document.getElementById('unitListSearch') || {}).value || '').trim().toLowerCase();
+    var sortKey = (document.getElementById('unitListSort') || {}).value || 'subject_group';
+    var signature = [subject, keyword, sortKey, allUnits.length].join('|');
+    if (signature !== lastUnitListSignature) {
+        unitListPage = 1;
+        lastUnitListSignature = signature;
+    }
+    saveUiState({
+        unitListSubjectFilter: subject,
+        unitListSearch: (document.getElementById('unitListSearch') || {}).value || '',
+        unitListSort: sortKey,
+    });
+    var visibleUnits = allUnits.filter(function (unit) {
+        var subjectOk = !subject || String(unit.subject || '') === String(subject);
+        var keywordOk = !keyword || String(unit.name || '').toLowerCase().includes(keyword);
+        return subjectOk && keywordOk;
+    }).sort(function (a, b) { return compareUnitRows(a, b, sortKey); });
+    if (!visibleUnits.length) {
+        if (summaryEl)
+            summaryEl.textContent = "\u5168 ".concat(allUnits.length, " \u4EF6\u4E2D\u3001\u6761\u4EF6\u306B\u5408\u3046\u5358\u5143\u306F\u3042\u308A\u307E\u305B\u3093\u3002\u6761\u4EF6\u3092\u5909\u3048\u308B\u3068\u8868\u793A\u3055\u308C\u307E\u3059\u3002");
+        if (pagerEl) {
+            pagerEl.style.display = 'none';
+            pagerEl.innerHTML = '';
+        }
+        el.innerHTML = '<p style="color:#999">条件に合う単元がありません</p>';
+        return;
+    }
+    var pageCount = Math.max(1, Math.ceil(visibleUnits.length / UNIT_LIST_PAGE_SIZE));
+    unitListPage = Math.min(pageCount, Math.max(1, unitListPage));
+    var pageStart = (unitListPage - 1) * UNIT_LIST_PAGE_SIZE;
+    var pagedUnits = visibleUnits.slice(pageStart, pageStart + UNIT_LIST_PAGE_SIZE);
+    if (summaryEl) {
+        var subjectText = subject ? "".concat(subject, "\u306E\u307F") : '全教科';
+        var keywordText = keyword ? " / \u300C".concat(keyword, "\u300D\u3067\u691C\u7D22\u4E2D") : '';
+        var pageText = pageCount > 1 ? " / ".concat(unitListPage, " / ").concat(pageCount, " \u30DA\u30FC\u30B8") : '';
+        summaryEl.textContent = "\u73FE\u5728 ".concat(visibleUnits.length, " \u4EF6\u4E2D ").concat(pageStart + 1, "\u301C").concat(pageStart + pagedUnits.length, " \u4EF6\u3092\u8868\u793A\uFF08\u5168 ").concat(allUnits.length, " \u4EF6\u3001").concat(subjectText).concat(keywordText).concat(pageText, "\uFF09");
+    }
+    if (pagerEl) {
+        if (pageCount <= 1) {
+            pagerEl.style.display = 'none';
+            pagerEl.innerHTML = '';
+        }
+        else {
+            pagerEl.style.display = 'flex';
+            pagerEl.innerHTML = "\n        <button class=\"btn-sm\" type=\"button\" onclick=\"changeUnitListPage(-1)\" ".concat(unitListPage <= 1 ? 'disabled' : '', ">\u2190 \u524D\u3078</button>\n        <span style=\"font-size:12px;color:var(--muted);\">").concat(unitListPage, " / ").concat(pageCount, " \u30DA\u30FC\u30B8</span>\n        <button class=\"btn-sm\" type=\"button\" onclick=\"changeUnitListPage(1)\" ").concat(unitListPage >= pageCount ? 'disabled' : '', ">\u6B21\u3078 \u2192</button>");
+        }
+    }
+    if (sortKey === 'subject_group') {
+        var grouped_1 = pagedUnits.reduce(function (acc, unit) {
+            var key = String(unit.subject || '未設定');
+            if (!acc[key])
+                acc[key] = [];
+            acc[key].push(unit);
+            return acc;
+        }, {});
+        var subjects = Object.keys(grouped_1).sort(function (a, b) { return a.localeCompare(b, 'ja'); });
+        el.innerHTML = subjects.map(function (groupSubject) {
+            var collapsed = isUnitGroupCollapsed(groupSubject);
+            var rows = grouped_1[groupSubject].sort(function (a, b) { return compareUnitRows(a, b, 'name'); });
+            var encodedSubject = encodeURIComponent(groupSubject);
+            return "<div class=\"unit-group\">\n        <button class=\"unit-group-toggle\" type=\"button\" onclick=\"toggleUnitGroupByEncoded('".concat(encodedSubject, "')\">\n          <span>").concat(esc(groupSubject), "</span>\n          <span class=\"meta\">").concat(rows.length, "\u4EF6 ").concat(collapsed ? '▼' : '▲', "</span>\n        </button>\n        <div class=\"unit-group-body\" style=\"display:").concat(collapsed ? 'none' : 'block', ";\">\n          ").concat(rows.map(renderUnitRow).join(''), "\n        </div>\n      </div>");
+        }).join('');
+        return;
+    }
+    el.innerHTML = pagedUnits.map(renderUnitRow).join('');
+}
+function changeUnitListPage(delta) {
+    unitListPage = Math.max(1, unitListPage + (Number(delta) || 0));
+    renderUnitList();
+}
+function compareUnitRows(a, b, sortKey) {
+    if (String(a.id) === String(activeUnitId) && String(b.id) !== String(activeUnitId))
+        return -1;
+    if (String(b.id) === String(activeUnitId) && String(a.id) !== String(activeUnitId))
+        return 1;
+    if (sortKey === 'recent_activity') {
+        return compareSuggestedStartUnit_(a, b) || String(a.name || '').localeCompare(String(b.name || ''), 'ja');
+    }
+    if (sortKey === 'name') {
+        return String(a.name || '').localeCompare(String(b.name || ''), 'ja');
+    }
+    if (sortKey === 'created_desc') {
+        return toUnitCreatedAtValue(b) - toUnitCreatedAtValue(a) || String(a.name || '').localeCompare(String(b.name || ''), 'ja');
+    }
+    if (sortKey === 'created_asc') {
+        return toUnitCreatedAtValue(a) - toUnitCreatedAtValue(b) || String(a.name || '').localeCompare(String(b.name || ''), 'ja');
+    }
+    var subjectCmp = String(a.subject || '').localeCompare(String(b.subject || ''), 'ja');
+    if (subjectCmp !== 0)
+        return subjectCmp;
+    return String(a.name || '').localeCompare(String(b.name || ''), 'ja');
+}
+function renderUnitRow(u) {
+    return "<div class=\"unit-row ".concat(u.id == activeUnitId ? 'active-unit' : '', "\">\n    <span class=\"unit-badge\">").concat(esc(u.subject), "</span>\n    <span class=\"unit-name\">").concat(esc(u.name), "</span>\n    <span class=\"unit-meta\">\u6700\u5927").concat(u.maxPeriod === 0 ? '無制限' : u.maxPeriod + '時間', "\u30FB\u9805\u76EE").concat((u.fields || []).filter(function (f) { return f.enabled !== false; }).length, "\u3064\u30FB\u4F5C\u6210 ").concat(esc(u.createdAt || '-'), "</span>\n    <div class=\"unit-actions\">\n      <button class=\"btn-sm btn-edit\" onclick=\"editUnit(").concat(u.id, ")\">\u7DE8\u96C6</button>\n      <button class=\"btn-sm btn-del\" onclick=\"askDelete(").concat(u.id, ",'").concat(esc(u.name), "')\">\u524A\u9664</button>\n    </div>\n  </div>");
+}
+function toUnitCreatedAtValue(unit) {
+    if (Number(unit && unit.createdAtValue || 0) > 0)
+        return Number(unit.createdAtValue);
+    var raw = String(unit && unit.createdAt || '').replace(/\./g, '/').replace(/-/g, '/');
+    var value = Date.parse(raw);
+    return Number.isNaN(value) ? 0 : value;
+}
+function isUnitGroupCollapsed(subject) {
+    var state = readUiState();
+    if (!state.unitGroups || typeof state.unitGroups[subject] === 'undefined')
+        return true;
+    return Boolean(state.unitGroups[subject]);
+}
+function toggleUnitGroup(subject) {
+    var state = readUiState();
+    var next = __assign({}, (state.unitGroups || {}));
+    next[subject] = !next[subject];
+    saveUiState({ unitGroups: next });
+    renderUnitList();
+}
+function toggleUnitGroupByEncoded(encodedSubject) {
+    toggleUnitGroup(decodeURIComponent(encodedSubject || ''));
+}
+function scrollToUnitForm() {
+    cancelEdit();
+    var unitFormCard = document.getElementById('unitFormCard');
+    if (unitFormCard)
+        unitFormCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    var fName = document.getElementById('fName');
+    if (fName)
+        fName.focus();
+}
+function pickEmoji(inputId, emoji) {
+    var el = document.getElementById(String(inputId || ''));
+    if (!el)
+        return;
+    el.value = String(emoji || '').trim();
+    el.focus();
+}
+function rememberRecentCustomPreset(field) {
+    if (!field || !field.key)
+        return;
+    var normalized = __assign(__assign({}, field), { enabled: true });
+    recentCustomPresets = [normalized].concat(recentCustomPresets.filter(function (p) { return String(p.key) !== String(normalized.key); }));
+    if (preloadCache.editor) {
+        preloadCache.editor.recentCustomPresets = recentCustomPresets.slice();
+        persistTeacherPreloadCache_();
+    }
+    renderPresetBtns();
+    google.script.run
+        .withSuccessHandler(function (res) {
+        if (res && res.preset) {
+            recentCustomPresets = [res.preset].concat(recentCustomPresets.filter(function (p) { return String(p.key) !== String(res.preset.key); }));
+            if (preloadCache.editor) {
+                preloadCache.editor.recentCustomPresets = recentCustomPresets.slice();
+                persistTeacherPreloadCache_();
+            }
+            renderPresetBtns();
+        }
+    })
+        .withFailureHandler(function (err) {
+        console.warn('recent custom preset save failed', err);
+    })
+        .saveRecentCustomFieldPreset(normalized);
+}
+function removeRecentCustomPreset(key) {
+    recentCustomPresets = recentCustomPresets.filter(function (p) { return String(p.key) !== String(key); });
+    if (preloadCache.editor) {
+        preloadCache.editor.recentCustomPresets = recentCustomPresets.slice();
+        persistTeacherPreloadCache_();
+    }
+    renderPresetBtns();
+    google.script.run
+        .withSuccessHandler(function () { })
+        .withFailureHandler(function (err) {
+        console.warn('recent custom preset delete failed', err);
+    })
+        .deleteRecentCustomFieldPreset(key);
+}
+// =====================================
+//  プリセットボタン
+// =====================================
+function renderPresetBtns() {
+    var container = document.getElementById('presetBtns');
+    var presetHtml = allPresets.map(function (p) {
+        var active = editingFields.some(function (f) { return f.key === p.key && f.enabled !== false; });
+        return "<button class=\"preset-btn ".concat(active ? 'active-preset' : '', "\" type=\"button\"\n      onclick=\"togglePreset('").concat(escAttr(p.key), "')\" data-key=\"").concat(escAttr(p.key), "\">\n      ").concat(p.emoji, " ").concat(esc(p.label), "</button>");
+    }).join('');
+    var recentHtml = recentCustomPresets.map(function (p) {
+        var active = editingFields.some(function (f) { return f.key === p.key && f.enabled !== false; });
+        return "<button class=\"preset-btn recent-preset ".concat(active ? 'active-preset' : '', "\" type=\"button\"\n      onclick=\"toggleRecentCustomPreset('").concat(escAttr(p.key), "')\" data-key=\"").concat(escAttr(p.key), "\">\n      <span class=\"preset-chip-inner\">").concat(p.emoji || '🆕', " ").concat(esc(p.label), "\n      <span class=\"preset-remove\" onclick=\"event.stopPropagation();removeRecentCustomPreset('").concat(escAttr(p.key), "')\" title=\"\u3053\u306E\u30D7\u30EA\u30BB\u30C3\u30C8\u3092\u5916\u3059\">\u2715</span></span></button>");
+    }).join('');
+    container.innerHTML =
+        "<div class=\"preset-group\">\n      <div class=\"preset-group-label\">\u3088\u304F\u4F7F\u3046\u9805\u76EE</div>\n      <div class=\"preset-btns\">".concat(presetHtml || '<span class="field-help">プリセットはありません。</span>', "</div>\n    </div>") +
+            "<div class=\"preset-group\">\n      <div class=\"preset-group-label\">\u6700\u8FD1\u3064\u304F\u3063\u305F\u30AB\u30B9\u30BF\u30E0\u9805\u76EE</div>\n      <div class=\"preset-btns\">".concat(recentHtml || '<span class="field-help">まだありません。追加した項目がここに出ます。</span>', "</div>\n    </div>");
+}
+function togglePreset(key) {
+    var preset = allPresets.find(function (p) { return p.key === key; });
+    if (!preset)
+        return;
+    var idx = editingFields.findIndex(function (f) { return f.key === key; });
+    if (idx >= 0) {
+        // 既にある → enabled切替
+        editingFields[idx].enabled = !editingFields[idx].enabled;
+    }
+    else {
+        // 追加
+        editingFields.push(__assign(__assign({}, preset), { enabled: true }));
+    }
+    renderFieldList();
+    renderPresetBtns();
+}
+function toggleRecentCustomPreset(key) {
+    var preset = recentCustomPresets.find(function (p) { return p.key === key; });
+    if (!preset)
+        return;
+    var idx = editingFields.findIndex(function (f) { return f.key === key; });
+    if (idx >= 0) {
+        editingFields[idx].enabled = !editingFields[idx].enabled;
+    }
+    else {
+        editingFields.push(__assign(__assign({}, preset), { enabled: true }));
+    }
+    renderFieldList();
+    renderPresetBtns();
+}
+// =====================================
+//  フィールドリスト
+// =====================================
+function renderFieldList() {
+    var list = document.getElementById('fieldList');
+    if (!editingFields.length) {
+        list.innerHTML = '<p style="color:#999;font-size:12px;">上のボタンから項目を追加してください</p>';
+        return;
+    }
+    list.innerHTML = editingFields.map(function (f, i) { return "\n    <div class=\"field-item ".concat(f.enabled !== false ? 'enabled' : '', "\" data-i=\"").concat(i, "\">\n      <span class=\"drag-handle\" title=\"\u4E26\u3073\u66FF\u3048\u30CF\u30F3\u30C9\u30EB\">\u283F</span>\n      <span class=\"f-emoji\">").concat(f.emoji || '📌', "</span>\n      <div style=\"flex:1;min-width:0;\">\n        <div class=\"f-label\">").concat(esc(f.label), "</div>\n        <div class=\"f-type\">").concat(typeLabel(f.type)).concat(formatFieldCategorySuffix(f), "</div>\n      </div>\n      <div class=\"field-order-actions\">\n        <button class=\"btn-move\" type=\"button\" onclick=\"moveField(").concat(i, ",-1)\" ").concat(i === 0 ? 'disabled' : '', " title=\"\u4E0A\u3078\">\u25B2</button>\n        <button class=\"btn-move\" type=\"button\" onclick=\"moveField(").concat(i, ",1)\" ").concat(i === editingFields.length - 1 ? 'disabled' : '', " title=\"\u4E0B\u3078\">\u25BC</button>\n      </div>\n      <button class=\"btn-edit-field\" type=\"button\" onclick=\"startEditCustomField(").concat(i, ")\">\u7DE8\u96C6</button>\n      <button class=\"toggle-btn ").concat(f.enabled !== false ? 'toggle-on' : 'toggle-off', "\"\n        onclick=\"toggleField(").concat(i, ")\">\n        ").concat(f.enabled !== false ? 'ON' : 'OFF', "</button>\n      <button class=\"btn-remove\" onclick=\"removeField(").concat(i, ")\">\u2715</button>\n    </div>"); }).join('');
+}
+function typeLabel(t) {
+    return {
+        text: '自由記述',
+        select: '選択肢',
+        radio: 'ラジオ',
+        review: 'ふりかえり（ヒント付き）',
+        number: '数値',
+        student_select: '児童名簿（1人）',
+        student_multi: '児童名簿（複数）',
+    }[t] || t;
+}
+function toggleField(i) {
+    editingFields[i].enabled = !editingFields[i].enabled;
+    renderFieldList();
+    renderPresetBtns();
+}
+function removeField(i) {
+    editingFields.splice(i, 1);
+    renderFieldList();
+    renderPresetBtns();
+}
+function moveField(index, delta) {
+    var nextIndex = index + delta;
+    if (index < 0 || index >= editingFields.length)
+        return;
+    if (nextIndex < 0 || nextIndex >= editingFields.length)
+        return;
+    var moved = editingFields.splice(index, 1)[0];
+    editingFields.splice(nextIndex, 0, moved);
+    renderFieldList();
+    renderPresetBtns();
+}
+function addCustomField() {
+    var field = createCustomFieldFromInputs('cf', editingFields);
+    if (!field)
+        return;
+    editingFields.push(field);
+    rememberRecentCustomPreset(field);
+    resetCustomFieldInputs('cf');
+    renderFieldList();
+    renderPresetBtns();
+}
+function saveCustomField() {
+    var editIndex = parseInt(document.getElementById('cfEditIndex').value, 10);
+    if (Number.isInteger(editIndex) && editIndex >= 0 && editIndex < editingFields.length) {
+        var existing_1 = editingFields[editIndex];
+        var updated = createCustomFieldFromInputs('cf', editingFields, { preserveKey: existing_1.key, preserveEnabled: existing_1.enabled !== false });
+        if (!updated)
+            return;
+        editingFields[editIndex] = __assign(__assign({}, existing_1), updated);
+        if (!allPresets.some(function (p) { return p.key === existing_1.key; })) {
+            rememberRecentCustomPreset(editingFields[editIndex]);
+        }
+        resetCustomFieldEditor();
+        renderFieldList();
+        renderPresetBtns();
+        return;
+    }
+    addCustomField();
+}
+function createCustomFieldFromInputs(prefix, existingFields, options) {
+    var label = document.getElementById(prefix + 'Label').value.trim();
+    var type = document.getElementById(prefix + 'Type').value;
+    var emoji = document.getElementById(prefix + 'Emoji').value.trim() || '🆕';
+    var isRosterChoice = type === 'student_select' || type === 'student_multi';
+    var fieldOptions = isRosterChoice ? '' : parseFieldOptionsInput(document.getElementById(prefix + 'Options').value);
+    var placeholder = document.getElementById(prefix + 'Placeholder').value.trim();
+    var categories = getCheckedCategories(prefix);
+    if (!label) {
+        alert('項目名を入力してください');
+        return null;
+    }
+    var preserveKey = String(options && options.preserveKey || '').trim();
+    var key = preserveKey;
+    if (!key) {
+        var baseKey = label.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_\u3040-\u30ff\u4e00-\u9faf]/g, '');
+        var keySeed = baseKey || "field_".concat(existingFields.length + 1);
+        key = keySeed;
+        var suffix = 2;
+        while (existingFields.some(function (f) { return f.key === key; }) || allPresets.some(function (p) { return p.key === key; }) || recentCustomPresets.some(function (p) { return p.key === key; })) {
+            key = "".concat(keySeed, "_").concat(suffix++);
+        }
+    }
+    return {
+        key: key,
+        label: label,
+        emoji: emoji,
+        type: type,
+        placeholder: placeholder || (isRosterChoice ? '名簿からえらんでね' : ''),
+        options: fieldOptions,
+        hints: type === 'review' ? 'がんばったこと,やり方,わかったこと,次にしたいこと' : '',
+        categories: categories,
+        enabled: !(options && options.preserveEnabled === false),
+        isReview: type === 'review',
+    };
+}
+function parseFieldOptionsInput(value) {
+    var tokens = String(value || '')
+        .split(/\r?\n|,/)
+        .map(function (token) { return token.trim(); })
+        .filter(Boolean);
+    return tokens.join(',');
+}
+function resetCustomFieldInputs(prefix) {
+    document.getElementById(prefix + 'Label').value = '';
+    document.getElementById(prefix + 'Emoji').value = '🆕';
+    document.getElementById(prefix + 'Options').value = '';
+    document.getElementById(prefix + 'Placeholder').value = '';
+    document.getElementById(prefix + 'Type').value = 'text';
+    setCheckedCategories(prefix, []);
+}
+function resetCustomFieldEditor() {
+    document.getElementById('cfEditIndex').value = '';
+    resetCustomFieldInputs('cf');
+    document.getElementById('cfSubmitBtn').textContent = 'この項目を追加';
+    document.getElementById('cfEditCancelBtn').style.display = 'none';
+    document.getElementById('cfEditMeta').textContent = '既存項目を編集するときは、一覧の「編集」ボタンから読み込めます。項目キーは保持されるので、既存記録は消えません。';
+}
+function startEditCustomField(index) {
+    var field = editingFields[index];
+    if (!field)
+        return;
+    document.getElementById('cfEditIndex').value = String(index);
+    document.getElementById('cfLabel').value = field.label || '';
+    document.getElementById('cfType').value = field.type || 'text';
+    document.getElementById('cfEmoji').value = field.emoji || '🆕';
+    document.getElementById('cfOptions').value = String(field.options || '').split(',').filter(Boolean).join('\n');
+    document.getElementById('cfPlaceholder').value = field.placeholder || '';
+    setCheckedCategories('cf', field.categories || []);
+    document.getElementById('cfSubmitBtn').textContent = 'この項目を更新';
+    document.getElementById('cfEditCancelBtn').style.display = 'inline-block';
+    document.getElementById('cfEditMeta').textContent = "\u7DE8\u96C6\u4E2D: ".concat(field.label || field.key || '項目', " / \u30AD\u30FC ").concat(field.key || '-', " \u306F\u4FDD\u6301\u3055\u308C\u307E\u3059\u3002");
+    document.getElementById('cfLabel').focus();
+    document.getElementById('cfLabel').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+function getCheckedCategories(prefix) {
+    return Array.from(document.querySelectorAll("#".concat(prefix, "CategoryChecks input[type=\"checkbox\"]:checked")))
+        .map(function (input) { return String(input.value || '').trim(); })
+        .filter(Boolean);
+}
+function setCheckedCategories(prefix, categories) {
+    var selected = new Set(Array.isArray(categories) ? categories : []);
+    document.querySelectorAll("#".concat(prefix, "CategoryChecks input[type=\"checkbox\"]")).forEach(function (input) {
+        input.checked = selected.has(String(input.value || ''));
+    });
+}
+function formatFieldCategorySuffix(field) {
+    var labels = ((field && field.categories) || []).map(function (category) { return FIELD_CATEGORY_LABELS[category]; }).filter(Boolean);
+    return labels.length ? " / ".concat(labels.join('・')) : '';
+}
+function guessFieldCategories(field) {
+    var key = String(field && field.key || '').toLowerCase();
+    var label = String(field && field.label || '').toLowerCase();
+    var type = String(field && field.type || '').toLowerCase();
+    var text = "".concat(key, " ").concat(label, " ").concat(type);
+    var categories = [];
+    var includes = function (words) { return words.some(function (word) { return text.includes(word); }); };
+    if (includes(['理解', 'できた', 'わかった', 'まとめ', '用語', '知識', '技能', 'eval', 'summary'])) {
+        categories.push('knowledge');
+    }
+    if (includes(['ふりかえり', 'review', 'やり方', '方法', '工夫', '理由', '考え', '説明', 'method'])) {
+        categories.push('thinking');
+    }
+    if (includes(['めあて', 'goal', 'ふりかえり', 'review', '次', 'がんば', '取り組', 'method', 'やり方'])) {
+        categories.push('attitude');
+    }
+    return categories.filter(function (category, index, arr) { return arr.indexOf(category) === index; });
+}
+function autoTagFieldCollection(fields) {
+    var updated = 0;
+    var next = (fields || []).map(function (field) {
+        if ((((field && field.categories) || []).length))
+            return field;
+        var guessed = guessFieldCategories(field);
+        if (!guessed.length)
+            return field;
+        updated++;
+        return __assign(__assign({}, field), { categories: guessed });
+    });
+    return { fields: next, updated: updated };
+}
+function autoTagUnitFields() {
+    var result = autoTagFieldCollection(editingFields);
+    editingFields = result.fields;
+    renderFieldList();
+    renderPresetBtns();
+    alert(result.updated ? "\u89B3\u70B9\u30BF\u30B0\u3092 ".concat(result.updated, " \u9805\u76EE\u306B\u8A2D\u5B9A\u3057\u307E\u3057\u305F\u3002") : '追加で設定できる観点タグはありませんでした。');
+}
+// =====================================
+//  教科変更 → デフォルト引き継ぎ
+// =====================================
+function onSubjectChange() {
+    var subject = document.getElementById('fSubject').value;
+    if (editingFields.length > 0)
+        return; // 既に設定済みなら変更しない
+    applySubjectDefault(subject);
+}
+function applySubjectDefault(subject) {
+    var defaults = subjectDefaults[subject] || [];
+    editingFields = defaults.map(function (f) { return (__assign(__assign({}, f), { enabled: f.enabled !== false })); });
+    renderFieldList();
+    renderPresetBtns();
+}
+function setLessonFieldEditorReadonly_(isReadonly) {
+    ['fName', 'fSubject', 'fMax'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (!el)
+            return;
+        el.disabled = Boolean(isReadonly);
+    });
+}
+function updateUnitSaveStartButton_(label, disabled) {
+    var btn = document.getElementById('unitSaveStartBtn');
+    if (!btn)
+        return;
+    btn.textContent = label || '保存して授業開始';
+    btn.disabled = Boolean(disabled);
+}
+function resetLessonFieldEditState_() {
+    lessonFieldEditState = { mode: 'unit', unitId: '', period: 0 };
+    setLessonFieldEditorReadonly_(false);
+}
+function startLessonFieldEditFromConfig_(cfg) {
+    if (!(cfg && cfg.ok && cfg.unit && cfg.lesson))
+        return;
+    resetCustomFieldEditor();
+    lessonFieldEditState = {
+        mode: 'lesson',
+        unitId: String(cfg.unit.id || ''),
+        period: Number(cfg.lesson.period || 0) || 0,
+    };
+    document.getElementById('editUnitId').value = String(cfg.unit.id || '');
+    document.getElementById('fName').value = cfg.unit.name || '';
+    document.getElementById('fSubject').value = cfg.unit.subject || '';
+    document.getElementById('fMax').value = cfg.unit.maxPeriod;
+    editingFields = (cfg.fields || []).map(function (field) { return (__assign({}, field)); });
+    renderFieldList();
+    renderPresetBtns();
+    document.getElementById('unitFormTitle').textContent = "\uD83D\uDD52 ".concat(cfg.lesson.period, "\u6642\u9593\u76EE\u3060\u3051\u9805\u76EE\u3092\u7DE8\u96C6");
+    document.getElementById('unitSaveBtn').textContent = 'この時間だけ保存';
+    document.getElementById('unitSaveBtn').dataset.defaultLabel = 'この時間だけ保存';
+    updateUnitSaveStartButton_('保存して授業開始', true);
+    document.getElementById('unitCancelBtn').style.display = 'inline-block';
+    setUnitSaveMeta('ここでの保存はこの時間だけに反映されます。単元全体の項目は変わりません。');
+    setLessonFieldEditorReadonly_(true);
+    document.getElementById('unitFormCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+// =====================================
+//  単元 保存・編集・削除
+// =====================================
+function editUnit(id) {
+    var u = allUnits.find(function (u) { return u.id == id; });
+    if (!u)
+        return;
+    resetLessonFieldEditState_();
+    resetCustomFieldEditor();
+    document.getElementById('editUnitId').value = id;
+    document.getElementById('fName').value = u.name;
+    document.getElementById('fSubject').value = u.subject;
+    document.getElementById('fMax').value = u.maxPeriod;
+    editingFields = (u.fields || []).map(function (f) { return (__assign({}, f)); });
+    renderFieldList();
+    renderPresetBtns();
+    document.getElementById('unitFormTitle').textContent = '✏️ 単元を編集';
+    document.getElementById('unitSaveBtn').textContent = '更新する';
+    document.getElementById('unitSaveBtn').dataset.defaultLabel = '更新する';
+    updateUnitSaveStartButton_('更新して授業開始', false);
+    document.getElementById('unitCancelBtn').style.display = 'inline-block';
+    document.getElementById('unitFormCard').scrollIntoView({ behavior: 'smooth' });
+}
+function cancelEdit() {
+    if (unitSaveState.busy)
+        return;
+    resetLessonFieldEditState_();
+    document.getElementById('editUnitId').value = '';
+    document.getElementById('fName').value = '';
+    document.getElementById('fSubject').value = '算数';
+    document.getElementById('fMax').value = '10';
+    resetCustomFieldEditor();
+    applySubjectDefault(document.getElementById('fSubject').value);
+    renderFieldList();
+    renderPresetBtns();
+    document.getElementById('unitFormTitle').textContent = '➕ 新しい単元を追加';
+    document.getElementById('unitSaveBtn').textContent = '保存する';
+    document.getElementById('unitSaveBtn').dataset.defaultLabel = '保存する';
+    updateUnitSaveStartButton_('保存して授業開始', false);
+    document.getElementById('unitCancelBtn').style.display = 'none';
+    setUnitSaveMeta('');
+}
+function readUnitMaxPeriod_() {
+    var raw = String(document.getElementById('fMax').value || '').trim();
+    if (raw === '')
+        return { ok: false, message: '最大時間数を入力してください。0 は無制限です。' };
+    if (!/^\d+$/.test(raw))
+        return { ok: false, message: '最大時間数は 0〜99 の整数で入力してください。' };
+    var value = parseInt(raw, 10);
+    if (value < 0 || value > 99)
+        return { ok: false, message: '最大時間数は 0〜99 の整数で入力してください。' };
+    return { ok: true, value: value };
+}
+function setUnitSaveMeta(message, state) {
+    var meta = document.getElementById('unitSaveMeta');
+    if (!meta)
+        return;
+    meta.textContent = String(message || '');
+    meta.classList.remove('is-busy', 'is-error', 'is-success');
+    if (state)
+        meta.classList.add("is-".concat(state));
+}
+function setUnitSaveBusy_(isBusy, buttonLabel) {
+    unitSaveState.busy = Boolean(isBusy);
+    var saveBtn = document.getElementById('unitSaveBtn');
+    var cancelBtn = document.getElementById('unitCancelBtn');
+    var jumpBtn = document.querySelector('.btn-jump-add');
+    var controls = document.querySelectorAll('#unitFormCard input,#unitFormCard select,#unitFormCard textarea,#unitFormCard button');
+    controls.forEach(function (control) { control.disabled = Boolean(isBusy); });
+    if (jumpBtn)
+        jumpBtn.disabled = Boolean(isBusy);
+    if (saveBtn) {
+        if (!saveBtn.dataset.defaultLabel)
+            saveBtn.dataset.defaultLabel = saveBtn.textContent || '保存する';
+        saveBtn.textContent = isBusy ? (buttonLabel || '保存中…') : (saveBtn.dataset.defaultLabel || '保存する');
+    }
+    if (cancelBtn && !isBusy && cancelBtn.style.display !== 'none')
+        cancelBtn.disabled = false;
+}
+function buildUnitSavePayload_() {
+    var id = document.getElementById('editUnitId').value;
+    var name = document.getElementById('fName').value.trim();
+    var subject = document.getElementById('fSubject').value;
+    var maxResult = readUnitMaxPeriod_();
+    if (!name) {
+        alert('単元名を入力してください');
+        return null;
+    }
+    if (!maxResult.ok) {
+        alert(maxResult.message);
+        setUnitSaveMeta(maxResult.message, 'error');
+        return null;
+    }
+    return {
+        id: id,
+        name: name,
+        subject: subject,
+        maxPeriod: maxResult.value,
+        fields: editingFields.map(function (field) { return (__assign({}, field)); }),
+    };
+}
+function applySavedUnitLocally_(savedUnit) {
+    if (!savedUnit || !savedUnit.id)
+        return;
+    var idx = allUnits.findIndex(function (unit) { return String(unit.id) === String(savedUnit.id); });
+    if (idx >= 0)
+        allUnits[idx] = savedUnit;
+    else
+        allUnits.unshift(savedUnit);
+    if (preloadCache.aggregate)
+        preloadCache.aggregate = null;
+    if (preloadCache.status)
+        clearTeacherStatusPreloadCache_(true);
+    persistTeacherPreloadCache_();
+    refreshUnitUiAfterMutation_();
+}
+function invalidateUnitRelatedClientState_(unitId) {
+    var normalized = String(unitId || '').trim();
+    if (normalized && unitProgressByUnitId && typeof unitProgressByUnitId === 'object') {
+        delete unitProgressByUnitId[normalized];
+    }
+    if (preloadCache.aggregate)
+        preloadCache.aggregate = null;
+    if (preloadCache.portfolio)
+        preloadCache.portfolio = null;
+    if (String(activeUnitId || '') === normalized) {
+        activeUnitId = null;
+        activePeriod = 0;
+        latestStatusRows = [];
+        latestStatusMeta = {};
+        teacherDraftLocalState = {};
+        clearTeacherStatusPreloadCache_(true);
+    }
+    else if (preloadCache.status) {
+        clearTeacherStatusPreloadCache_(true);
+    }
+    if (Array.isArray(allAggData) && normalized) {
+        allAggData = allAggData.filter(function (row) { return String(row.unitId || '') !== normalized; });
+    }
+    if (typeof allAggMeta === 'object' && allAggMeta) {
+        allAggMeta = { scope: 'unknown', fetchedAt: 0, unitId: '', subject: '' };
+    }
+    persistTeacherPreloadCache_();
+}
+function removeUnitLocally_(unitId) {
+    var normalized = String(unitId || '').trim();
+    if (!normalized)
+        return false;
+    var nextUnits = (allUnits || []).filter(function (unit) { return String(unit.id) !== normalized; });
+    var removed = nextUnits.length !== allUnits.length;
+    if (!removed)
+        return false;
+    allUnits = nextUnits;
+    invalidateUnitRelatedClientState_(normalized);
+    if (String(document.getElementById('editUnitId').value || '') === normalized) {
+        cancelEdit();
+    }
+    refreshUnitUiAfterMutation_();
+    return true;
+}
+function refreshUnitUiAfterMutation_() {
+    renderUnitList();
+    populateUnitSelects();
+    if (typeof populateGradingSelects === 'function')
+        populateGradingSelects();
+    var startUnit = document.getElementById('startUnit');
+    if (startUnit) {
+        var currentValue_1 = String(startUnit.value || '').trim();
+        var exists = allUnits.some(function (unit) { return String(unit.id) === currentValue_1; });
+        if (currentValue_1 && !exists) {
+            startUnit.value = '';
+        }
+    }
+    updatePeriodSelect();
+}
+function buildUnitMutationMessage_(prefix) {
+    var summaryEl = document.getElementById('unitListSummary');
+    var summaryText = summaryEl ? String(summaryEl.textContent || '').trim() : '';
+    return summaryText ? "".concat(prefix, " ").concat(summaryText) : prefix;
+}
+function finishUnitSave_(savedUnit, toastMessage) {
+    applySavedUnitLocally_(savedUnit);
+    cancelEdit();
+    var message = buildUnitMutationMessage_(toastMessage || '単元を保存しました。');
+    setUnitSaveMeta(message, 'success');
+    showToast(message, { duration: 3600 });
+    loadInit();
+}
+function startSavedUnitLesson_(savedUnit) {
+    if (!(savedUnit && savedUnit.id))
+        return;
+    saveUiState({ curriculumSubtab: 'units' });
+    var tabBtn = document.querySelector(".tab[onclick*='status']");
+    switchTab('status', tabBtn || null);
+    setControlValue('startSubjectFilter', savedUnit.subject || '');
+    setControlValue('startUnitSearch', '');
+    saveUiState({
+        startSubjectFilter: savedUnit.subject || '',
+        startUnitSearch: '',
+    });
+    populateUnitSelects();
+    var unitSel = document.getElementById('startUnit');
+    if (unitSel)
+        unitSel.value = String(savedUnit.id);
+    updatePeriodSelect();
+    startLesson();
+}
+function saveUnit(startAfterSave) {
+    if (unitSaveState.busy)
+        return;
+    var isLessonOnly = lessonFieldEditState.mode === 'lesson';
+    var payload = isLessonOnly
+        ? {
+            unitId: lessonFieldEditState.unitId,
+            period: lessonFieldEditState.period,
+            fields: editingFields.map(function (field) { return (__assign({}, field)); }),
+        }
+        : buildUnitSavePayload_();
+    if (!payload)
+        return;
+    if (isLessonOnly) {
+        setUnitSaveBusy_(true, '保存中…');
+        setUnitSaveMeta('この時間の項目を保存しています…', 'busy');
+        google.script.run
+            .withSuccessHandler(function (res) {
+            setUnitSaveBusy_(false);
+            if (!(res && res.ok)) {
+                var msg = res && res.error || 'この時間の項目保存に失敗しました。';
+                setUnitSaveMeta(msg, 'error');
+                showToast(msg);
+                return;
+            }
+            cancelEdit();
+            setUnitSaveMeta('この時間の項目を保存しました。', 'success');
+            showToast('この時間だけ項目を更新しました');
+            loadInit();
+            loadStatusInit({ startPolling: true });
+        })
+            .withFailureHandler(function (err) {
+            setUnitSaveBusy_(false);
+            var msg = err && err.message || 'この時間の項目保存に失敗しました。';
+            setUnitSaveMeta(msg, 'error');
+            showToast(msg);
+        })
+            .saveLessonFieldConfig(payload.unitId, payload.period, payload.fields);
+        return;
+    }
+    unitSaveState.requestToken = "unit_".concat(Date.now(), "_").concat(Math.random().toString(36).slice(2, 8));
+    payload.requestToken = unitSaveState.requestToken;
+    payload.startAfterSave = Boolean(startAfterSave);
+    var isEdit = Boolean(String(payload.id || '').trim());
+    var nextAction = Boolean(startAfterSave)
+        ? (isEdit ? '更新して開始中…' : '保存して開始中…')
+        : (isEdit ? '更新中…' : '保存中…');
+    setUnitSaveBusy_(true, nextAction);
+    setUnitSaveMeta(isEdit ? '単元を更新しています…' : '単元を保存しています…', 'busy');
+    google.script.run
+        .withSuccessHandler(function (res) {
+        setUnitSaveBusy_(false);
+        if (!(res && res.ok && res.unit)) {
+            var msg = res && res.error || '単元の保存に失敗しました。';
+            setUnitSaveMeta(msg, 'error');
+            showToast(msg);
+            return;
+        }
+        finishUnitSave_(res.unit, isEdit ? '単元を更新しました' : '単元を保存しました');
+        if (payload.startAfterSave) {
+            startSavedUnitLesson_(res.unit);
+        }
+    })
+        .withFailureHandler(function (err) {
+        setUnitSaveBusy_(false);
+        var msg = err && err.message || '単元の保存に失敗しました。';
+        setUnitSaveMeta(msg, 'error');
+        showToast(msg);
+    })
+        .saveUnit(payload);
+}
+function askDelete(id, name) {
+    delTargetId = id;
+    setDeleteModalBusy_(false);
+    document.getElementById('delMsg').textContent = "\u300C".concat(name, "\u300D\u3092\u524A\u9664\u3057\u307E\u3059\u3002\u6388\u696D\u30C7\u30FC\u30BF\u306F\u6B8B\u308A\u307E\u3059\u3002");
+    document.getElementById('delModal').classList.add('show');
+}
+function setDeleteModalBusy_(busy) {
+    var confirmBtn = document.getElementById('delConfirmBtn');
+    var cancelBtn = document.getElementById('delCancelBtn');
+    if (confirmBtn) {
+        if (!confirmBtn.dataset.defaultLabel)
+            confirmBtn.dataset.defaultLabel = confirmBtn.textContent || '削除する';
+        confirmBtn.disabled = Boolean(busy);
+        confirmBtn.textContent = busy ? '削除中…' : confirmBtn.dataset.defaultLabel;
+    }
+    if (cancelBtn)
+        cancelBtn.disabled = Boolean(busy);
+}
+function confirmDelete() {
+    var targetId = String(delTargetId || '').trim();
+    if (!targetId)
+        return;
+    setDeleteModalBusy_(true);
+    setUnitSaveMeta('単元を削除しています…', 'busy');
+    google.script.run
+        .withSuccessHandler(function (res) {
+        if (!(res && res.ok)) {
+            var msg = '単元の削除に失敗しました。';
+            setDeleteModalBusy_(false);
+            setUnitSaveMeta(msg, 'error');
+            showToast(msg);
+            return;
+        }
+        closeModal();
+        removeUnitLocally_(targetId);
+        var message = buildUnitMutationMessage_('単元を削除しました。');
+        setUnitSaveMeta(message, 'success');
+        showToast(message, { duration: 3600 });
+        loadInit();
+    })
+        .withFailureHandler(function (err) {
+        var msg = err && err.message || '単元の削除に失敗しました。';
+        setDeleteModalBusy_(false);
+        setUnitSaveMeta(msg, 'error');
+        showToast(msg);
+    })
+        .deleteUnit(targetId);
+}
+function closeModal() {
+    setDeleteModalBusy_(false);
+    document.getElementById('delModal').classList.remove('show');
+}
+</script>

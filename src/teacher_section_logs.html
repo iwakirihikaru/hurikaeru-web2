@@ -1,0 +1,35 @@
+  <!-- ⑥ ログ -->
+  <div class="section" id="sec-logs">
+    <div class="card">
+      <h2>🪵 AI保守・ログ</h2>
+      <div class="log-toolbar">
+        <select class="inp" id="aiLogScope">
+          <option value="current">この授業だけ</option>
+          <option value="all">全体</option>
+        </select>
+        <select class="inp" id="aiLogLimit">
+          <option value="30">30件</option>
+          <option value="60" selected>60件</option>
+          <option value="120">120件</option>
+          <option value="200">200件</option>
+          <option value="300">300件</option>
+        </select>
+        <button class="btn-queue" type="button" id="retryAiBtn" onclick="retryAiErrors()">AI失敗分を再実行</button>
+        <button class="btn-update" type="button" onclick="loadAiQueuePanel()">AIキュー確認</button>
+        <button class="btn-queue" type="button" onclick="loadAiLogs()">読込</button>
+        <button class="btn-update" type="button" onclick="copyAiLogText()">コピー</button>
+      </div>
+      <div class="log-toolbar">
+        <select class="inp" id="aiLogRetentionDays">
+          <option value="30">30日より前を削除</option>
+          <option value="60">60日より前を削除</option>
+          <option value="90" selected>90日より前を削除</option>
+          <option value="180">180日より前を削除</option>
+        </select>
+        <button class="btn-cancel" type="button" onclick="purgeAiLogs()">古いログを削除</button>
+      </div>
+      <div class="debug-note" id="aiQueueMeta">AIキューは必要なときだけ確認してください。</div>
+      <div class="debug-note" id="aiLogMeta">自動更新しません。必要なときだけ読んでください。古いAIログは定期的に整理して構いません。</div>
+      <textarea class="inp log-textarea" id="aiLogText" readonly placeholder="ここに AI ログが表示されます。"></textarea>
+    </div>
+  </div>

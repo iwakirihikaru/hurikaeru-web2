@@ -1,0 +1,117 @@
+  <div class="section" id="sec-records">
+    <div class="inner-tab-bar">
+      <button class="inner-tab active" type="button" data-record-tab="aggregate" onclick="switchRecordSubtab('aggregate', this)">単元記録</button>
+      <button class="inner-tab" type="button" data-record-tab="portfolio" onclick="switchRecordSubtab('portfolio', this)">ポートフォリオ</button>
+      <button class="inner-tab" type="button" data-record-tab="grading" onclick="switchRecordSubtab('grading', this)">評定する</button>
+    </div>
+
+    <div class="record-pane active" id="record-pane-aggregate">
+      <div class="card">
+        <h2>📚 単元記録を確認</h2>
+        <div class="agg-toolbar agg-toolbar-filters">
+          <select id="aggSubject" onchange="filterAgg()"><option value="">全教科</option></select>
+          <select id="aggUnit" onchange="filterAgg()"><option value="">単元を選択…</option></select>
+          <select id="aggPeriod" onchange="filterAgg()"><option value="">全時間</option></select>
+          <select id="aggPreset" onchange="filterAgg()">
+            <option value="all" selected>基本: 記入記録をまとめて表示</option>
+            <option value="standard">ふりかえり中心</option>
+            <option value="knowledge">知識・技能</option>
+            <option value="thinking">思考・判断・表現</option>
+            <option value="attitude">主体的態度</option>
+          </select>
+        </div>
+        <div class="agg-toolbar agg-toolbar-actions">
+          <button class="btn-ai" id="aggSummaryAiBtn" onclick="genSummary()">🤖 単元指導レポートを生成</button>
+          <button class="btn-export" onclick="exportAggCsv()">⬇️ CSV出力</button>
+          <label class="agg-toggle">
+            <input type="checkbox" id="aggShowComment" onchange="filterAgg()">
+            AIコメントも表示
+          </label>
+        </div>
+        <div class="ai-report" id="aiReport"></div>
+        <div class="debug-note">AIには児童名を送らず出席番号だけを送信します。受信後の表示は名簿と照合して氏名に置き換えます。</div>
+        <div class="debug-note" id="aggDebug">単元記録の取得状況を表示します。</div>
+        <div id="aggSummary">
+          <div class="insight-grid">
+            <div class="insight-box"><div class="insight-k">対象人数</div><div class="insight-v">-</div></div>
+            <div class="insight-box"><div class="insight-k">平均スコア</div><div class="insight-v">-</div></div>
+            <div class="insight-box"><div class="insight-k">A以上</div><div class="insight-v">-</div></div>
+            <div class="insight-box"><div class="insight-k">要支援候補</div><div class="insight-v">-</div></div>
+          </div>
+        </div>
+        <div class="agg-list">
+          <div class="agg-table-wrap">
+            <table class="tbl">
+              <thead id="aggHead"><tr><th>単元</th><th>時間</th><th>#</th><th>なまえ</th><th>日付</th><th>ふりかえり</th><th>ランク</th></tr></thead>
+              <tbody id="aggBody"><tr><td colspan="7" style="text-align:center;padding:14px;"><span class="spinner"></span></td></tr></tbody>
+            </table>
+          </div>
+          <div class="agg-cards" id="aggCards">
+            <div class="portfolio-empty"><span class="spinner"></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="record-pane" id="record-pane-portfolio">
+      <div class="card">
+        <h2>🧒 児童別ポートフォリオ・AI所見</h2>
+        <div class="agg-toolbar">
+          <select id="pfStudent" onchange="loadPortfolioData()"><option value="">児童を選択…</option></select>
+          <select id="pfUnit" onchange="loadPortfolioData()"><option value="">全単元</option></select>
+          <button class="btn-ai" id="portfolioSummaryAiBtn" onclick="generatePortfolioSummary()">🤖 AI所見下書きを生成</button>
+        </div>
+        <div class="debug-note">AIには児童名を送らず出席番号だけを送信します。表示名は名簿とローカル照合して付けています。</div>
+        <div class="debug-note" id="portfolioDebug">児童を選ぶと取得件数を表示します。</div>
+        <div class="ai-report" id="portfolioReport"></div>
+        <div class="portfolio-list">
+          <div class="portfolio-table-wrap">
+            <table class="tbl">
+              <thead><tr><th>教科</th><th>単元</th><th>時間</th><th>日付</th><th>ふりかえり</th><th>ランク</th></tr></thead>
+              <tbody id="portfolioBody"><tr><td colspan="6" style="text-align:center;padding:14px;color:#999;">児童を選択してください</td></tr></tbody>
+            </table>
+          </div>
+          <div class="portfolio-cards" id="portfolioCards">
+            <div class="portfolio-empty">児童を選択してください</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="record-pane" id="record-pane-grading">
+      <div class="card">
+        <h2>📝 単元の評定をする</h2>
+        <div class="agg-toolbar">
+          <select id="gradeMode" onchange="filterGrading()">
+            <option value="unit">単元ごとの詳細入力</option>
+            <option value="subject">教科ごとの一覧入力</option>
+          </select>
+          <select id="gradeSubject" onchange="filterGrading()"><option value="">全教科</option></select>
+          <select id="gradeUnit" onchange="filterGrading()"><option value="">単元を選択…</option></select>
+          <select id="gradePeriod" onchange="filterGrading()"><option value="">全時間</option></select>
+          <select id="gradeCategory" onchange="filterGrading()">
+            <option value="knowledge">知識・技能で評定</option>
+            <option value="thinking">思考・判断・表現で評定</option>
+            <option value="attitude">主体的態度で評定</option>
+          </select>
+          <button class="btn-ai" id="gradingDraftAiBtn" onclick="generateGradingDrafts()">🤖 空欄にAI仮評定</button>
+          <button class="btn-export" onclick="exportGradingCsv()">⬇️ 評定CSV</button>
+          <div class="grading-mode-note" id="gradingModeNote">単元ごとの根拠を見ながら評定できます。</div>
+        </div>
+        <div class="debug-note">AIには児童名を送らず出席番号だけを送信します。反映時は出席番号で評定先を照合し、画面は氏名付きで表示します。</div>
+        <div id="gradeFieldChips" class="field-chip-empty">観点を選ぶと根拠に使う項目を表示します。</div>
+        <div class="debug-note" id="gradeDebug">評定に使う記録の取得状況を表示します。</div>
+        <div class="agg-list">
+          <div class="agg-table-wrap">
+            <table class="tbl">
+              <thead id="gradeHead"><tr><th>#</th><th>なまえ</th><th>評定</th></tr></thead>
+              <tbody id="gradeBody"><tr><td colspan="3" style="text-align:center;padding:14px;"><span class="spinner"></span></td></tr></tbody>
+            </table>
+          </div>
+          <div class="agg-cards" id="gradeCards">
+            <div class="portfolio-empty"><span class="spinner"></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>

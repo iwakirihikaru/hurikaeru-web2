@@ -1,0 +1,82 @@
+  <!-- ⑤ プロンプト -->
+  <div class="section" id="sec-prompts">
+    <div class="card">
+      <h2>⚙️ 設定・Aiプロンプト</h2>
+      <div class="subtab-row">
+        <button class="subtab-btn active" type="button" data-prompt-tab="ai" onclick="switchPromptSubtab('ai', this)">AI設定</button>
+        <button class="subtab-btn" type="button" data-prompt-tab="update" onclick="switchPromptSubtab('update', this)">版情報</button>
+      </div>
+
+      <div class="prompt-pane active" id="prompt-pane-ai">
+        <div class="prompt-box">
+          <span class="plbl">💬 コメント生成プロンプト</span>
+          <textarea class="inp" id="pComment" rows="5"></textarea>
+        </div>
+        <div class="prompt-box">
+          <span class="plbl">📊 スコア評価基準</span>
+          <textarea class="inp" id="pScore" rows="5"></textarea>
+        </div>
+        <div class="prompt-box">
+          <span class="plbl">📝 ポートフォリオ所見プロンプト</span>
+          <textarea class="inp" id="pPortfolio" rows="5"></textarea>
+        </div>
+        <div class="prompt-box">
+          <span class="plbl">📚 単元記録AI要約プロンプト</span>
+          <textarea class="inp" id="pUnitSummary" rows="5"></textarea>
+        </div>
+        <div class="prompt-box">
+          <span class="plbl">🎯 AI仮評定プロンプト</span>
+          <textarea class="inp" id="pAssessment" rows="5"></textarea>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <label class="fl" style="margin:0;">メダル上位人数：</label>
+          <input class="inp" type="number" id="pMedal" min="1" max="5" style="width:70px;">
+        </div>
+        <div class="prompt-box" style="margin-top:10px;">
+          <span class="plbl">⚙️ 児童AI提出設定</span>
+          <label class="agg-toggle" style="display:flex;align-items:center;gap:8px;font-size:13px;">
+            <input type="checkbox" id="pStudentAiAutoSubmit">
+            児童の提出ボタンでAIコメントを自動投入する
+          </label>
+          <div style="font-size:12px;color:var(--muted);margin-top:6px;">
+            OFFにすると、提出は保存だけ行い、児童AIは自動では流しません。
+          </div>
+        </div>
+        <div class="prompt-box" style="margin-top:10px;">
+          <span class="plbl">🔑 Gemini APIキー</span>
+          <div id="apiKeyStatus" style="font-size:12px;color:var(--muted);margin-bottom:6px;"></div>
+          <input class="inp" type="password" id="pApiKey" placeholder="変更する時だけ入力">
+          <div class="guide-link-actions" style="margin-top:8px;">
+            <button class="btn-cancel" type="button" onclick="switchToHelpTab()">取得手順を見る</button>
+            <button class="btn-update" type="button" onclick="openHelpLink('apiKey')">Google AI Studio を開く</button>
+          </div>
+        </div>
+        <button class="btn-primary" onclick="savePrompts()">保存する</button>
+      </div>
+
+      <div class="prompt-pane" id="prompt-pane-update">
+        <div class="prompt-box">
+          <span class="plbl">📦 アプリの版情報</span>
+          <div class="update-help-card" style="margin-top:10px;">
+            <div class="update-help-row">
+              <span class="update-help-label">状態</span>
+              <span class="update-help-badge" id="helpUpdateStatus">確認前</span>
+            </div>
+            <div class="update-help-meta" id="helpUpdateSummary">このアプリの版と配布状況を確認できます。</div>
+            <div class="update-help-meta" id="helpUpdateLatest">最新版: 取得前</div>
+            <div class="update-help-meta" id="helpUpdateCurrent">このアプリ: 取得前</div>
+            <div class="update-help-meta" id="helpUpdateMaintenance">緊急停止: 確認前</div>
+            <div class="update-help-meta" id="helpUpdateBanner">お知らせ: 取得前</div>
+            <div class="update-help-meta" id="helpUpdateCache">設定キャッシュ: 取得前</div>
+            <div class="update-help-meta" id="helpUpdateVersionControl">版管理: 取得前</div>
+            <div class="update-help-meta" id="helpUpdateLastResult">前回確認: 未実行</div>
+            <div class="update-help-meta" id="helpUpdateReason">補足: 確認前</div>
+            <div class="guide-link-actions" style="margin-top:10px;">
+              <button class="btn-update" type="button" onclick="refreshTeacherUpdateInfo()">最新版を確認</button>
+            </div>
+            <div class="guide-note" id="helpUpdateMessage" style="margin-top:10px;">版情報を確認できます。</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>

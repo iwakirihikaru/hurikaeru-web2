@@ -1,0 +1,442 @@
+<script>
+var __assign = (this && this.__assign) || function () {
+    __assign = Object.assign || function(t) {
+        for (var s, i = 1, n = arguments.length; i < n; i++) {
+            s = arguments[i];
+            for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p))
+                t[p] = s[p];
+        }
+        return t;
+    };
+    return __assign.apply(this, arguments);
+};
+function renderRosterEditor() {
+    var body = document.getElementById('rosterBody');
+    if (!rosterEntries.length) {
+        rosterEntries = [{ studentId: '', number: 1, name: '', active: true }];
+    }
+    body.innerHTML = rosterEntries.map(function (row, idx) { return "\n    <tr>\n      <td>".concat(idx + 1, "</td>\n      <td><input class=\"inp\" type=\"number\" min=\"1\" value=\"").concat(row.number || '', "\" onchange=\"updateRosterField(").concat(idx, ",'number',this.value)\"></td>\n      <td><input class=\"inp\" type=\"text\" value=\"").concat(esc(row.name || ''), "\" onchange=\"updateRosterField(").concat(idx, ",'name',this.value)\"></td>\n      <td style=\"text-align:center;\"><input type=\"checkbox\" ").concat(row.active !== false ? 'checked' : '', " onchange=\"updateRosterField(").concat(idx, ",'active',this.checked)\"></td>\n      <td><button class=\"btn-remove\" onclick=\"removeRosterRow(").concat(idx, ")\">\u2715</button></td>\n    </tr>\n  "); }).join('');
+}
+function loadRosterEditor() {
+    var cachedRoster = normalizeRosterPreload_(preloadCache.roster);
+    if (cachedRoster) {
+        rosterEntries = cachedRoster.roster;
+        preloadCache.roster = cachedRoster;
+        renderRosterEditor();
+        ensureRosterPreload(true, {
+            onSuccess: function () { return renderRosterEditor(); },
+        });
+        return;
+    }
+    clearRosterPreload_(true);
+    renderRosterEditor();
+    ensureRosterPreload(true, {
+        onSuccess: function () { return renderRosterEditor(); },
+        onEmpty: function () { return renderRosterEditor(); },
+    });
+}
+function updateRosterField(idx, key, value) {
+    rosterEntries[idx][key] = key === 'number' ? Number(value) : value;
+}
+function addRosterRow() {
+    var nextNumber = (rosterEntries.reduce(function (max, row) { return Math.max(max, Number(row.number) || 0); }, 0) || 0) + 1;
+    rosterEntries.push({ studentId: '', number: nextNumber, name: '', active: true });
+    renderRosterEditor();
+}
+function removeRosterRow(idx) {
+    rosterEntries.splice(idx, 1);
+    renderRosterEditor();
+}
+function saveRoster() {
+    var cleaned = rosterEntries
+        .map(function (row) { return ({
+        studentId: row.studentId || '',
+        number: Number(row.number) || 0,
+        name: String(row.name || '').trim(),
+        active: row.active !== false,
+    }); })
+        .filter(function (row) { return row.number > 0; });
+    var dup = new Set();
+    for (var _i = 0, cleaned_1 = cleaned; _i < cleaned_1.length; _i++) {
+        var row = cleaned_1[_i];
+        if (dup.has(row.number)) {
+            alert('出席番号が重複しています');
+            return;
+        }
+        dup.add(row.number);
+    }
+    google.script.run
+        .withSuccessHandler(function () {
+        preloadCache.roster = { roster: cleaned.map(function (row) { return (__assign({}, row)); }) };
+        persistTeacherPreloadCache_();
+        loadRosterEditor();
+        alert('名簿を保存しました！');
+    })
+        .saveRosterEntries(cleaned);
+}
+// =====================================
+//  教科デフォルト編集
+// =====================================
+function loadSubjectEditor() {
+    if (preloadCache.editor) {
+        applyTeacherEditorData(preloadCache.editor);
+        return;
+    }
+    ensureEditorPreload();
+    google.script.run.withSuccessHandler(function (d) {
+        preloadCache.editor = d || { presets: [], subjectDefaults: {}, subjects: [], recentCustomPresets: [] };
+        persistTeacherPreloadCache_();
+        applyTeacherEditorData(preloadCache.editor);
+    }).teacherEditorInit();
+}
+function applyTeacherEditorData(d) {
+    subjectDefaults = d.subjectDefaults || {};
+    allPresets = d.presets || [];
+    allSubjects = d.subjects || [];
+    recentCustomPresets = d.recentCustomPresets || [];
+    renderSubjectTabs();
+    selectSubjectTab(currentSubject || allSubjects[0] || '算数');
+    renderPresetBtns();
+    var editUnitId = (document.getElementById('editUnitId') || {}).value || '';
+    if (!editUnitId && editingFields.length === 0) {
+        applySubjectDefault((document.getElementById('fSubject') || {}).value || currentSubject || '算数');
+    }
+}
+function renderSubjectTabs() {
+    var container = document.getElementById('subjectTabs');
+    var subjects = (allSubjects && allSubjects.length ? allSubjects : Object.keys(subjectDefaults));
+    container.innerHTML = subjects.map(function (s) {
+        return "<div class=\"stab ".concat(s === currentSubject ? 'active' : '', "\" onclick=\"selectSubjectTab('").concat(esc(s), "')\">").concat(esc(s), "</div>");
+    }).join('');
+}
+function selectSubjectTab(subject) {
+    currentSubject = subject;
+    document.querySelectorAll('.stab').forEach(function (t) {
+        t.classList.toggle('active', t.textContent === subject);
+    });
+    subjectEditingFields = (subjectDefaults[subject] || []).map(function (f) { return (__assign(__assign({}, f), { enabled: f.enabled !== false })); });
+    renderSubjectFieldEditor(subject);
+}
+function renderSubjectFieldEditor(subject) {
+    var el = document.getElementById('subjectFieldEditor');
+    var presetMap = new Map(allPresets.map(function (p) { return [p.key, p]; }));
+    var customFields = subjectEditingFields.filter(function (f) { return !presetMap.has(f.key); });
+    el.innerHTML = "<p class=\"subject-help\">\u300C".concat(subject, "\u300D\u306E\u30C7\u30D5\u30A9\u30EB\u30C8\u9805\u76EE\u3067\u3059\u3002\u30D7\u30EA\u30BB\u30C3\u30C8\u306EON/OFF\u306B\u52A0\u3048\u3066\u3001\u30AB\u30B9\u30BF\u30E0\u9805\u76EE\u3082\u3053\u3053\u3067\u7BA1\u7406\u3067\u304D\u307E\u3059\u3002</p><div class=\"subject-preset-list\">") +
+        allPresets.map(function (p) {
+            var on = subjectEditingFields.some(function (f) { return f.key === p.key && f.enabled !== false; });
+            return "<label style=\"display:flex;align-items:center;gap:8px;padding:8px;border-radius:8px;\n        background:".concat(on ? '#E8F5E9' : '#F5F5F5', ";margin-bottom:6px;cursor:pointer;\">\n        <input type=\"checkbox\" value=\"").concat(p.key, "\" ").concat(on ? 'checked' : '', " onchange=\"toggleSubjectPreset('").concat(p.key, "', this.checked)\">\n        ").concat(p.emoji, " <span style=\"font-weight:bold;\">").concat(esc(p.label), "</span>\n        <span style=\"font-size:11px;color:var(--muted);\">").concat(typeLabel(p.type)).concat(formatFieldCategorySuffix(p), "</span>\n      </label>");
+        }).join('') +
+        "</div><div class=\"subject-custom-list\">" +
+        (customFields.length ? customFields.map(function (f, idx) { return "\n      <div class=\"field-item enabled\">\n        <span class=\"f-emoji\">".concat(f.emoji || '🆕', "</span>\n        <div style=\"flex:1;min-width:0;\">\n          <div class=\"subject-custom-head\">\n            <div class=\"f-label\">").concat(esc(f.label), "</div>\n            <button class=\"btn-remove\" type=\"button\" onclick=\"removeSubjectCustomField(").concat(idx, ")\">\u2715</button>\n          </div>\n          <div class=\"subject-custom-meta\">").concat(typeLabel(f.type)).concat(formatFieldCategorySuffix(f)).concat(f.options ? " / ".concat(esc(f.options)) : '', "</div>\n        </div>\n      </div>\n    "); }).join('') : '<div class="subject-empty">この教科のカスタム項目はまだありません。</div>') +
+        "</div>";
+}
+function toggleSubjectPreset(key, checked) {
+    var preset = allPresets.find(function (p) { return p.key === key; });
+    if (!preset)
+        return;
+    var idx = subjectEditingFields.findIndex(function (f) { return f.key === key; });
+    if (checked) {
+        if (idx < 0)
+            subjectEditingFields.push(__assign(__assign({}, preset), { enabled: true }));
+        else
+            subjectEditingFields[idx].enabled = true;
+    }
+    else if (idx >= 0) {
+        subjectEditingFields.splice(idx, 1);
+    }
+    subjectDefaults[currentSubject] = subjectEditingFields.map(function (f) { return (__assign({}, f)); });
+    renderSubjectFieldEditor(currentSubject);
+}
+function saveSubjectDefault() {
+    subjectDefaults[currentSubject] = subjectEditingFields.map(function (f) { return (__assign({}, f)); });
+    google.script.run
+        .withSuccessHandler(function () {
+        preloadCache.editor = __assign(__assign({}, (preloadCache.editor || {})), { presets: allPresets.slice(), subjectDefaults: __assign({}, subjectDefaults), subjects: allSubjects.slice(), recentCustomPresets: recentCustomPresets.slice() });
+        persistTeacherPreloadCache_();
+        alert("\u300C".concat(currentSubject, "\u300D\u306E\u30C7\u30D5\u30A9\u30EB\u30C8\u3092\u4FDD\u5B58\u3057\u307E\u3057\u305F\uFF01"));
+    })
+        .updateSubjectDefault(currentSubject, subjectEditingFields);
+}
+function addSubjectCustomField() {
+    var field = createCustomFieldFromInputs('sf', subjectEditingFields);
+    if (!field)
+        return;
+    subjectEditingFields.push(field);
+    rememberRecentCustomPreset(field);
+    subjectDefaults[currentSubject] = subjectEditingFields.map(function (f) { return (__assign({}, f)); });
+    renderSubjectFieldEditor(currentSubject);
+    renderPresetBtns();
+}
+function autoTagSubjectFields() {
+    var result = autoTagFieldCollection(subjectEditingFields);
+    subjectEditingFields = result.fields;
+    subjectDefaults[currentSubject] = subjectEditingFields.map(function (f) { return (__assign({}, f)); });
+    renderSubjectFieldEditor(currentSubject);
+    alert(result.updated ? "\u89B3\u70B9\u30BF\u30B0\u3092 ".concat(result.updated, " \u9805\u76EE\u306B\u8A2D\u5B9A\u3057\u307E\u3057\u305F\u3002") : '追加で設定できる観点タグはありませんでした。');
+}
+function removeSubjectCustomField(index) {
+    var presetMap = new Map(allPresets.map(function (p) { return [p.key, p]; }));
+    var customIndexes = subjectEditingFields
+        .map(function (field, idx) { return ({ field: field, idx: idx }); })
+        .filter(function (row) { return !presetMap.has(row.field.key); });
+    var target = customIndexes[index];
+    if (!target)
+        return;
+    subjectEditingFields.splice(target.idx, 1);
+    subjectDefaults[currentSubject] = subjectEditingFields.map(function (f) { return (__assign({}, f)); });
+    renderSubjectFieldEditor(currentSubject);
+}
+function typeLabel(t) {
+    return {
+        text: '自由記述',
+        select: '選択肢',
+        radio: 'ラジオ',
+        review: 'ふりかえり',
+        number: '数値',
+        student_select: '児童名簿（1人）',
+        student_multi: '児童名簿（複数）',
+    }[t] || t;
+}
+// =====================================
+//  プロンプト
+// =====================================
+function loadPrompts() {
+    if (preloadCache.prompts) {
+        applyPromptData(preloadCache.prompts);
+        return;
+    }
+    ensurePromptPreload();
+    google.script.run.withSuccessHandler(function (d) {
+        preloadCache.prompts = d || { globalCfg: {}, aiQueue: null };
+        persistTeacherPreloadCache_();
+        applyPromptData(preloadCache.prompts);
+    }).teacherPromptInit();
+}
+function applyPromptData(d) {
+    var cfg = d.globalCfg || {};
+    applyTeacherHelpData(d.help || {});
+    document.getElementById('pComment').value = cfg.prompt_comment || '';
+    document.getElementById('pScore').value = cfg.prompt_score || '';
+    document.getElementById('pPortfolio').value = cfg.prompt_portfolio || '';
+    document.getElementById('pUnitSummary').value = cfg.prompt_unit_summary || '';
+    document.getElementById('pAssessment').value = cfg.prompt_assessment || '';
+    document.getElementById('pMedal').value = cfg.medal_top || '5';
+    document.getElementById('pStudentAiAutoSubmit').checked = cfg.student_ai_submit_enabled === true;
+    var aiModeParts = [
+        "\u5150\u7AE5AI: ".concat(cfg.student_ai_enabled ? 'ON' : 'OFF'),
+        "\u63D0\u51FA\u6642\u81EA\u52D5\u6295\u5165: ".concat(cfg.student_ai_submit_enabled ? 'ON' : 'OFF'),
+        "\u5148\u751FAI: ".concat(cfg.teacher_ai_enabled ? 'ON' : 'OFF'),
+        cfg.api_key_configured ? "API\u30AD\u30FC\u8A2D\u5B9A\u6E08\u307F: ".concat(cfg.api_key_masked) : 'APIキー未設定'
+    ];
+    document.getElementById('apiKeyStatus').textContent = aiModeParts.join(' / ');
+    document.getElementById('pApiKey').value = '';
+    renderAiQueue(d.aiQueue || null);
+    syncTeacherAiUi_();
+}
+function openAiLogsTab() {
+    var tabBtn = document.querySelector(".tab[onclick*=\"'logs'\"]");
+    switchTab('logs', tabBtn || null);
+}
+function loadAiQueuePanel() {
+    google.script.run
+        .withSuccessHandler(renderAiQueue)
+        .withFailureHandler(function (err) {
+        var queueMeta = document.getElementById('aiQueueMeta');
+        if (queueMeta)
+            queueMeta.textContent = "AI\u30AD\u30E5\u30FC\u53D6\u5F97\u5931\u6557: ".concat((err && err.message) || err || 'unknown');
+    })
+        .getAiQueueStatus();
+}
+function renderAiQueue(queue) {
+    var data = queue || {};
+    var queueMeta = document.getElementById('aiQueueMeta');
+    if (queueMeta) {
+        if (data.disabled) {
+            queueMeta.textContent = '児童AIコメントはこの先生では無効です。';
+            return;
+        }
+        var parts = [];
+        if (Number(data.pending || 0) > 0)
+            parts.push("AI\u5F85\u3061 ".concat(data.pending, "\u4EF6"));
+        if (Number(data.processing || 0) > 0)
+            parts.push("AI\u51E6\u7406\u4E2D ".concat(data.processing, "\u4EF6"));
+        if (Number(data.error || 0) > 0)
+            parts.push("AI\u5931\u6557 ".concat(data.error, "\u4EF6"));
+        if (Number(data.persistRetryItems || 0) > 0)
+            parts.push("\u4FDD\u5B58\u518D\u8A66\u884C ".concat(data.persistRetryItems, "\u4EF6"));
+        queueMeta.textContent = parts.length ? parts.join(' / ') : 'AI保守の滞留はありません。';
+    }
+}
+function loadAiLogs() {
+    var meta = document.getElementById('aiLogMeta');
+    var box = document.getElementById('aiLogText');
+    if (!meta || !box)
+        return;
+    var scope = (document.getElementById('aiLogScope') || {}).value || 'current';
+    var limit = Math.max(20, Number((document.getElementById('aiLogLimit') || {}).value || 60) || 60);
+    meta.textContent = 'AIログを読み込み中…';
+    box.value = '';
+    google.script.run
+        .withSuccessHandler(function (res) {
+        var data = res || {};
+        box.value = String(data.text || '');
+        meta.textContent = [
+            data.scopeLabel || '',
+            "".concat(Number(data.rowCount || 0), "\u4EF6"),
+            data.build ? "build ".concat(data.build) : '',
+        ].filter(Boolean).join(' / ');
+    })
+        .withFailureHandler(function (err) {
+        meta.textContent = "AI\u30ED\u30B0\u53D6\u5F97\u5931\u6557: ".concat((err && err.message) || err || 'unknown');
+        box.value = '';
+    })
+        .getAiLogSnapshot(scope, limit, activeUnitId || '', activePeriod || 0);
+}
+function copyAiLogText() {
+    var box = document.getElementById('aiLogText');
+    var text = String(box ? box.value || '' : '').trim();
+    if (!text) {
+        alert('コピーするログがありません。先に読込してください。');
+        return;
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text)
+            .then(function () { return alert('AIログをコピーしました。'); })
+            .catch(function () { return fallbackCopyAiLogText_(box); });
+        return;
+    }
+    fallbackCopyAiLogText_(box);
+}
+function fallbackCopyAiLogText_(box) {
+    try {
+        box.focus();
+        box.select();
+        document.execCommand('copy');
+        alert('AIログをコピーしました。');
+    }
+    catch (_err) {
+        alert('コピーに失敗しました。ログ欄を手動で選択してください。');
+    }
+}
+function retryAiErrors() {
+    var btn = document.getElementById('retryAiBtn');
+    btn.disabled = true;
+    google.script.run
+        .withSuccessHandler(function (res) {
+        btn.disabled = false;
+        renderAiQueue(res && res.queue || null);
+        alert("\u518D\u5B9F\u884C\u5BFE\u8C61 ".concat(res && res.retried || 0, " \u4EF6 / stale\u5FA9\u65E7 ").concat(res && res.staleReset || 0, " \u4EF6"));
+    })
+        .withFailureHandler(function (err) {
+        btn.disabled = false;
+        alert("\u518D\u5B9F\u884C\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat((err && err.message) || err || 'unknown'));
+    })
+        .retryFailedAiResponses();
+}
+function seedAiLoadTestFromTeacher() {
+    if (!activeUnitId || !activePeriod) {
+        alert('先に授業を選んでください。');
+        return;
+    }
+    var raw = window.prompt('何件のダミー提出を流しますか？', '12');
+    if (raw === null)
+        return;
+    var count = Math.max(1, Number(raw) || 0);
+    if (!count) {
+        alert('件数を数字で入力してください。');
+        return;
+    }
+    var btn = document.getElementById('seedAiLoadTestBtn');
+    if (btn)
+        btn.disabled = true;
+    google.script.run
+        .withSuccessHandler(function (res) {
+        if (btn)
+            btn.disabled = false;
+        if (!(res && res.ok)) {
+            alert("AI\u30C6\u30B9\u30C8\u6295\u5165\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat(res && res.error || 'unknown'));
+            return;
+        }
+        renderAiQueue(res && res.queue || null);
+        var processed = res && res.count || 0;
+        alert("AI\u30C6\u30B9\u30C8\u3092 ".concat(processed, " \u4EF6\u6295\u5165\u3057\u307E\u3057\u305F\u3002").concat(res && res.kickStatus ? " / kick=".concat(res.kickStatus) : ''));
+        loadStatus();
+    })
+        .withFailureHandler(function (err) {
+        if (btn)
+            btn.disabled = false;
+        alert("AI\u30C6\u30B9\u30C8\u6295\u5165\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat((err && err.message) || err || 'unknown'));
+    })
+        .seedAiLoadTest(activeUnitId, activePeriod, count);
+}
+function clearAiLoadTestFromTeacher() {
+    if (!activeUnitId || !activePeriod) {
+        alert('先に授業を選んでください。');
+        return;
+    }
+    if (!window.confirm('この授業の [AI_LOAD_TEST] つきテスト行を削除します。よいですか？'))
+        return;
+    var btn = document.getElementById('clearAiLoadTestBtn');
+    if (btn)
+        btn.disabled = true;
+    google.script.run
+        .withSuccessHandler(function (res) {
+        if (btn)
+            btn.disabled = false;
+        renderAiQueue(res && res.queue || null);
+        alert("\u30C6\u30B9\u30C8\u884C\u3092\u524A\u9664\u3057\u307E\u3057\u305F\u3002Responses ".concat(res && res.removedResponses || 0, " \u4EF6 / History ").concat(res && res.removedHistory || 0, " \u4EF6"));
+        loadStatus();
+    })
+        .withFailureHandler(function (err) {
+        if (btn)
+            btn.disabled = false;
+        alert("\u30C6\u30B9\u30C8\u524A\u9664\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat((err && err.message) || err || 'unknown'));
+    })
+        .clearAiLoadTest(activeUnitId, activePeriod);
+}
+function purgeAiLogs() {
+    var days = Math.max(1, Number((document.getElementById('aiLogRetentionDays') || {}).value || 90) || 90);
+    if (!window.confirm("".concat(days, "\u65E5\u3088\u308A\u524D\u306EAI\u30ED\u30B0\u3092\u524A\u9664\u3057\u307E\u3059\u3002\u3088\u3044\u3067\u3059\u304B\uFF1F")))
+        return;
+    google.script.run
+        .withSuccessHandler(function (res) {
+        alert("AI\u30ED\u30B0\u3092\u6574\u7406\u3057\u307E\u3057\u305F\u3002\u524A\u9664 ".concat(res && res.deleted || 0, " \u4EF6 / \u6B8B\u308A ").concat(res && res.remaining || 0, " \u4EF6"));
+        loadAiLogs();
+    })
+        .withFailureHandler(function (err) {
+        alert("AI\u30ED\u30B0\u6574\u7406\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ".concat((err && err.message) || err || 'unknown'));
+    })
+        .purgeAiLogsOlderThan(days);
+}
+function savePrompts() {
+    var nextPromptCache = {
+        globalCfg: {
+            medal_top: document.getElementById('pMedal').value,
+            prompt_comment: document.getElementById('pComment').value,
+            prompt_score: document.getElementById('pScore').value,
+            prompt_portfolio: document.getElementById('pPortfolio').value,
+            prompt_unit_summary: document.getElementById('pUnitSummary').value,
+            prompt_assessment: document.getElementById('pAssessment').value,
+            student_ai_enabled: (((preloadCache.prompts && preloadCache.prompts.globalCfg) || {}).student_ai_enabled) === true,
+            student_ai_submit_enabled: Boolean(document.getElementById('pStudentAiAutoSubmit').checked),
+            teacher_ai_enabled: (((preloadCache.prompts && preloadCache.prompts.globalCfg) || {}).teacher_ai_enabled) === true,
+            api_key_configured: Boolean(document.getElementById('pApiKey').value || (((preloadCache.prompts && preloadCache.prompts.globalCfg) || {}).api_key_configured)),
+            api_key_masked: (((preloadCache.prompts && preloadCache.prompts.globalCfg) || {}).api_key_masked) || '',
+        },
+        aiQueue: (preloadCache.prompts || {}).aiQueue || null,
+    };
+    google.script.run
+        .withSuccessHandler(function (res) {
+        var savedCfg = (res && res.globalCfg) || {};
+        nextPromptCache.globalCfg = __assign(__assign({}, nextPromptCache.globalCfg), savedCfg);
+        preloadCache.prompts = nextPromptCache;
+        persistTeacherPreloadCache_();
+        applyPromptData(preloadCache.prompts);
+        alert('プロンプトを保存しました！');
+    })
+        .saveGlobalSettings(document.getElementById('pMedal').value, document.getElementById('pComment').value, document.getElementById('pScore').value, document.getElementById('pPortfolio').value, document.getElementById('pUnitSummary').value, document.getElementById('pAssessment').value, document.getElementById('pApiKey').value, document.getElementById('pStudentAiAutoSubmit').checked);
+}
+// =====================================
+//  児童別ポートフォリオ
+// =====================================
+</script>

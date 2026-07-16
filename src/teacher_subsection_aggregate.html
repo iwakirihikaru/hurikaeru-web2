@@ -1,0 +1,44 @@
+    <div class="card">
+      <h2>📚 単元記録を確認</h2>
+      <div class="agg-toolbar agg-toolbar-filters">
+        <select id="aggSubject" onchange="filterAgg()"><option value="">全教科</option></select>
+        <select id="aggUnit" onchange="filterAgg()"><option value="">単元を選択…</option></select>
+        <select id="aggPeriod" onchange="filterAgg()"><option value="">全時間</option></select>
+        <select id="aggPreset" onchange="filterAgg()">
+          <option value="all" selected>基本: 記入記録をまとめて表示</option>
+          <option value="standard">ふりかえり中心</option>
+          <option value="knowledge">知識・技能</option>
+          <option value="thinking">思考・判断・表現</option>
+          <option value="attitude">主体的態度</option>
+        </select>
+      </div>
+      <div class="agg-toolbar agg-toolbar-actions">
+        <button class="btn-ai" onclick="genSummary()">🤖 単元指導レポートを生成</button>
+        <button class="btn-export" onclick="exportAggCsv()">⬇️ CSV出力</button>
+        <label class="agg-toggle">
+          <input type="checkbox" id="aggShowComment" onchange="filterAgg()">
+          AIコメントも表示
+        </label>
+      </div>
+      <div class="ai-report" id="aiReport"></div>
+      <div class="debug-note">AIには児童名を送らず出席番号だけを送信します。受信後の表示は名簿と照合して氏名に置き換えます。</div>
+      <div id="aggSummary">
+        <div class="insight-grid">
+          <div class="insight-box"><div class="insight-k">対象人数</div><div class="insight-v">-</div></div>
+          <div class="insight-box"><div class="insight-k">平均スコア</div><div class="insight-v">-</div></div>
+          <div class="insight-box"><div class="insight-k">A以上</div><div class="insight-v">-</div></div>
+          <div class="insight-box"><div class="insight-k">要支援候補</div><div class="insight-v">-</div></div>
+        </div>
+      </div>
+      <div class="agg-list">
+        <div class="agg-table-wrap">
+          <table class="tbl">
+            <thead id="aggHead"><tr><th>単元</th><th>時間</th><th>#</th><th>なまえ</th><th>日付</th><th>ふりかえり</th><th>ランク</th></tr></thead>
+            <tbody id="aggBody"><tr><td colspan="7" style="text-align:center;padding:14px;"><span class="spinner"></span></td></tr></tbody>
+          </table>
+        </div>
+        <div class="agg-cards" id="aggCards">
+          <div class="portfolio-empty"><span class="spinner"></span></div>
+        </div>
+      </div>
+    </div>
