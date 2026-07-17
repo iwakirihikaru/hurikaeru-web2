@@ -47,3 +47,25 @@ Deploy `portable/` as a static site.
   - `/setup`
   - `/student`
   - `/teacher`
+
+## Deploy
+
+本番ずれを防ぐときは、個別ではなく一括実行を使います。
+
+```powershell
+npm run deploy:full
+```
+
+このコマンドは次を順に実行します。
+
+- `src` を Apps Script へ `clasp push`
+- 新しい GAS version を作成
+- `deploy.config.json` の `webappDeploymentId` を最新 version へ更新
+- `portable/` を build
+- `portable-publish/` の `pages-release` を最新公開物で commit / push
+
+Pages だけ反映したいときは次です。
+
+```powershell
+npm run publish:portable-publish
+```
