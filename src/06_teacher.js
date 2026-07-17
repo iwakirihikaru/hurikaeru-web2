@@ -1,6 +1,202 @@
 // ============================================================
 //  先生向け API
 // ============================================================
+const TEACHER_FEEDBACK_JOB_TTL_MS = 3 * 60 * 1000;
+const TEACHER_RESPONSE_MIRROR_QUEUE_INDEX_KEY = 'TEACHER_RESPONSE_MIRROR_QUEUE_INDEX_V1';
+const TEACHER_RESPONSE_MIRROR_TRIGGER_AT_KEY = 'TEACHER_RESPONSE_MIRROR_TRIGGER_AT_V1';
+const TEACHER_RESPONSE_MIRROR_HANDLER = 'processTeacherResponseMirrorQueue';
+const TEACHER_RESPONSE_MIRROR_DELAY_MS = 1500;
+const TEACHER_RESPONSE_MIRROR_RETRY_DELAY_MS = 30000;
+const TEACHER_RESPONSE_MIRROR_TRIGGER_LOCK_MS = 5000;
+
+function buildTeacherFeedbackJobKey_(lessonId, mode) {
+  return `teacher_feedback_job:${String(mode || 'generate')}:${String(lessonId || '').trim()}`;
+}
+
+function beginTeacherFeedbackJob_(lessonId, mode) {
+  const normalizedLessonId = String(lessonId || '').trim();
+  if (!normalizedLessonId) return { ok:false, error:'授業IDが不正です。' };
+  const jobKey = buildTeacherFeedbackJobKey_(normalizedLessonId, mode);
+  const token = makeId_('teacherjob');
+  const lock = LockService.getDocumentLock();
+  lock.waitLock(5000);
+  try {
+    const props = PropertiesService.getScriptProperties();
+    const raw = String(props.getProperty(jobKey) || '').trim();
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        const startedAtMs = Number(parsed && parsed.startedAtMs || 0);
+        if (startedAtMs > 0 && Date.now() - startedAtMs < TEACHER_FEEDBACK_JOB_TTL_MS) {
+          return { ok:false, error:'この時間目の教師AI処理は進行中です。完了まで待ってください。' };
+        }
+      } catch (err) {
+      }
+    }
+    props.setProperty(jobKey, JSON.stringify({
+      token,
+      startedAtMs: Date.now(),
+    }));
+    return { ok:true, jobKey, token };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function endTeacherFeedbackJob_(jobKey, token) {
+  const normalizedJobKey = String(jobKey || '').trim();
+  const normalizedToken = String(token || '').trim();
+  if (!normalizedJobKey || !normalizedToken) return;
+  const lock = LockService.getDocumentLock();
+  lock.waitLock(5000);
+  try {
+    const props = PropertiesService.getScriptProperties();
+    const raw = String(props.getProperty(normalizedJobKey) || '').trim();
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw);
+      if (String(parsed && parsed.token || '') !== normalizedToken) return;
+    } catch (err) {
+      return;
+    }
+    props.deleteProperty(normalizedJobKey);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function getTeacherResponseMirrorQueuePropKey_(batchId) {
+  return `TEACHER_RESPONSE_MIRROR_${String(batchId || '').trim()}`;
+}
+
+function loadTeacherResponseMirrorBatchIds_() {
+  try {
+    const raw = PropertiesService.getScriptProperties().getProperty(TEACHER_RESPONSE_MIRROR_QUEUE_INDEX_KEY) || '[]';
+    const ids = JSON.parse(raw);
+    return Array.isArray(ids) ? ids.filter(Boolean) : [];
+  } catch (err) {
+    return [];
+  }
+}
+
+function saveTeacherResponseMirrorBatchIds_(batchIds) {
+  PropertiesService.getScriptProperties().setProperty(
+    TEACHER_RESPONSE_MIRROR_QUEUE_INDEX_KEY,
+    JSON.stringify(Array.from(new Set((batchIds || []).filter(Boolean))))
+  );
+}
+
+function storeTeacherResponseMirrorQueueEntry_(batchId, payload) {
+  const safeBatchId = String(batchId || '').trim();
+  if (!safeBatchId) return;
+  const props = PropertiesService.getScriptProperties();
+  props.setProperty(getTeacherResponseMirrorQueuePropKey_(safeBatchId), JSON.stringify(payload || {}));
+  const ids = loadTeacherResponseMirrorBatchIds_();
+  ids.push(safeBatchId);
+  saveTeacherResponseMirrorBatchIds_(ids);
+}
+
+function loadTeacherResponseMirrorQueueEntries_() {
+  const props = PropertiesService.getScriptProperties();
+  return loadTeacherResponseMirrorBatchIds_().map(batchId => {
+    const raw = props.getProperty(getTeacherResponseMirrorQueuePropKey_(batchId));
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch (err) {
+      return null;
+    }
+  }).filter(Boolean);
+}
+
+function clearTeacherResponseMirrorQueueEntry_(batchId) {
+  const safeBatchId = String(batchId || '').trim();
+  if (!safeBatchId) return;
+  const props = PropertiesService.getScriptProperties();
+  props.deleteProperty(getTeacherResponseMirrorQueuePropKey_(safeBatchId));
+  const ids = loadTeacherResponseMirrorBatchIds_().filter(id => String(id || '').trim() !== safeBatchId);
+  saveTeacherResponseMirrorBatchIds_(ids);
+}
+
+function ensureTeacherResponseMirrorTrigger_(delayMs) {
+  const props = PropertiesService.getScriptProperties();
+  const desiredDelayMs = Math.max(500, Number(delayMs || TEACHER_RESPONSE_MIRROR_DELAY_MS));
+  const desiredAtMs = Date.now() + desiredDelayMs;
+  const scheduledAtMs = Number(props.getProperty(TEACHER_RESPONSE_MIRROR_TRIGGER_AT_KEY) || 0);
+  if (scheduledAtMs && desiredAtMs >= (scheduledAtMs - 300)) return false;
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(TEACHER_RESPONSE_MIRROR_TRIGGER_LOCK_MS)) return false;
+  try {
+    const triggers = ScriptApp.getProjectTriggers()
+      .filter(trigger => trigger.getHandlerFunction() === TEACHER_RESPONSE_MIRROR_HANDLER);
+    const refreshedScheduledAtMs = Number(props.getProperty(TEACHER_RESPONSE_MIRROR_TRIGGER_AT_KEY) || 0);
+    if (triggers.length > 0 && refreshedScheduledAtMs && desiredAtMs >= (refreshedScheduledAtMs - 300)) return false;
+    triggers.forEach(trigger => ScriptApp.deleteTrigger(trigger));
+    ScriptApp.newTrigger(TEACHER_RESPONSE_MIRROR_HANDLER).timeBased().after(desiredDelayMs).create();
+    props.setProperty(TEACHER_RESPONSE_MIRROR_TRIGGER_AT_KEY, String(desiredAtMs));
+    return true;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function enqueueTeacherResponseMirror_(responseIds, source, action, actor) {
+  const ids = Array.from(new Set((Array.isArray(responseIds) ? responseIds : [])
+    .map(value => String(value || '').trim())
+    .filter(Boolean)));
+  if (!ids.length) return '';
+  const batchId = makeId_('teachermirror');
+  storeTeacherResponseMirrorQueueEntry_(batchId, {
+    batchId,
+    responseIds: ids,
+    source: String(source || 'response_teacher_feedback_return'),
+    action: String(action || 'master_mirror_failed_teacher_feedback_return'),
+    actor: String(actor || 'teacher'),
+    queuedAt: nowIso_(),
+  });
+  ensureTeacherResponseMirrorTrigger_(TEACHER_RESPONSE_MIRROR_DELAY_MS);
+  return batchId;
+}
+
+function processTeacherResponseMirrorQueue() {
+  PropertiesService.getScriptProperties().deleteProperty(TEACHER_RESPONSE_MIRROR_TRIGGER_AT_KEY);
+  const entries = loadTeacherResponseMirrorQueueEntries_();
+  if (!entries.length) return { ok:true, processed: 0, remaining: 0 };
+  let processed = 0;
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i];
+    const responseIds = Array.from(new Set((Array.isArray(entry.responseIds) ? entry.responseIds : [])
+      .map(value => String(value || '').trim())
+      .filter(Boolean)));
+    try {
+      const rows = responseIds
+        .map(responseId => getResponseRecordByResponseId_(responseId))
+        .filter(Boolean)
+        .map(response => buildResponseSheetRowValues_(response));
+      if (rows.length) {
+        mirrorResponseRowsToMaster_(
+          rows,
+          entry.source || 'response_teacher_feedback_return',
+          entry.action || 'master_mirror_failed_teacher_feedback_return',
+          entry.actor || 'teacher'
+        );
+      }
+      clearTeacherResponseMirrorQueueEntry_(entry.batchId);
+      processed++;
+    } catch (err) {
+      ensureTeacherResponseMirrorTrigger_(TEACHER_RESPONSE_MIRROR_RETRY_DELAY_MS);
+      return {
+        ok: false,
+        processed,
+        remaining: loadTeacherResponseMirrorBatchIds_().length,
+        error: String(err && err.message ? err.message : err),
+      };
+    }
+  }
+  return { ok:true, processed, remaining: loadTeacherResponseMirrorBatchIds_().length };
+}
+
 // teacherInit:
 // 教師画面の初期 shell を立ち上げるための bootstrap。
 // status 行一覧や重い集約取得は含めない。
@@ -1423,6 +1619,9 @@ function generateTeacherFeedbackDrafts(unitId, period, includeRank, autoReturn, 
   const unit = units.find(item => String(item.id || '') === normalizedUnitId);
   if (!unit) return { ok:false, error:'単元が見つかりません。' };
   const lesson = getOrCreateLesson_(normalizedUnitId, normalizedPeriod);
+  const job = beginTeacherFeedbackJob_(lesson.lessonId, 'generate');
+  if (!job.ok) return { ok:false, error: job.error || '教師AI処理が進行中です。' };
+  try {
   const allResponses = listResponsesForLesson_(lesson.lessonId)
     .filter(response => !isAiLoadTestResponse_(response))
     .filter(response => canGenerateTeacherFeedbackForResponse_(response));
@@ -1525,13 +1724,11 @@ function generateTeacherFeedbackDrafts(unitId, period, includeRank, autoReturn, 
       latencyMs: 0,
     }));
   } else {
-    const saveStartedAt = Date.now();
-    savedDrafts = upsertTeacherCommentDrafts_(draftItems, 'teacher-ai-draft');
-    saveLatencyMs = Date.now() - saveStartedAt;
+    saveLatencyMs = 0;
     writeAiEventLogs_(buildTeacherFeedbackEvents_(savedDrafts, 'teacher_feedback_saved', {
       batchId,
       aiStatus: 'done',
-      detail: `draftSaved autoReturn=false includeRank=${withRank} saveMs=${saveLatencyMs}`,
+      detail: `draftDeferred autoReturn=false includeRank=${withRank} saveMs=${saveLatencyMs}`,
       timestamp: nowIso_(),
       latencyMs: saveLatencyMs,
     }));
@@ -1562,6 +1759,9 @@ function generateTeacherFeedbackDrafts(unitId, period, includeRank, autoReturn, 
     returnedIds,
     drafts: savedDrafts,
   };
+  } finally {
+    endTeacherFeedbackJob_(job.jobKey, job.token);
+  }
 }
 
 function saveTeacherFeedbackDraft(responseId, draftComment, draftRank) {
@@ -1617,7 +1817,9 @@ function saveTeacherFeedbackDraftsBulk(items) {
     });
   });
   if (!draftItems.length) return { ok:false, error:'対象の提出が見つかりません。' };
-  const saved = upsertTeacherCommentDrafts_(draftItems, 'teacher-bulk');
+  const saved = upsertTeacherCommentDrafts_(draftItems, 'teacher-bulk', {
+    skipAuditLogs: true,
+  });
   return {
     ok: true,
     savedCount: saved.length,
@@ -1888,106 +2090,145 @@ function applyTeacherFeedbackDrafts_(lessonId, drafts, options) {
   let draftSaveMs = 0;
   let aggregateMs = 0;
   try {
-    const period = meta.period || '';
-    const updatedAt = nowIso_();
-    const responseData = getResponseSheetData_();
-    const masterRows = [];
-    const rowUpdates = [];
-    const responses = Array.isArray(meta.responseRecords) ? meta.responseRecords : listResponsesForLesson_(lessonId);
-    if (!responses.length) return { ok:false, error:'提出データがありません。' };
-    responses.forEach(response => {
-      const responseId = String(response?.responseId || '').trim();
-      const draft = draftMap[responseId];
-      if (!draft || !String(draft.draftComment || '').trim()) return;
-      const next = Object.assign({}, response, {
-        comment: String(draft.draftComment || '').trim(),
-        aiStatus: 'done',
-        aiProcessedAt: updatedAt,
-        aiError: '',
-        updatedAt,
-      });
-      if (String(draft.draftRank || '').trim()) {
-        next.score = Number(draft.draftScore || 0);
-        next.rank = String(draft.draftRank || '').trim();
-      }
-      const row = buildResponseSheetRowValues_(next);
-      masterRows.push(row);
-      const existingRow = findResponseSheetRowEntryByResponseId_(responseId, responseData);
-      if (existingRow) {
-        rowUpdates.push({
-          rowNumber: existingRow.rowNumber,
-          values: row,
+    try {
+      const period = meta.period || '';
+      const updatedAt = nowIso_();
+      const responseData = getResponseSheetData_();
+      const rowUpdates = [];
+      const responses = Array.isArray(meta.responseRecords) ? meta.responseRecords : listResponsesForLesson_(lessonId);
+      const updatedResponses = [];
+      if (!responses.length) return { ok:false, error:'提出データがありません。' };
+      responses.forEach(response => {
+        const responseId = String(response?.responseId || '').trim();
+        const draft = draftMap[responseId];
+        if (!draft || !String(draft.draftComment || '').trim()) {
+          updatedResponses.push(response);
+          return;
+        }
+        const nextComment = String(draft.draftComment || '').trim();
+        const nextRank = String(draft.draftRank || '').trim();
+        const nextScore = nextRank ? Number(draft.draftScore || 0) : Number(response?.score || 0);
+        const hasResponseChange = (
+          String(response?.comment || '').trim() !== nextComment ||
+          String(response?.rank || '').trim() !== nextRank ||
+          Number(response?.score || 0) !== nextScore ||
+          String(response?.aiStatus || '').trim() !== 'done' ||
+          String(response?.aiError || '').trim() !== ''
+        );
+        const next = hasResponseChange
+          ? Object.assign({}, response, {
+              comment: nextComment,
+              score: nextScore,
+              rank: nextRank,
+              aiStatus: 'done',
+              aiProcessedAt: updatedAt,
+              aiError: '',
+              updatedAt,
+            })
+          : Object.assign({}, response, {
+              comment: nextComment,
+              score: nextScore,
+              rank: nextRank,
+            });
+        updatedResponses.push(next);
+        if (hasResponseChange) {
+          const row = buildResponseSheetRowValues_(next);
+          const existingRow = findResponseSheetRowEntryByResponseId_(responseId, responseData);
+          if (existingRow) {
+            rowUpdates.push({
+              rowNumber: existingRow.rowNumber,
+              values: row,
+            });
+          }
+        }
+        returnedCount++;
+        returnedDrafts.push({
+          responseId,
+          lessonId: next.lessonId || '',
+          unitId: next.unitId || '',
+          studentId: next.studentId || '',
+          studentNumber: next.studentNumber || '',
+          studentName: next.studentName || '',
+          reviewText: next.reviewText || '',
+          comment: next.comment || '',
+          rank: next.rank || '',
+          period,
         });
-      }
-      returnedCount++;
-      returnedDrafts.push({
-        responseId,
-        lessonId: next.lessonId || '',
-        unitId: next.unitId || '',
-        studentId: next.studentId || '',
-        studentNumber: next.studentNumber || '',
-        studentName: next.studentName || '',
-        reviewText: next.reviewText || '',
-        comment: next.comment || '',
-        rank: next.rank || '',
-        period,
       });
-    });
-    if (!returnedCount) return { ok:false, error:'返却できる下書きがありません。' };
-    const responseWriteStartedAt = Date.now();
-    mirrorResponseRowsWithAudit_(
-      masterRows,
-      'response_teacher_feedback_return',
-      'master_mirror_failed_teacher_feedback_return',
-      'teacher'
-    );
-    if (rowUpdates.length) {
-      writeResponseRowUpdates_(rowUpdates, null);
+      if (!returnedCount) return { ok:false, error:'返却できる下書きがありません。' };
+      const responseWriteStartedAt = Date.now();
+      if (rowUpdates.length) {
+        writeResponseRowUpdates_(rowUpdates, null, null, null, {
+          skipResponseCacheRefresh: true,
+          invalidateResponseCaches: true,
+        });
+        enqueueTeacherResponseMirror_(
+          rowUpdates.map(item => String(item && item.values && item.values[0] || '').trim()),
+          'response_teacher_feedback_return',
+          'master_mirror_failed_teacher_feedback_return',
+          'teacher'
+        );
+      }
+      responseWriteMs = Date.now() - responseWriteStartedAt;
+      if (medalMode === 'auto_award') {
+        const medalStartedAt = Date.now();
+        recalcLessonMedalsFromDb_(lessonId, {
+          responses: updatedResponses,
+          responseData,
+        });
+        aggregateMs = Date.now() - medalStartedAt;
+        medalAwarded = true;
+      }
+    } finally {
+      lock.releaseLock();
     }
-    responseWriteMs = Date.now() - responseWriteStartedAt;
-    if (medalMode === 'auto_award') {
-      recalcLessonMedalsFromDb_(lessonId);
-      medalAwarded = true;
-    }
-  } finally {
-    lock.releaseLock();
-  }
 
-  const returnedAt = nowIso_();
-  if (meta.skipDraftPersist === true) {
-    draftSaveMs = 0;
-  } else {
-    const draftSaveStartedAt = Date.now();
-    upsertTeacherCommentDrafts_(returnedDrafts.map(item => ({
-      responseId: item.responseId,
-      lessonId: item.lessonId,
-      unitId: item.unitId,
-      studentId: item.studentId,
-      studentNumber: item.studentNumber,
-      draftComment: item.comment,
-      draftRank: item.rank,
-      draftScore: studentRankToScore_(item.rank),
-      status: 'returned',
-      returnedAt,
-    })), 'teacher-return');
-    draftSaveMs = Date.now() - draftSaveStartedAt;
+    const returnedAt = nowIso_();
+    if (meta.skipDraftPersist === true) {
+      draftSaveMs = 0;
+    } else {
+      const draftSaveStartedAt = Date.now();
+      upsertTeacherCommentDrafts_(returnedDrafts.map(item => ({
+        responseId: item.responseId,
+        lessonId: item.lessonId,
+        unitId: item.unitId,
+        studentId: item.studentId,
+        studentNumber: item.studentNumber,
+        draftComment: item.comment,
+        draftRank: item.rank,
+        draftScore: studentRankToScore_(item.rank),
+        status: 'returned',
+        returnedAt,
+      })), 'teacher-return');
+      draftSaveMs = Date.now() - draftSaveStartedAt;
+    }
+    if (meta.skipEventLogs !== true) {
+      writeAiEventLogs_(buildTeacherFeedbackEvents_(returnedDrafts, 'teacher_feedback_returned', {
+        batchId,
+        aiStatus: 'done',
+        detail: `source=${String(meta.source || 'teacher_return')} responseWriteMs=${responseWriteMs} draftSaveMs=${draftSaveMs} aggregateMs=${aggregateMs}`,
+        timestamp: returnedAt,
+        latencyMs: Date.now() - returnStartedAtMs,
+      }));
+    }
+    return {
+      ok: true,
+      returnedCount,
+      medalAwarded,
+      returnedIds: returnedDrafts.map(item => item.responseId).filter(Boolean),
+    };
+  } catch (err) {
+    if (meta.skipEventLogs !== true) {
+      writeAiEventLogs_(buildTeacherFeedbackEvents_(selectedDrafts, 'teacher_feedback_return_failed', {
+        batchId,
+        aiStatus: 'error',
+        detail: `source=${String(meta.source || 'teacher_return')} responseWriteMs=${responseWriteMs} draftSaveMs=${draftSaveMs} aggregateMs=${aggregateMs} error=${String(err && err.message ? err.message : err).slice(0, 180)}`,
+        timestamp: nowIso_(),
+        latencyMs: Date.now() - returnStartedAtMs,
+      }));
+    }
+    throw err;
   }
-  aggregateMs = 0;
-  if (meta.skipEventLogs !== true) {
-    writeAiEventLogs_(buildTeacherFeedbackEvents_(returnedDrafts, 'teacher_feedback_returned', {
-      batchId,
-      aiStatus: 'done',
-      detail: `source=${String(meta.source || 'teacher_return')} responseWriteMs=${responseWriteMs} draftSaveMs=${draftSaveMs} aggregateMs=${aggregateMs}`,
-      timestamp: returnedAt,
-      latencyMs: Date.now() - returnStartedAtMs,
-    }));
-  }
-  return {
-    ok: true,
-    returnedCount,
-    medalAwarded,
-    returnedIds: returnedDrafts.map(item => item.responseId).filter(Boolean),
-  };
 }
 
 function normalizeStudentRank_(value) {

@@ -266,9 +266,10 @@ function upsertTeacherAssessments_(items) {
   return saved;
 }
 
-function upsertTeacherCommentDrafts_(items, actor) {
+function upsertTeacherCommentDrafts_(items, actor, options) {
   const list = Array.isArray(items) ? items : [];
   if (!list.length) return [];
+  const meta = options && typeof options === 'object' ? options : {};
   const sheet = getTeacherCommentDraftsDbSheet_();
   const draftRows = resolveTeacherCommentDraftRows_(sheet, list);
   const indexMap = draftRows.indexMap;
@@ -284,20 +285,41 @@ function upsertTeacherCommentDrafts_(items, actor) {
     const existingIndex = Object.prototype.hasOwnProperty.call(indexMap, responseId) ? Number(indexMap[responseId] || 0) : 0;
     const existingRow = existingIndex > 0 ? rowMap[existingIndex] || null : null;
     const before = existingRow ? mapTeacherCommentDraftRow_(existingRow) : null;
+    const nextLessonId = String(item.lessonId ?? before?.lessonId ?? '');
+    const nextUnitId = String(item.unitId ?? before?.unitId ?? '');
+    const nextStudentId = String(item.studentId ?? before?.studentId ?? '');
+    const nextStudentNumber = String(item.studentNumber ?? before?.studentNumber ?? '');
+    const nextDraftComment = String(item.draftComment ?? before?.draftComment ?? '');
+    const nextDraftRank = String(item.draftRank ?? before?.draftRank ?? '');
+    const nextDraftScore = Number(item.draftScore ?? before?.draftScore ?? 0);
+    const nextStatus = String(item.status ?? before?.status ?? 'draft') || 'draft';
+    const nextReturnedAt = String(item.returnedAt ?? before?.returnedAt ?? '');
+    const isUnchanged = Boolean(
+      before &&
+      String(before.lessonId || '') === nextLessonId &&
+      String(before.unitId || '') === nextUnitId &&
+      String(before.studentId || '') === nextStudentId &&
+      String(before.studentNumber || '') === nextStudentNumber &&
+      String(before.draftComment || '') === nextDraftComment &&
+      String(before.draftRank || '') === nextDraftRank &&
+      Number(before.draftScore || 0) === nextDraftScore &&
+      String(before.status || '') === nextStatus &&
+      String(before.returnedAt || '') === nextReturnedAt
+    );
     const next = {
       draftId: before?.draftId || makeId_('draft'),
       responseId,
-      lessonId: String(item.lessonId ?? before?.lessonId ?? ''),
-      unitId: String(item.unitId ?? before?.unitId ?? ''),
-      studentId: String(item.studentId ?? before?.studentId ?? ''),
-      studentNumber: String(item.studentNumber ?? before?.studentNumber ?? ''),
-      draftComment: String(item.draftComment ?? before?.draftComment ?? ''),
-      draftRank: String(item.draftRank ?? before?.draftRank ?? ''),
-      draftScore: Number(item.draftScore ?? before?.draftScore ?? 0),
-      status: String(item.status ?? before?.status ?? 'draft') || 'draft',
+      lessonId: nextLessonId,
+      unitId: nextUnitId,
+      studentId: nextStudentId,
+      studentNumber: nextStudentNumber,
+      draftComment: nextDraftComment,
+      draftRank: nextDraftRank,
+      draftScore: nextDraftScore,
+      status: nextStatus,
       createdAt: before?.createdAt || nowIso_(),
-      updatedAt: nowIso_(),
-      returnedAt: String(item.returnedAt ?? before?.returnedAt ?? ''),
+      updatedAt: isUnchanged ? String(before?.updatedAt || nowIso_()) : nowIso_(),
+      returnedAt: nextReturnedAt,
     };
     const values = [
       next.draftId,
@@ -314,21 +336,23 @@ function upsertTeacherCommentDrafts_(items, actor) {
       next.updatedAt,
       next.returnedAt,
     ];
-    if (existingIndex > 0) {
+    if (existingIndex > 0 && !isUnchanged) {
       updates.push({ rowNumber: existingIndex, values });
       rowMap[existingIndex] = values.slice();
       writeTeacherCommentDraftRowCache_(responseId, existingIndex);
-    } else {
+    } else if (existingIndex <= 0) {
       appends.push(values);
     }
-    auditLogs.push({
-      targetType: 'teacherCommentDraft',
-      targetId: responseId,
-      action: before ? 'batchUpdate' : 'batchCreate',
-      before,
-      after: next,
-      actor: actor || 'teacher-ai-draft',
-    });
+    if (meta.skipAuditLogs !== true) {
+      auditLogs.push({
+        targetType: 'teacherCommentDraft',
+        targetId: responseId,
+        action: before ? 'batchUpdate' : 'batchCreate',
+        before,
+        after: next,
+        actor: actor || 'teacher-ai-draft',
+      });
+    }
     saved.push(next);
   });
 
@@ -341,7 +365,7 @@ function upsertTeacherCommentDrafts_(items, actor) {
     });
   }
   if (updates.length || appends.length) invalidateTeacherCommentDraftCaches_();
-  writeAuditLogs_(auditLogs);
+  if (auditLogs.length) writeAuditLogs_(auditLogs);
   return saved;
 }
 
@@ -360,7 +384,10 @@ function writeSheetRowBatches_(sheet, updates, width) {
     }
     const batch = list.slice(batchStart, batchEnd);
     const startRow = Number(batch[0].rowNumber || 0);
-    const values = batch.map(item => Array.isArray(item.values) ? item.values[0] : item.values).filter(Boolean);
+    const values = batch.map(item => {
+      if (!Array.isArray(item.values)) return item.values;
+      return Array.isArray(item.values[0]) ? item.values[0] : item.values;
+    }).filter(Boolean);
     if (startRow > 0 && values.length) {
       sheet.getRange(startRow, 1, values.length, width).setValues(values);
     }
@@ -1220,20 +1247,40 @@ function removeTeacherCommentDraftRowCache_(responseId) {
   } catch (_err) {}
 }
 
-function readCachedTeacherCommentDraftRow_(sheet, responseId) {
-  const rowNumber = readTeacherCommentDraftRowCache_(responseId);
-  if (!rowNumber) return null;
+function readTeacherCommentDraftRowsByRowNumbers_(sheet, rowNumbers) {
+  const normalized = Array.from(new Set((Array.isArray(rowNumbers) ? rowNumbers : [])
+    .map(value => Number(value || 0))
+    .filter(value => Number.isFinite(value) && value >= 2)))
+    .sort((a, b) => a - b);
+  if (!sheet || !normalized.length) return [];
   const lastRow = sheet.getLastRow();
-  if (rowNumber > lastRow) {
-    removeTeacherCommentDraftRowCache_(responseId);
-    return null;
+  const safeRows = normalized.filter(rowNumber => rowNumber <= lastRow);
+  if (!safeRows.length) return [];
+  const batches = [];
+  let start = safeRows[0];
+  let prev = safeRows[0];
+  for (let i = 1; i < safeRows.length; i++) {
+    const current = safeRows[i];
+    if (current === prev + 1) {
+      prev = current;
+      continue;
+    }
+    batches.push({ start, count: prev - start + 1 });
+    start = current;
+    prev = current;
   }
-  const row = sheet.getRange(rowNumber, 1, 1, TEACHER_COMMENT_DRAFT_HEADERS.length).getValues()[0] || [];
-  if (String(row[1] || '').trim() === String(responseId || '').trim()) {
-    return { rowNumber, values: row };
-  }
-  removeTeacherCommentDraftRowCache_(responseId);
-  return null;
+  batches.push({ start, count: prev - start + 1 });
+  const rows = [];
+  batches.forEach(batch => {
+    const values = sheet.getRange(batch.start, 1, batch.count, TEACHER_COMMENT_DRAFT_HEADERS.length).getValues();
+    values.forEach((row, idx) => {
+      rows.push({
+        rowNumber: batch.start + idx,
+        values: row,
+      });
+    });
+  });
+  return rows;
 }
 
 function readCachedTeacherCommentDrafts_(lessonId) {
@@ -1253,16 +1300,35 @@ function resolveTeacherCommentDraftRows_(sheet, items) {
   const rowMap = {};
   const indexMap = {};
   const missingIds = [];
+  const cachedRowNumberToIds = {};
   (Array.isArray(items) ? items : []).forEach(item => {
     const responseId = String(item?.responseId || '').trim();
     if (!responseId || Object.prototype.hasOwnProperty.call(indexMap, responseId)) return;
-    const cached = readCachedTeacherCommentDraftRow_(sheet, responseId);
-    if (cached) {
-      indexMap[responseId] = cached.rowNumber;
-      rowMap[cached.rowNumber] = cached.values;
+    const cachedRowNumber = readTeacherCommentDraftRowCache_(responseId);
+    if (cachedRowNumber) {
+      if (!cachedRowNumberToIds[cachedRowNumber]) cachedRowNumberToIds[cachedRowNumber] = [];
+      cachedRowNumberToIds[cachedRowNumber].push(responseId);
       return;
     }
     missingIds.push(responseId);
+  });
+  const cachedRows = readTeacherCommentDraftRowsByRowNumbers_(sheet, Object.keys(cachedRowNumberToIds));
+  cachedRows.forEach(entry => {
+    const responseId = String(entry.values[1] || '').trim();
+    const expectedIds = cachedRowNumberToIds[entry.rowNumber] || [];
+    if (!responseId || expectedIds.indexOf(responseId) === -1) {
+      expectedIds.forEach(id => removeTeacherCommentDraftRowCache_(id));
+      return;
+    }
+    indexMap[responseId] = entry.rowNumber;
+    rowMap[entry.rowNumber] = entry.values;
+    writeTeacherCommentDraftRowCache_(responseId, entry.rowNumber);
+  });
+  Object.keys(cachedRowNumberToIds).forEach(rowNumberKey => {
+    const expectedIds = cachedRowNumberToIds[rowNumberKey] || [];
+    expectedIds.forEach(responseId => {
+      if (!Object.prototype.hasOwnProperty.call(indexMap, responseId)) missingIds.push(responseId);
+    });
   });
   if (missingIds.length) {
     const lastRow = sheet.getLastRow();
@@ -2574,9 +2640,10 @@ function mirrorResponseRowsWithAudit_(rows, source, action, actor) {
   return result;
 }
 
-function writeResponseSheetRowEntryUpdates_(updates, mirrorSource, mirrorAction, actor) {
+function writeResponseSheetRowEntryUpdates_(updates, mirrorSource, mirrorAction, actor, options) {
   const list = Array.isArray(updates) ? updates.filter(item => item && item.rowNumber && Array.isArray(item.values)) : [];
   if (!list.length) return 0;
+  const meta = options && typeof options === 'object' ? options : {};
   const sheet = getResponsesDbSheet_();
   writeSheetRowBatches_(sheet, list, RESPONSE_HEADERS.length);
   list.forEach(item => {
@@ -2584,8 +2651,12 @@ function writeResponseSheetRowEntryUpdates_(updates, mirrorSource, mirrorAction,
     writeResponseIdSheetRowNumberCache_(item.values[0], item.rowNumber);
     safeUpsertLessonLiveStateFromResponseRowValues_(item.values);
   });
-  invalidateLessonResponseCaches_();
-  refreshLessonResponseCachesForRows_(list.map(item => item.values).filter(Boolean));
+  if (meta.skipResponseCacheRefresh === true) {
+    if (meta.invalidateResponseCaches === true) invalidateLessonResponseCaches_();
+  } else {
+    invalidateLessonResponseCaches_();
+    refreshLessonResponseCachesForRows_(list.map(item => item.values).filter(Boolean));
+  }
   if (mirrorSource) {
     mirrorResponseRowsToMaster_(
       list.map(item => item.values),
@@ -2595,6 +2666,10 @@ function writeResponseSheetRowEntryUpdates_(updates, mirrorSource, mirrorAction,
     );
   }
   return list.length;
+}
+
+function writeResponseRowUpdates_(updates, mirrorSource, mirrorAction, actor, options) {
+  return writeResponseSheetRowEntryUpdates_(updates, mirrorSource, mirrorAction, actor, options);
 }
 
 function upsertResponseSheetRowValues_(rowValues, existingRowEntry) {

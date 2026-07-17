@@ -1298,11 +1298,13 @@ function flushAiAggregateQueueUnsafe_(entries, source) {
   };
 }
 
-function recalcLessonMedalsFromDb_(lessonId) {
+function recalcLessonMedalsFromDb_(lessonId, options) {
+  const meta = options && typeof options === 'object' ? options : {};
   const cfg = readGlobalConfig();
   const top = Math.min(parseInt(cfg.medal_top)||5, 5);
-  const responses = listResponsesForLesson_(lessonId);
+  const responses = Array.isArray(meta.responses) ? meta.responses : listResponsesForLesson_(lessonId);
   if (!responses.length) return;
+  const responseData = meta.responseData || getResponseSheetData_();
   const lessonRows = responses.map(response => ({
     responseId: response.responseId || '',
     reviewText: response.reviewText || '',
@@ -1323,13 +1325,15 @@ function recalcLessonMedalsFromDb_(lessonId) {
   const masterRows = [];
   const rowUpdates = [];
   lessonRows.forEach(row => {
+    const nextMedal = medalMap[row.responseId] || '';
+    if (String(row.response?.medal || '') === nextMedal) return;
     const next = Object.assign({}, row.response, {
-      medal: medalMap[row.responseId] || '',
+      medal: nextMedal,
       updatedAt,
     });
     const nextRow = buildResponseSheetRowValues_(next);
     masterRows.push(nextRow);
-    const existingRow = findResponseSheetRowEntryByResponseId_(next.responseId);
+    const existingRow = findResponseSheetRowEntryByResponseId_(next.responseId, responseData);
     if (existingRow) {
       rowUpdates.push({
         rowNumber: existingRow.rowNumber,
@@ -1338,13 +1342,21 @@ function recalcLessonMedalsFromDb_(lessonId) {
     }
   });
 
-  mirrorResponseRowsWithAudit_(
+  if (!masterRows.length) return;
+
+  mirrorResponseRowsToMaster_(
     masterRows,
     'response_medal_recalc',
     'master_mirror_failed_medal_recalc',
     'system'
   );
-  if (rowUpdates.length) writeResponseRowUpdates_(rowUpdates, null);
+  if (rowUpdates.length) {
+    writeResponseRowUpdates_(rowUpdates, null, null, null, {
+      skipResponseCacheRefresh: true,
+      invalidateResponseCaches: false,
+    });
+  }
+  invalidateLessonResponseCaches_();
 }
 
 function buildCustomTextFromAnswers_(fields, answersMap) {

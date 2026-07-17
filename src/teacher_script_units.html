@@ -6,11 +6,14 @@ let teacherFeedbackResultTimer=null;
 let unitSaveState={ busy:false, requestToken:'' };
 let lessonFieldEditState={ mode:'unit', unitId:'', period:0 };
 let teacherDraftLocalState={};
+let teacherFeedbackBulkOpKey='';
+let teacherDraftAutoSaveTimers={};
 let unitListPage=1;
 let lastUnitListSignature='';
 const UNIT_LIST_PAGE_SIZE=10;
 const TEACHER_FEEDBACK_PREFS_KEY='teacher_feedback_prefs_v1';
 let teacherFeedbackPrefsLoaded=false;
+const TEACHER_DRAFT_AUTOSAVE_DELAY_MS=1200;
 
 function formatStatusTimingLine_(label,timing,keys){
   if(!timing || typeof timing!=='object' || !Array.isArray(keys) || !keys.length) return '';
@@ -302,7 +305,7 @@ function renderTeacherDraftEditor(student,draftComment,draftRank){
         <span>${staleDraft?'再提出あり / 再生成候補':(hasDraft?'AI下書き確認中':'教師下書き欄')}</span>
         <span class="status-draft-status${draftViewState.dirty?' is-dirty':''}">${draftViewState.dirty?'未保存':(student.draftUpdatedAt?esc(formatStatusTimestamp(student.draftUpdatedAt)):'未生成')}</span>
       </div>
-      <textarea class="status-draft-textarea${draftViewState.commentDirty?' is-dirty':''}" data-response-id="${escAttr(responseId)}" placeholder="AI下書きや手入力コメントをここで確認・修正" oninput="updateTeacherFeedbackDraftFromRow(this)">${esc(draftComment)}</textarea>
+      <textarea class="status-draft-textarea${draftViewState.commentDirty?' is-dirty':''}" data-response-id="${escAttr(responseId)}" placeholder="AI下書きや手入力コメントをここで確認・修正" oninput="updateTeacherFeedbackDraftFromRow(this)" onblur="commitTeacherFeedbackDraftFromRow(this)">${esc(draftComment)}</textarea>
       <select class="status-draft-rank${draftViewState.rankDirty?' is-dirty':''}" data-response-id="${escAttr(responseId)}" onchange="updateTeacherFeedbackDraftRankFromRow(this)">
         ${buildTeacherDraftRankOptions(draftRank)}
       </select>
@@ -314,7 +317,6 @@ function renderTeacherDraftEditor(student,draftComment,draftRank){
       </div>
       <div class="status-draft-actions">
         ${canGenerateAi?`<button class="btn-ai" type="button" onclick="generateTeacherFeedbackDraftForRow('${escAttr(responseId)}')">この児童をAI下書き</button>`:''}
-        <button class="btn-subtle" type="button" onclick="saveTeacherFeedbackDraftForRow('${escAttr(responseId)}')">💾 下書きを保存</button>
         <button class="btn-update" type="button" onclick="returnTeacherFeedbackDraftForRow('${escAttr(responseId)}')">この児童を返却</button>
         <button class="btn-cancel" type="button" onclick="clearTeacherFeedbackDraftForRow('${escAttr(responseId)}')">下書きを消す</button>
         <span class="status-ai-state-chip">${renderStudentAiState(student)}</span>
@@ -512,6 +514,36 @@ function collectTeacherFeedbackReturnDraftItems_(responseIds){
     .filter(item=>String(item.draftComment||'').trim());
 }
 
+function isTeacherFeedbackBulkBusy_(){
+  return Boolean(String(teacherFeedbackBulkOpKey||'').trim());
+}
+
+function beginTeacherFeedbackBulkOp_(key){
+  if(isTeacherFeedbackBulkBusy_()) return false;
+  teacherFeedbackBulkOpKey=String(key||'teacher-feedback-bulk');
+  syncTeacherFeedbackControls(latestStatusRows, latestStatusRows.filter(row=>hasTeacherDraft(row)).length);
+  return true;
+}
+
+function endTeacherFeedbackBulkOp_(){
+  teacherFeedbackBulkOpKey='';
+  syncTeacherFeedbackControls(latestStatusRows, latestStatusRows.filter(row=>hasTeacherDraft(row)).length);
+}
+
+function hasReturnableTeacherDraft_(responseId){
+  const normalized=String(responseId||'').trim();
+  if(!normalized) return false;
+  const row=(Array.isArray(latestStatusRows)?latestStatusRows:[])
+    .find(item=>String(item && item.responseId || '').trim()===normalized);
+  if(hasTeacherDraft(row)) return true;
+  const entry=getTeacherDraftState_(normalized);
+  if(!entry) return false;
+  return Boolean(
+    (entry.commentDirty||entry.rankDirty) &&
+    (String(entry.comment||'').trim() || String(entry.rank||'').trim())
+  );
+}
+
 function applyTeacherFeedbackReturnedOptimistic_(responseIds, draftItems){
   const returnedAt=new Date().toISOString();
   const ids=(Array.isArray(responseIds)?responseIds:[])
@@ -553,6 +585,40 @@ function applyTeacherFeedbackReturnedOptimistic_(responseIds, draftItems){
   renderStatus({ students:latestStatusRows, meta:latestStatusMeta });
 }
 
+function applyTeacherFeedbackDraftsOptimistic_(draftItems){
+  const draftMap={};
+  (Array.isArray(draftItems)?draftItems:[]).forEach(item=>{
+    const responseId=String(item && item.responseId || '').trim();
+    if(responseId) draftMap[responseId]=item;
+  });
+  const responseIds=Object.keys(draftMap);
+  if(!responseIds.length) return;
+  latestStatusRows=(Array.isArray(latestStatusRows)?latestStatusRows:[]).map(student=>{
+    const responseId=String(student && student.responseId || '').trim();
+    const draft=draftMap[responseId];
+    if(!draft) return student;
+    const nextComment=String(draft.draftComment||draft.comment||'');
+    const nextRank=String(draft.draftRank||draft.rank||'');
+    const updatedAt=new Date().toISOString();
+    const next=Object.assign({}, student, {
+      draftComment:nextComment,
+      draftRank:nextRank,
+      draftStatus:'draft',
+      draftUpdatedAt:updatedAt,
+    });
+    const entry=getTeacherDraftState_(responseId);
+    if(entry){
+      entry.comment=nextComment;
+      entry.rank=nextRank;
+      entry.commentDirty=false;
+      entry.rankDirty=false;
+    }
+    clearTeacherDraftAutoSaveTimer_(responseId);
+    return next;
+  });
+  renderStatus({ students:latestStatusRows, meta:latestStatusMeta });
+}
+
 function scheduleTeacherStatusRefreshAfterReturn_(){
   setTimeout(()=>loadStatus(), 900);
 }
@@ -567,6 +633,12 @@ function updateTeacherFeedbackDraftFromRow(textarea){
   syncTeacherDraftDirtyUi_(responseId);
 }
 
+function commitTeacherFeedbackDraftFromRow(textarea){
+  const responseId=String(textarea && textarea.dataset && textarea.dataset.responseId || '').trim();
+  if(!responseId) return;
+  scheduleTeacherDraftAutoSave_(responseId, { delayMs: 150 });
+}
+
 function updateTeacherFeedbackDraftRankFromRow(select){
   const responseId=String(select && select.dataset && select.dataset.responseId || '').trim();
   if(!responseId) return;
@@ -575,6 +647,34 @@ function updateTeacherFeedbackDraftRankFromRow(select){
   entry.rank=select.value||'';
   entry.rankDirty=true;
   syncTeacherDraftDirtyUi_(responseId);
+  scheduleTeacherDraftAutoSave_(responseId, { delayMs: 250 });
+}
+
+function clearTeacherDraftAutoSaveTimer_(responseId){
+  const normalized=String(responseId||'').trim();
+  if(!normalized || !teacherDraftAutoSaveTimers[normalized]) return;
+  clearTimeout(teacherDraftAutoSaveTimers[normalized]);
+  delete teacherDraftAutoSaveTimers[normalized];
+}
+
+function scheduleTeacherDraftAutoSave_(responseId, options){
+  const normalized=String(responseId||'').trim();
+  if(!normalized) return;
+  clearTeacherDraftAutoSaveTimer_(normalized);
+  const delayMs=Math.max(0, Number(options && options.delayMs || TEACHER_DRAFT_AUTOSAVE_DELAY_MS));
+  teacherDraftAutoSaveTimers[normalized]=setTimeout(()=>{
+    clearTeacherDraftAutoSaveTimer_(normalized);
+    persistTeacherFeedbackDraftForRow_(normalized, {
+      busyLabel:'自動保存中',
+      onSuccess:()=>{},
+      onFailure:err=>{
+        const message=String(err && err.message || '');
+        if(message.includes('他の処理が完了するまで待ってください')){
+          scheduleTeacherDraftAutoSave_(normalized, { delayMs: 1200 });
+        }
+      },
+    });
+  }, delayMs);
 }
 
 function setTeacherDraftRowBusy_(responseId,isBusy,busyLabel){
@@ -600,17 +700,20 @@ function syncTeacherFeedbackControls(st,draftCount){
   const enabled=Boolean(latestStatusMeta.teacherAiEnabled);
   const targetCount=st.filter(s=>canTeacherFeedbackGenerateForStudent(s)).length;
   const pendingDraftCount=Math.max(Number(draftCount||0), getTeacherDraftPendingCount_());
+  const busy=isTeacherFeedbackBulkBusy_();
   const meta=document.getElementById('teacherFeedbackMeta');
   const generateAllBtn=document.getElementById('teacherFeedbackGenerateAllBtn');
   const generateBtn=document.getElementById('teacherFeedbackGenerateBtn');
   const returnBtn=document.getElementById('teacherFeedbackReturnBtn');
   const clearBtn=document.getElementById('teacherFeedbackClearBtn');
-  if(generateAllBtn) generateAllBtn.disabled=!enabled || !targetCount;
-  if(generateBtn) generateBtn.disabled=!enabled || !targetCount;
-  if(returnBtn) returnBtn.disabled=!pendingDraftCount;
-  if(clearBtn) clearBtn.disabled=!pendingDraftCount;
+  if(generateAllBtn) generateAllBtn.disabled=busy || !enabled || !targetCount;
+  if(generateBtn) generateBtn.disabled=busy || !enabled || !targetCount;
+  if(returnBtn) returnBtn.disabled=busy || !pendingDraftCount;
+  if(clearBtn) clearBtn.disabled=busy || !pendingDraftCount;
   if(meta){
-    meta.textContent=!enabled
+    meta.textContent=busy
+      ? '教師AIを一括処理中です。完了まで少し待ってください。'
+      : !enabled
       ? `教師AIは未設定です。手入力の下書き保存・返却・手動メダルは使えます。AI生成は、プロンプトタブでAPIキーを保存すると有効になります。`
       : `記入あり ${targetCount}人 / 返却待ち下書き ${pendingDraftCount}人 / 返却済み ${st.filter(s=>String(s.comment||'').trim()).length}人 / 追記後は再生成対象になります`;
   }
@@ -619,6 +722,7 @@ function syncTeacherFeedbackControls(st,draftCount){
 function generateTeacherFeedbackDraftsFromStatus(onlyMissing){
   if(!activeUnitId||!activePeriod){ showToast('単元と時間目を選択してください'); return; }
   if(!Boolean(latestStatusMeta.teacherAiEnabled)){ showToast('AI未設定です。プロンプトタブでAPIキーを保存してください。'); return; }
+  if(isTeacherFeedbackBulkBusy_()){ showToast('教師AIの一括処理が進行中です。完了まで待ってください。'); return; }
   const includeRank=(document.getElementById('teacherFeedbackRankMode')||{}).value!=='without_rank';
   const autoReturn=Boolean((document.getElementById('teacherFeedbackAutoReturn')||{}).checked);
   const medalMode=getTeacherFeedbackMedalMode();
@@ -627,6 +731,7 @@ function generateTeacherFeedbackDraftsFromStatus(onlyMissing){
     generateAndReturnTeacherFeedbackChunks_(missingOnly, includeRank);
     return;
   }
+  if(!beginTeacherFeedbackBulkOp_(autoReturn?'teacher-generate-return':'teacher-generate')){ showToast('教師AIの一括処理が進行中です。完了まで待ってください。'); return; }
   const startedAt=Date.now();
   const btn=setActionButtonBusy_(missingOnly?'teacherFeedbackGenerateBtn':'teacherFeedbackGenerateAllBtn', autoReturn?'⏳ 生成して返却中…':'⏳ 生成中…');
   showToast(autoReturn
@@ -634,6 +739,7 @@ function generateTeacherFeedbackDraftsFromStatus(onlyMissing){
     : (missingOnly?'未生成分のAI下書きを生成しています…':'AI下書きを一括生成しています…'));
   google.script.run
     .withSuccessHandler(res=>{
+      endTeacherFeedbackBulkOp_();
       if(!(res && res.ok)){ resetActionButton_(btn); showToast(res && res.error || 'AI下書き生成に失敗しました'); return; }
       const skipped=Number(res.skippedExistingCount||0);
       const medalText=res.medalAwarded?' / メダル発表まで完了':'';
@@ -644,9 +750,14 @@ function generateTeacherFeedbackDraftsFromStatus(onlyMissing){
       showToast(msg);
       setTeacherFeedbackResult(`完了: ${msg}`);
       setActionButtonDone_(btn, '✅ 完了');
-      loadStatus();
+      if(autoReturn){
+        loadStatus();
+      }else{
+        applyTeacherFeedbackDraftsOptimistic_(res.drafts);
+      }
     })
     .withFailureHandler(err=>{
+      endTeacherFeedbackBulkOp_();
       resetActionButton_(btn);
       const msg=formatTeacherRpcError_(err, 'AI下書き生成に失敗しました', 'AI下書き生成');
       setTeacherFeedbackResult(`失敗: ${msg}`);
@@ -663,6 +774,7 @@ function generateAndReturnTeacherFeedbackChunks_(missingOnly, includeRank){
     .filter(Boolean)
     .filter((value,index,array)=>array.indexOf(value)===index);
   if(!targetIds.length){ showToast('AIコメントを作れる記録がありません'); return; }
+  if(!beginTeacherFeedbackBulkOp_('teacher-generate-return-chunks')){ showToast('教師AIの一括処理が進行中です。完了まで待ってください。'); return; }
   const chunkSize=6;
   const chunks=[];
   for(let i=0;i<targetIds.length;i+=chunkSize){
@@ -676,6 +788,7 @@ function generateAndReturnTeacherFeedbackChunks_(missingOnly, includeRank){
   let skippedExistingCount=0;
   const runChunk=index=>{
     if(index>=chunks.length){
+      endTeacherFeedbackBulkOp_();
       const msg=`AIコメントを ${updatedCount}人分生成し、${returnedCount}人へ返却しました${skippedExistingCount?` / 対象外 ${skippedExistingCount}人`:''} / ${formatElapsedSeconds_(startedAt)}`;
       showToast(msg);
       setTeacherFeedbackResult(`完了: ${msg}`);
@@ -688,6 +801,7 @@ function generateAndReturnTeacherFeedbackChunks_(missingOnly, includeRank){
     google.script.run
       .withSuccessHandler(res=>{
         if(!(res && res.ok)){
+          endTeacherFeedbackBulkOp_();
           resetActionButton_(btn);
           showToast(res && res.error || 'AI生成と返却に失敗しました');
           scheduleTeacherStatusRefreshAfterReturn_();
@@ -703,6 +817,7 @@ function generateAndReturnTeacherFeedbackChunks_(missingOnly, includeRank){
         runChunk(index+1);
       })
       .withFailureHandler(err=>{
+        endTeacherFeedbackBulkOp_();
         resetActionButton_(btn);
         const msg=formatTeacherRpcError_(err, 'AI生成と返却に失敗しました', 'AI生成と返却');
         setTeacherFeedbackResult(`失敗: ${msg}`);
@@ -729,7 +844,8 @@ function generateTeacherFeedbackDraftForRow(responseId){
         return;
       }
       showToast(`AI下書きを ${res.updatedCount||0}人分生成しました`);
-      loadStatus();
+      applyTeacherFeedbackDraftsOptimistic_(res.drafts);
+      setTeacherDraftRowBusy_(responseId,false);
     })
     .withFailureHandler(err=>{
       setTeacherDraftRowBusy_(responseId,false);
@@ -740,35 +856,49 @@ function generateTeacherFeedbackDraftForRow(responseId){
 
 function returnTeacherFeedbackDraftsFromStatus(){
   if(!activeUnitId||!activePeriod){ showToast('単元と時間目を選択してください'); return; }
+  if(isTeacherFeedbackBulkBusy_()){ showToast('教師AIの一括処理が進行中です。完了まで待ってください。'); return; }
   const medalMode=getTeacherFeedbackMedalMode();
   const targetResponseIds=getTeacherFeedbackReturnTargetIds_();
   if(!targetResponseIds.length){ showToast('返却できる下書きがありません'); return; }
+  if(!beginTeacherFeedbackBulkOp_('teacher-return')){ showToast('教師AIの一括処理が進行中です。完了まで待ってください。'); return; }
   const btn=setActionButtonBusy_('teacherFeedbackReturnBtn', '⏳ 一括返却中…');
-  const draftItems=collectTeacherFeedbackReturnDraftItems_(targetResponseIds);
-  showToast(medalMode==='auto_award'?'AI下書きを返却してメダルを処理しています…':'AI下書きを返却しています…');
-  google.script.run
-    .withSuccessHandler(res=>{
-      if(!(res && res.ok)){ resetActionButton_(btn); showToast(res && res.error || '返却に失敗しました'); return; }
-      const returnedIds=Array.isArray(res.returnedIds)&&res.returnedIds.length ? res.returnedIds : targetResponseIds;
-      applyTeacherFeedbackReturnedOptimistic_(returnedIds);
-      const msg=`${res.returnedCount||0}人へ返却しました${res.medalAwarded?' / メダル発表まで完了':''}`;
-      showToast(msg);
-      setTeacherFeedbackResult(`完了: ${msg}`);
-      setActionButtonDone_(btn, '✅ 完了');
-      scheduleTeacherStatusRefreshAfterReturn_();
-    })
-    .withFailureHandler(err=>{
-      resetActionButton_(btn);
-      const msg=formatTeacherRpcError_(err, '返却に失敗しました', '下書き返却');
-      setTeacherFeedbackResult(`失敗: ${msg}`);
-      showToast(msg, { tone:'error', duration:5200 });
-    })
-    .returnTeacherFeedbackDrafts(activeUnitId,activePeriod,targetResponseIds,medalMode,{ source:'teacher_bulk_return', skipEventLogs:true, draftItems });
+  const runReturn=()=>{
+    const draftItems=collectTeacherFeedbackReturnDraftItems_(targetResponseIds);
+    showToast(medalMode==='auto_award'?'AI下書きを返却してメダルを処理しています…':'AI下書きを返却しています…');
+    google.script.run
+      .withSuccessHandler(res=>{
+        endTeacherFeedbackBulkOp_();
+        if(!(res && res.ok)){ resetActionButton_(btn); showToast(res && res.error || '返却に失敗しました'); return; }
+        const returnedIds=Array.isArray(res.returnedIds)&&res.returnedIds.length ? res.returnedIds : targetResponseIds;
+        applyTeacherFeedbackReturnedOptimistic_(returnedIds, draftItems);
+        const msg=`${res.returnedCount||0}人へ返却しました${res.medalAwarded?' / メダル発表まで完了':''}`;
+        showToast(msg);
+        setTeacherFeedbackResult(`完了: ${msg}`);
+        setActionButtonDone_(btn, '✅ 完了');
+        scheduleTeacherStatusRefreshAfterReturn_();
+      })
+      .withFailureHandler(err=>{
+        endTeacherFeedbackBulkOp_();
+        resetActionButton_(btn);
+        const msg=formatTeacherRpcError_(err, '返却に失敗しました', '下書き返却');
+        setTeacherFeedbackResult(`失敗: ${msg}`);
+        showToast(msg, { tone:'error', duration:5200 });
+      })
+      .returnTeacherFeedbackDrafts(activeUnitId,activePeriod,targetResponseIds,medalMode,{ source:'teacher_bulk_return', skipEventLogs:true, draftItems });
+  };
+  flushTeacherFeedbackDrafts_(targetResponseIds, runReturn, err=>{
+    endTeacherFeedbackBulkOp_();
+    resetActionButton_(btn);
+    const msg=formatTeacherRpcError_(err, '返却前の保存に失敗しました', '返却前保存');
+    setTeacherFeedbackResult(`失敗: ${msg}`);
+    showToast(msg, { tone:'error', duration:5200 });
+  });
 }
 
 function clearTeacherFeedbackDraftsFromStatus(){
   if(!activeUnitId||!activePeriod){ showToast('単元と時間目を選択してください'); return; }
   const btn=setActionButtonBusy_('teacherFeedbackClearBtn', '⏳ 下書き削除中…');
+  Object.keys(teacherDraftAutoSaveTimers).forEach(responseId=>clearTeacherDraftAutoSaveTimer_(responseId));
   teacherDraftLocalState={};
   google.script.run
     .withSuccessHandler(res=>{
@@ -786,10 +916,15 @@ function clearTeacherFeedbackDraftsFromStatus(){
 }
 
 function getTeacherFeedbackReturnTargetIds_(){
-  return (Array.isArray(latestStatusRows)?latestStatusRows:[])
+  const ids=(Array.isArray(latestStatusRows)?latestStatusRows:[])
+    .filter(row=>hasTeacherDraft(row))
     .map(row=>String(row && row.responseId || '').trim())
     .filter(Boolean)
     .filter((value,index,array)=>array.indexOf(value)===index);
+  Object.keys(teacherDraftLocalState).forEach(responseId=>{
+    if(hasReturnableTeacherDraft_(responseId) && ids.indexOf(responseId)===-1) ids.push(responseId);
+  });
+  return ids;
 }
 
 function persistTeacherFeedbackDraftForRow_(responseId, options){
@@ -951,6 +1086,7 @@ function clearTeacherFeedbackDraftForRow(responseId){
   if(!activeUnitId||!activePeriod) return;
   const row=findTeacherDraftRow_(responseId);
   if(isTeacherDraftRowBusy_(row)) return;
+  clearTeacherDraftAutoSaveTimer_(responseId);
   delete teacherDraftLocalState[String(responseId||'').trim()];
   setTeacherDraftRowBusy_(responseId,true,'下書き削除中');
   google.script.run
