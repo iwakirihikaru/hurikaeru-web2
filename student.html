@@ -299,8 +299,8 @@ textarea.f{min-height:70px;}
 .student-api-debug{
   position:fixed;left:8px;right:8px;bottom:4px;z-index:940;
   padding:5px 9px;border-radius:10px;background:rgba(38,50,56,.86);color:#ECEFF1;
-  font-size:10px;line-height:1.35;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.18);
-  pointer-events:none;
+  font-size:10px;line-height:1.45;text-align:left;box-shadow:0 2px 8px rgba(0,0,0,.18);
+  white-space:pre-line;
 }
 .student-api-debug.error{background:rgba(183,28,28,.9);}
 
@@ -491,6 +491,11 @@ const studentClientPerfState = {
   periodSelectCalls:0,
   loadMainCalls:0,
 };
+const studentDebugFooterState = {
+  apiText:'API waiting',
+  clientText:'CLIENT waiting',
+  isError:false,
+};
 
 function studentNowMs_(){
   return (typeof performance!=='undefined' && performance && typeof performance.now==='function')
@@ -503,12 +508,22 @@ function logStudentClientPerf_(name, payload){
     const apiInfo=(window.__portableGas && typeof window.__portableGas.getResolvedApiInfo==='function')
       ? window.__portableGas.getResolvedApiInfo()
       : null;
-    console.info('[student_client_perf]', JSON.stringify({
+    const eventPayload={
       name:String(name||''),
       apiUrl:apiInfo && apiInfo.apiUrl || '',
       apiSource:apiInfo && apiInfo.source || '',
       ...(payload && typeof payload==='object' ? payload : {}),
-    }));
+    };
+    console.info('[student_client_perf]', JSON.stringify(eventPayload));
+    const details=[];
+    if(eventPayload.totalMs!==undefined) details.push(`${Math.round(Number(eventPayload.totalMs||0))}ms`);
+    if(eventPayload.period!==undefined && Number(eventPayload.period||0)>0) details.push(`${Number(eventPayload.period||0)}じかんめ`);
+    if(eventPayload.cacheOnly===true) details.push('cache');
+    if(eventPayload.bootstrapSource) details.push(String(eventPayload.bootstrapSource));
+    if(eventPayload.error) details.push('error');
+    studentDebugFooterState.clientText=`CLIENT ${String(name||'')} ${details.join(' / ')}`.trim();
+    if(eventPayload.error) studentDebugFooterState.isError=true;
+    updateStudentDebugFooter_();
   }catch(_err){}
 }
 
@@ -765,10 +780,15 @@ function logStudentApiTiming_(label,payload){
   console.info('[student-api]', label, timing);
 }
 
-function renderStudentApiDebug_(label, timing, isError){
+function updateStudentDebugFooter_(){
   const el=document.getElementById('studentApiDebug');
   if(!el) return;
-  const parts=[`Pages ${STUDENT_CLIENT_BUILD}`];
+  el.textContent=`Pages ${STUDENT_CLIENT_BUILD}\n${studentDebugFooterState.apiText}\n${studentDebugFooterState.clientText}`;
+  el.classList.toggle('error', Boolean(studentDebugFooterState.isError));
+}
+
+function renderStudentApiDebug_(label, timing, isError){
+  const parts=[];
   const apiLabel=String(label||'API').trim();
   if(timing && typeof timing==='object'){
     if(timing.api) parts.push(String(timing.api));
@@ -780,8 +800,9 @@ function renderStudentApiDebug_(label, timing, isError){
     parts.push(apiLabel);
   }
   if(isError) parts.push('通信失敗');
-  el.textContent=parts.join(' / ');
-  el.classList.toggle('error', Boolean(isError));
+  studentDebugFooterState.apiText=`API ${parts.join(' / ')}`;
+  studentDebugFooterState.isError=Boolean(isError);
+  updateStudentDebugFooter_();
 }
 
 function logStudentApiFailure_(label, err){
