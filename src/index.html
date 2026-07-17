@@ -1104,12 +1104,14 @@ function selectNumber(num, options){
       studentNumber:Number(num||0),
       bootstrapSource:String(bootstrapState.bootstrapSource||''),
     });
-    initBusy=false;
-    setNumberSelectionBusy_(num,false);
-    loadMain(bootstrapState);
-    return;
+    loadMain(Object.assign({}, bootstrapState, {
+      cacheOnly:true,
+      cacheSource:'classSnapshot',
+    }));
   }
-  showCachedStudentLanding_(findRecentStudentStateCache_(num));
+  if(!bootstrapState){
+    showCachedStudentLanding_(findRecentStudentStateCache_(num));
+  }
   google.script.run
     .withSuccessHandler(d=>{
       initBusy=false;
