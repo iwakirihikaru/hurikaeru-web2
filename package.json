@@ -26,6 +26,7 @@
     "portable:serve": "node ./scripts/serve-portable.js",
     "refresh:portable-tenant": "powershell -ExecutionPolicy Bypass -File ./scripts/refresh-portable-tenant.ps1",
     "build:update-bundle": "node ./scripts/build-update-bundle.js",
+    "test:student-guards": "node ./scripts/test-student-guards.mjs",
     "test:master-api": "powershell -ExecutionPolicy Bypass -File ./scripts/test-master-gas-api.ps1",
     "push:template": "powershell -ExecutionPolicy Bypass -File ./scripts/push-distribution-template.ps1",
     "sync:admin": "powershell -ExecutionPolicy Bypass -File ./scripts/sync-admin-webapp.ps1",

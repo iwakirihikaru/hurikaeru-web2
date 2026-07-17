@@ -16,6 +16,7 @@ function studentInit(num, periodOverride) {
   t0 = Date.now();
   const students = getRosterEntries_();
   timing.rosterMs = Date.now() - t0;
+  timing.rosterCount = Array.isArray(students) ? students.length : 0;
   t0 = Date.now();
   const featureFlags = getAiFeatureFlags_();
   timing.featureFlagsMs = Date.now() - t0;
@@ -44,6 +45,7 @@ function studentInit(num, periodOverride) {
   const lesson = getOrCreateLesson_(active.unit.id, period);
   const enabledFields = getEnabledFields_({ fields: getLessonFields_(lesson, active.unit) });
   timing.lessonFieldsMs = Date.now() - t0;
+  timing.fieldCount = Array.isArray(enabledFields) ? enabledFields.length : 0;
   t0 = Date.now();
   const state = buildStudentState_(active.unit, period, num, studentName, enabledFields, { includePrevReview: false });
   timing.stateMs = Date.now() - t0;
@@ -203,6 +205,72 @@ function getEnabledFields_(unit) {
   return (unit.fields || []).filter(f => f.enabled !== false);
 }
 
+function buildTimelineRowDto_(student, fields, responseMap) {
+  const number = student && student.number != null ? student.number : '';
+  const response = responseMap[String(number)] || null;
+  return {
+    num: number,
+    name: sanitizeStudentName_(response?.studentName) || sanitizeStudentName_(student?.name),
+    customs: response ? mapAnswersToCustoms_(fields, response.answersMap) : Array(fields.length).fill(''),
+    medal: response?.medal || '',
+    medalColor: getMedalColor_(response?.medal || ''),
+    submitted: response?.submitted === true,
+    responseUpdatedAt: response?.updatedAt || '',
+  };
+}
+
+function buildTimelinePrivateState_(studentNumber, fields, responseMap, lessonId, activeRevision) {
+  const normalizedStudentNumber = String(studentNumber || '').trim();
+  if (!normalizedStudentNumber) return null;
+  const response = responseMap[normalizedStudentNumber] || null;
+  return {
+    lessonId: String(lessonId || ''),
+    activeRevision: Number(activeRevision || 0),
+    num: normalizedStudentNumber,
+    name: sanitizeStudentName_(response?.studentName),
+    customs: response ? mapAnswersToCustoms_(fields, response.answersMap) : Array(fields.length).fill(''),
+    comment: response?.comment || '',
+    rank: response?.rank || '',
+    medal: response?.medal || '',
+    medalColor: getMedalColor_(response?.medal || ''),
+    submitted: response?.submitted === true,
+    score: Number(response?.score || 0),
+    aiStatus: response?.aiStatus || '',
+    aiProcessedAt: response?.aiProcessedAt || '',
+    responseUpdatedAt: response?.updatedAt || '',
+  };
+}
+
+function buildTimelineSnapshotPayload_(snapshot, active, teacherTimelineFieldKey, shell, studentNumber) {
+  const safeSnapshot = snapshot && typeof snapshot === 'object' ? snapshot : {};
+  const fields = Array.isArray(safeSnapshot.fields) ? safeSnapshot.fields : [];
+  const roster = Array.isArray(safeSnapshot.roster) ? safeSnapshot.roster : [];
+  const responseMap = safeSnapshot.responseMapByStudentNumber || {};
+  const rows = roster.map(student => buildTimelineRowDto_(student, fields, responseMap));
+  const lessonId = String(safeSnapshot.lesson?.lessonId || '');
+  const activeLessonId = String(active?.lesson?.lessonId || '');
+  const resolvedActiveRevision = activeLessonId && activeLessonId === lessonId ? Number(active?.activeRevision || 0) : 0;
+  return {
+    rows,
+    myState: buildTimelinePrivateState_(studentNumber, fields, responseMap, lessonId, resolvedActiveRevision),
+    serverNow: safeSnapshot.serverNow || nowIso_(),
+    responseReadMeta: safeSnapshot.responseReadMeta || null,
+    teacherTimelineFieldKey: teacherTimelineFieldKey || '',
+    fields: fields.map(field => ({ key: field.key || '', label: field.label || '' })),
+    studentAiEnabled: isStudentAiEnabled_(),
+    studentAiAutoSubmitEnabled: isStudentAiAutoSubmitEnabled_(),
+    lessonId,
+    activeRevision: resolvedActiveRevision,
+    active: {
+      unitId: active && active.unitId ? String(active.unitId) : '',
+      period: Number(active && active.period || 0),
+      lessonId: activeLessonId,
+      activeRevision: Number(active?.activeRevision || 0),
+    },
+    shell: shell || getLiveTenantMaintenanceState(),
+  };
+}
+
 function getTimeline(unitId, period) {
   const startedAt = Date.now();
   const timing = {};
@@ -215,25 +283,106 @@ function getTimeline(unitId, period) {
     || {};
   timing.snapshotMs = Date.now() - t0;
   t0 = Date.now();
-  const unit = snapshot.unit || getAllUnits().find(u => String(u.id) === String(unitId)) || null;
-  const fields = Array.isArray(snapshot.fields) ? snapshot.fields : [];
-  const lesson = unit ? getLessonRecordByUnitPeriod_(unitId, period) : null;
-  const payload = {
-    ...buildTimelinePayload_(unitId, period, unit, fields, active.timelineFieldKey || '', isStudentAiEnabled_(), snapshot),
-    lessonId: String(lesson?.lessonId || ''),
-    activeRevision: String(active?.lesson?.lessonId || '') === String(lesson?.lessonId || '')
-      ? Number(active?.activeRevision || 0)
-      : 0,
-    active: {
-      unitId: active && active.unitId ? String(active.unitId) : '',
-      period: Number(active && active.period || 0),
-      lessonId: String(active?.lesson?.lessonId || ''),
-      activeRevision: Number(active?.activeRevision || 0),
-    },
-    shell: getLiveTenantMaintenanceState(),
-  };
+  const payload = buildTimelineSnapshotPayload_(
+    snapshot,
+    active,
+    active.timelineFieldKey || '',
+    getLiveTenantMaintenanceState(),
+    ''
+  );
+  timing.rowCount = Array.isArray(payload.rows) ? payload.rows.length : 0;
   timing.payloadBuildMs = Date.now() - t0;
   return attachStudentApiTiming_(payload, 'getTimeline', startedAt, timing);
+}
+
+function getTimelineSnapshot(lessonId, activeRevision, studentNumber) {
+  const startedAt = Date.now();
+  const timing = {};
+  const normalizedLessonId = String(lessonId || '').trim();
+  const normalizedRevision = Number(activeRevision || 0);
+  const normalizedStudentNumber = String(studentNumber || '').trim();
+  let t0 = Date.now();
+  const units = getAllUnits();
+  timing.unitsMs = Date.now() - t0;
+  t0 = Date.now();
+  const active = getActiveSetting({ units });
+  timing.activeMs = Date.now() - t0;
+  const activeLessonId = String(active?.lesson?.lessonId || '').trim();
+  const activeRevisionNumber = Number(active?.activeRevision || 0);
+  const shell = getLiveTenantMaintenanceState();
+  if (!normalizedLessonId || !activeLessonId || normalizedLessonId !== activeLessonId || normalizedRevision !== activeRevisionNumber) {
+    return attachStudentApiTiming_({
+      rows: [],
+      myState: null,
+      fields: [],
+      lessonId: normalizedLessonId,
+      activeRevision: normalizedRevision,
+      active: {
+        unitId: active && active.unitId ? String(active.unitId) : '',
+        period: Number(active && active.period || 0),
+        lessonId: activeLessonId,
+        activeRevision: activeRevisionNumber,
+      },
+      teacherTimelineFieldKey: String(active?.timelineFieldKey || ''),
+      studentAiEnabled: isStudentAiEnabled_(),
+      studentAiAutoSubmitEnabled: isStudentAiAutoSubmitEnabled_(),
+      shell,
+      serverNow: nowIso_(),
+      responseReadMeta: null,
+    }, 'getTimelineSnapshot', startedAt, timing);
+  }
+  t0 = Date.now();
+  const lesson = getLessonRecordById_(normalizedLessonId);
+  timing.lessonMs = Date.now() - t0;
+  if (!lesson
+    || String(lesson.lessonId || '').trim() !== activeLessonId
+    || String(lesson.unitId || '').trim() !== String(active?.unitId || '').trim()
+    || Number(lesson.period || 0) !== Number(active?.period || 0)) {
+    return attachStudentApiTiming_({
+      rows: [],
+      myState: null,
+      fields: [],
+      lessonId: normalizedLessonId,
+      activeRevision: normalizedRevision,
+      active: {
+        unitId: active && active.unitId ? String(active.unitId) : '',
+        period: Number(active && active.period || 0),
+        lessonId: activeLessonId,
+        activeRevision: activeRevisionNumber,
+      },
+      teacherTimelineFieldKey: String(active?.timelineFieldKey || ''),
+      studentAiEnabled: isStudentAiEnabled_(),
+      studentAiAutoSubmitEnabled: isStudentAiAutoSubmitEnabled_(),
+      shell,
+      serverNow: nowIso_(),
+      responseReadMeta: null,
+    }, 'getTimelineSnapshot', startedAt, timing);
+  }
+  t0 = Date.now();
+  const snapshot = getLessonLiveStateSnapshot_(lesson.unitId, lesson.period, { createLesson: false, units, requireRows: false })
+    || getLessonRuntimeSnapshot_(lesson.unitId, lesson.period, { createLesson: false })
+    || {
+      lesson,
+      unit: units.find(item => String(item.id || '') === String(lesson.unitId || '')) || null,
+      period: Number(lesson.period || 0),
+      fields: getEnabledFields_({ fields: getLessonFields_(lesson, units.find(item => String(item.id || '') === String(lesson.unitId || '')) || null) }),
+      roster: getRosterEntries_(),
+      responseMapByStudentNumber: {},
+      responseReadMeta: null,
+      serverNow: nowIso_(),
+    };
+  timing.snapshotMs = Date.now() - t0;
+  t0 = Date.now();
+  const payload = buildTimelineSnapshotPayload_(
+    snapshot,
+    active,
+    String(active?.timelineFieldKey || ''),
+    shell,
+    normalizedStudentNumber
+  );
+  timing.rowCount = Array.isArray(payload.rows) ? payload.rows.length : 0;
+  timing.payloadBuildMs = Date.now() - t0;
+  return attachStudentApiTiming_(payload, 'getTimelineSnapshot', startedAt, timing);
 }
 
 function getStudentPreviousReview(unitId, period, num) {
@@ -261,8 +410,12 @@ function attachStudentApiTiming_(payload, apiName, startedAt, timing) {
   meta.totalMs = Date.now() - Number(startedAt || Date.now());
   meta.api = String(apiName || '');
   try {
-    meta.payloadBytes = JSON.stringify(result).length;
+    const stringifyStartedAt = Date.now();
+    const json = JSON.stringify(result);
+    meta.jsonStringifyMs = Date.now() - stringifyStartedAt;
+    meta.payloadBytes = json.length;
   } catch (_err) {
+    meta.jsonStringifyMs = 0;
     meta.payloadBytes = 0;
   }
   result.timing = meta;
