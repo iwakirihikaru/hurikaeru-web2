@@ -812,14 +812,16 @@ function safeUpsertLessonLiveStateFromResponseRowValues_(responseRow, lesson) {
   try {
     return upsertLessonLiveStateFromResponseRowValues_(responseRow, lesson);
   } catch (err) {
-    writeAuditLog_({
-      targetType: 'lessonLiveState',
-      targetId: Array.isArray(responseRow) ? String(responseRow[1] || '') : String(responseRow?.lessonId || ''),
-      action: 'lesson_live_state_upsert_failed',
-      before: null,
-      after: { error: String(err && err.message ? err.message : err) },
-      actor: 'system',
-    });
+    try {
+      writeAuditLog_({
+        targetType: 'lessonLiveState',
+        targetId: Array.isArray(responseRow) ? String(responseRow[1] || '') : String(responseRow?.lessonId || ''),
+        action: 'lesson_live_state_upsert_failed',
+        before: null,
+        after: { error: String(err && err.message ? err.message : err) },
+        actor: 'system',
+      });
+    } catch (_auditErr) {}
     return null;
   }
 }
@@ -979,6 +981,53 @@ function cacheResponseById_(response) {
   return putCachedJson_(getResponseByIdCacheKey_(responseId), response, 20);
 }
 
+function writeResponseRowCaches_(rowValues, rowNumber) {
+  const row = Array.isArray(rowValues) ? rowValues : [];
+  const normalizedRowNumber = Number(rowNumber || 0);
+  if (!row.length) return null;
+  if (normalizedRowNumber >= 2) {
+    writeResponseSheetRowNumberCache_(row[1], row[3], normalizedRowNumber);
+    writeResponseIdSheetRowNumberCache_(row[0], normalizedRowNumber);
+  }
+  addLessonResponseRowIndex_(row[1], normalizedRowNumber);
+  return normalizedRowNumber;
+}
+
+function updateLessonResponseCacheForDtos_(lessonId, responses) {
+  const normalizedLessonId = String(lessonId || '').trim();
+  if (!normalizedLessonId) return [];
+  const sorted = sortLessonResponsesForCache_(Array.isArray(responses) ? responses : []);
+  cacheLessonResponses_(normalizedLessonId, sorted);
+  sorted.forEach(response => cacheResponseById_(response));
+  return sorted;
+}
+
+function updateLessonResponseCacheForRows_(rows) {
+  const grouped = {};
+  (Array.isArray(rows) ? rows : []).forEach(row => {
+    if (!Array.isArray(row) || !row.length) return;
+    const lessonId = String(row[1] || '').trim();
+    if (!lessonId) return;
+    if (!grouped[lessonId]) grouped[lessonId] = [];
+    grouped[lessonId].push(mapResponseRow_(row));
+  });
+  Object.keys(grouped).forEach(lessonId => {
+    const mergedByKey = {};
+    const cached = readCachedLessonResponses_(lessonId);
+    (Array.isArray(cached) ? cached : []).forEach(item => {
+      const key = String(item?.responseId || '').trim() || `${String(item?.lessonId || '')}:${String(item?.studentId || '')}`;
+      if (!key) return;
+      mergedByKey[key] = item;
+    });
+    grouped[lessonId].forEach(item => {
+      const key = String(item?.responseId || '').trim() || `${String(item?.lessonId || '')}:${String(item?.studentId || '')}`;
+      if (!key) return;
+      mergedByKey[key] = item;
+    });
+    updateLessonResponseCacheForDtos_(lessonId, Object.keys(mergedByKey).map(key => mergedByKey[key]));
+  });
+}
+
 function getLessonResponseRowIndexKey_(lessonId) {
   return `response_lesson_rows_v1:${String(lessonId || '').trim()}`;
 }
@@ -1066,29 +1115,7 @@ function sortLessonResponsesForCache_(responses) {
 }
 
 function mergeLessonResponseRowsIntoCache_(rows) {
-  const grouped = {};
-  (Array.isArray(rows) ? rows : []).forEach(row => {
-    if (!row) return;
-    const lessonId = String(row[1] || '').trim();
-    if (!lessonId) return;
-    if (!grouped[lessonId]) grouped[lessonId] = [];
-    grouped[lessonId].push(mapResponseRow_(row));
-  });
-  Object.keys(grouped).forEach(lessonId => {
-    const mergedByKey = {};
-    const cached = readCachedLessonResponses_(lessonId);
-    (Array.isArray(cached) ? cached : []).forEach(item => {
-      const key = String(item?.responseId || '').trim() || `${String(item?.lessonId || '')}:${String(item?.studentId || '')}`;
-      if (!key) return;
-      mergedByKey[key] = item;
-    });
-    grouped[lessonId].forEach(item => {
-      const key = String(item?.responseId || '').trim() || `${String(item?.lessonId || '')}:${String(item?.studentId || '')}`;
-      if (!key) return;
-      mergedByKey[key] = item;
-    });
-    cacheLessonResponses_(lessonId, sortLessonResponsesForCache_(Object.keys(mergedByKey).map(key => mergedByKey[key])));
-  });
+  updateLessonResponseCacheForRows_(rows);
 }
 
 function refreshLessonResponseCachesForRows_(rows) {
@@ -1098,9 +1125,13 @@ function refreshLessonResponseCachesForRows_(rows) {
     if (lessonId) lessonIdSet[lessonId] = true;
   });
   Object.keys(lessonIdSet).forEach(lessonId => {
-    const latest = listMasterResponseRecordsForLesson_(lessonId);
-    cacheLessonResponses_(lessonId, latest);
-    latest.forEach(response => cacheResponseById_(response));
+    const tenantResponses = listTenantResponseRecordsForLesson_(lessonId);
+    if (tenantResponses.length) {
+      updateLessonResponseCacheForDtos_(lessonId, tenantResponses);
+      return;
+    }
+    const fallback = listMasterResponseRecordsForLesson_(lessonId);
+    updateLessonResponseCacheForDtos_(lessonId, fallback);
   });
 }
 
@@ -1697,6 +1728,8 @@ function saveResponseSnapshotToDb_(unitId, period, num, studentName, fields, cus
     || (isSubmitting
       ? (hadPreviousReview !== '' && hadPreviousReview !== reviewText)
       : (existingValues ? existingValues[14] === true : false));
+  const persistTimings = opts?.persistTimings && typeof opts.persistTimings === 'object' ? opts.persistTimings : null;
+  const responseWriteStartedAt = Date.now();
   const row = upsertResponse_({
     responseId: existingValues ? existingValues[0] : '',
     lessonId: lesson.lessonId,
@@ -1722,7 +1755,19 @@ function saveResponseSnapshotToDb_(unitId, period, num, studentName, fields, cus
     aiStartedAt,
     aiLatencyMs,
     aiModelLatencyMs,
-  }, existing);
+  }, existing, {
+    skipMasterMirror: true,
+    updateLessonLiveState: false,
+    deferLocalCache: true,
+    deferRowCaches: true,
+  });
+  if (persistTimings) persistTimings.responseWriteMs = Date.now() - responseWriteStartedAt;
+  const liveStateStartedAt = Date.now();
+  const liveStateResult = safeUpsertLessonLiveStateFromResponseRowValues_(row.values, lesson);
+  if (persistTimings) {
+    persistTimings.lessonLiveStateMs = Date.now() - liveStateStartedAt;
+    persistTimings.lessonLiveStateUpdated = Boolean(liveStateResult);
+  }
   let historyEntry = null;
   if (isSubmitting) {
     historyEntry = {
@@ -1745,6 +1790,9 @@ function saveResponseSnapshotToDb_(unitId, period, num, studentName, fields, cus
     lesson,
     student,
     responseId: row.responseId,
+    responseRowValues: row.values,
+    responseRowNumber: row.rowNumber,
+    liveStateUpdated: Boolean(liveStateResult),
     reviewText,
     answersMap,
     historyEntry,
@@ -2009,17 +2057,24 @@ function listMasterResponseRecordsForAll_() {
 
 function summarizeResponseReadForLesson_(lessonId, responses) {
   const normalizedLessonId = String(lessonId || '').trim();
-  const masterResponses = normalizedLessonId
-    ? listMasterResponseRecordsForLesson_(normalizedLessonId)
-    : [];
   const mergedResponses = Array.isArray(responses) ? responses : [];
+  let masterUsed = false;
+  let masterCount = 0;
+  mergedResponses.forEach(item => {
+    if (String(item?.readSource || '') === 'master') {
+      masterUsed = true;
+      masterCount++;
+    }
+  });
   return {
     scope: 'lesson',
     lessonId: normalizedLessonId,
-    preferMaster: true,
-    masterCount: masterResponses.length,
+    preferMaster: false,
+    masterCount,
     mergedCount: mergedResponses.length,
-    mode: 'master_only',
+    mode: masterUsed ? 'tenant_with_master_fallback' : 'tenant_primary',
+    source: masterUsed ? 'master_fallback' : 'tenant_responses',
+    masterUsed,
   };
 }
 
@@ -2032,10 +2087,12 @@ function summarizeResponseReadForAll_(responses) {
   });
   return {
     scope: 'all',
-    preferMaster: true,
+    preferMaster: masterTaggedCount > 0,
     totalCount: list.length,
     estimatedMasterOnlyCount: masterTaggedCount,
-    mode: 'master_only',
+    mode: masterTaggedCount > 0 ? 'mixed' : 'tenant_primary',
+    source: masterTaggedCount > 0 ? 'mixed' : 'tenant_responses',
+    masterUsed: masterTaggedCount > 0,
   };
 }
 
@@ -2178,7 +2235,16 @@ function getResponseRecordByStudentNumber_(lessonId, studentNumber) {
   const normalizedStudentNumber = String(studentNumber || '').trim();
   if (!normalizedLessonId || !normalizedStudentNumber) return null;
   const cached = readCachedLessonResponses_(normalizedLessonId);
-  const responses = cached || listMasterResponseRecordsForStudentNumberLesson_(normalizedStudentNumber, normalizedLessonId);
+  if (Array.isArray(cached)) {
+    return cached.find(item => String(item.studentNumber || '').trim() === normalizedStudentNumber) || null;
+  }
+  const tenantResponses = listTenantResponseRecordsForLesson_(normalizedLessonId);
+  const tenantMatch = tenantResponses.find(item => String(item.studentNumber || '').trim() === normalizedStudentNumber) || null;
+  if (tenantMatch) {
+    cacheResponseById_(tenantMatch);
+    return tenantMatch;
+  }
+  const responses = listMasterResponseRecordsForStudentNumberLesson_(normalizedStudentNumber, normalizedLessonId);
   responses.forEach(response => cacheResponseById_(response));
   return responses.find(item => String(item.studentNumber || '').trim() === normalizedStudentNumber) || null;
 }
@@ -2198,7 +2264,11 @@ function listResponsesForLesson_(lessonId) {
   if (!normalizedLessonId) return [];
   const cached = readCachedLessonResponses_(normalizedLessonId);
   if (cached) return cached;
-  return cacheLessonResponses_(normalizedLessonId, listMasterResponseRecordsForLesson_(normalizedLessonId));
+  const tenantResponses = listTenantResponseRecordsForLesson_(normalizedLessonId);
+  if (tenantResponses.length) {
+    return updateLessonResponseCacheForDtos_(normalizedLessonId, tenantResponses);
+  }
+  return updateLessonResponseCacheForDtos_(normalizedLessonId, listMasterResponseRecordsForLesson_(normalizedLessonId));
 }
 
 function listResponsesForStudent_(studentNumber, lessonIds) {
@@ -2458,6 +2528,30 @@ function getResponseSheetData_() {
   return { sheet, rows, lastRow };
 }
 
+function listTenantResponseRecordsForLesson_(lessonId) {
+  const normalizedLessonId = String(lessonId || '').trim();
+  if (!normalizedLessonId) return [];
+  const sheet = getResponsesDbSheet_();
+  const indexedRows = readResponseRowsByRowNumbers_(sheet, readLessonResponseRowIndex_(normalizedLessonId))
+    .filter(entry => String(entry?.values?.[1] || '') === normalizedLessonId);
+  if (indexedRows.length) {
+    return sortLessonResponsesForCache_(indexedRows.map(entry => mapResponseRow_(entry.values)));
+  }
+  const lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return [];
+  const rows = sheet.getRange(2, 1, lastRow - 1, RESPONSE_HEADERS.length).getValues();
+  const rowNumbers = [];
+  const responses = rows
+    .map((row, idx) => ({ row, rowNumber: idx + 2 }))
+    .filter(entry => String(entry.row[1] || '') === normalizedLessonId)
+    .map(entry => {
+      rowNumbers.push(entry.rowNumber);
+      return mapResponseRow_(entry.row);
+    });
+  writeLessonResponseRowIndex_(normalizedLessonId, rowNumbers);
+  return sortLessonResponsesForCache_(responses);
+}
+
 function getResponseSheetRowNumberCacheKey_(lessonId, studentId) {
   return `response_row_v1:${String(lessonId || '').trim()}:${String(studentId || '').trim()}`;
 }
@@ -2626,18 +2720,14 @@ function cacheResponseRows_(rows) {
   const list = (Array.isArray(rows) ? rows : []).filter(row => Array.isArray(row) && row.length);
   if (!list.length) return 0;
   invalidateLessonResponseCaches_();
-  refreshLessonResponseCachesForRows_(list);
+  updateLessonResponseCacheForRows_(list);
   return list.length;
 }
 
 function mirrorResponseRowsWithAudit_(rows, source, action, actor) {
   const list = (Array.isArray(rows) ? rows : []).filter(row => Array.isArray(row) && row.length);
   if (!list.length) return { mirrored: 0, failed: 0 };
-  const result = mirrorResponseRowsToMaster_(list, source, action, actor);
-  if (!result.failed) {
-    cacheResponseRows_(list);
-  }
-  return result;
+  return mirrorResponseRowsToMaster_(list, source, action, actor);
 }
 
 function writeResponseSheetRowEntryUpdates_(updates, mirrorSource, mirrorAction, actor, options) {
@@ -2647,15 +2737,21 @@ function writeResponseSheetRowEntryUpdates_(updates, mirrorSource, mirrorAction,
   const sheet = getResponsesDbSheet_();
   writeSheetRowBatches_(sheet, list, RESPONSE_HEADERS.length);
   list.forEach(item => {
-    writeResponseSheetRowNumberCache_(item.values[1], item.values[3], item.rowNumber);
-    writeResponseIdSheetRowNumberCache_(item.values[0], item.rowNumber);
-    safeUpsertLessonLiveStateFromResponseRowValues_(item.values);
+    addLessonResponseRowIndex_(item.values[1], item.rowNumber);
+    if (meta.deferRowCaches !== true) {
+      writeResponseRowCaches_(item.values, item.rowNumber);
+    }
+    if (meta.updateLessonLiveState !== false) {
+      safeUpsertLessonLiveStateFromResponseRowValues_(item.values);
+    }
   });
   if (meta.skipResponseCacheRefresh === true) {
     if (meta.invalidateResponseCaches === true) invalidateLessonResponseCaches_();
   } else {
     invalidateLessonResponseCaches_();
-    refreshLessonResponseCachesForRows_(list.map(item => item.values).filter(Boolean));
+    if (meta.deferLocalCache !== true) {
+      updateLessonResponseCacheForRows_(list.map(item => item.values).filter(Boolean));
+    }
   }
   if (mirrorSource) {
     mirrorResponseRowsToMaster_(
@@ -2673,6 +2769,9 @@ function writeResponseRowUpdates_(updates, mirrorSource, mirrorAction, actor, op
 }
 
 function upsertResponseSheetRowValues_(rowValues, existingRowEntry) {
+  const meta = arguments.length > 2 && arguments[2] && typeof arguments[2] === 'object'
+    ? arguments[2]
+    : {};
   const safeRowValues = Array.isArray(rowValues) ? rowValues.slice() : [];
   if (!safeRowValues.length) return { rowNumber: 0, responseId: '' };
   const resolvedExistingRowEntry = existingRowEntry || findResponseSheetRowEntryByResponseId_(safeRowValues[0]);
@@ -2681,35 +2780,46 @@ function upsertResponseSheetRowValues_(rowValues, existingRowEntry) {
     writeResponseSheetRowEntryUpdates_([{
       rowNumber: resolvedExistingRowEntry.rowNumber,
       values: safeRowValues,
-    }], null);
+    }], null, null, null, meta);
     addLessonResponseRowIndex_(safeRowValues[1], resolvedExistingRowEntry.rowNumber);
-    return { rowNumber: resolvedExistingRowEntry.rowNumber, responseId: safeRowValues[0] };
+    return { rowNumber: resolvedExistingRowEntry.rowNumber, responseId: safeRowValues[0], values: safeRowValues };
   }
   const sheet = getResponsesDbSheet_();
   const rowNumber = Math.max(2, sheet.getLastRow() + 1);
   sheet.getRange(rowNumber, 1, 1, safeRowValues.length).setValues([safeRowValues]);
-  writeResponseSheetRowNumberCache_(safeRowValues[1], safeRowValues[3], rowNumber);
-  writeResponseIdSheetRowNumberCache_(safeRowValues[0], rowNumber);
   addLessonResponseRowIndex_(safeRowValues[1], rowNumber);
-  safeUpsertLessonLiveStateFromResponseRowValues_(safeRowValues);
-  cacheResponseRows_([safeRowValues]);
-  return { rowNumber, responseId: safeRowValues[0] };
+  if (meta.deferRowCaches !== true) {
+    writeResponseRowCaches_(safeRowValues, rowNumber);
+  }
+  if (meta.updateLessonLiveState !== false) {
+    safeUpsertLessonLiveStateFromResponseRowValues_(safeRowValues);
+  }
+  invalidateLessonResponseCaches_();
+  if (meta.deferLocalCache !== true) {
+    updateLessonResponseCacheForRows_([safeRowValues]);
+  }
+  return { rowNumber, responseId: safeRowValues[0], values: safeRowValues };
 }
 
 function upsertResponse_(params, existing) {
+  const meta = arguments.length > 2 && arguments[2] && typeof arguments[2] === 'object'
+    ? arguments[2]
+    : {};
   const responseSheetRowValues = buildResponseSheetRowValues_(Object.assign({}, params, {
     updatedAt: nowIso_(),
   }));
   if (existing && existing.values) {
     responseSheetRowValues[0] = existing.values[0] || responseSheetRowValues[0];
   }
-  mirrorResponseRowsWithAudit_(
-    [responseSheetRowValues],
-    existing ? 'response_upsert' : 'response_insert',
-    existing ? 'master_mirror_failed_upsert' : 'master_mirror_failed_insert',
-    'system'
-  );
-  return upsertResponseSheetRowValues_(responseSheetRowValues, existing || null);
+  if (meta.skipMasterMirror !== true) {
+    mirrorResponseRowsWithAudit_(
+      [responseSheetRowValues],
+      existing ? 'response_upsert' : 'response_insert',
+      existing ? 'master_mirror_failed_upsert' : 'master_mirror_failed_insert',
+      'system'
+    );
+  }
+  return upsertResponseSheetRowValues_(responseSheetRowValues, existing || null, meta);
 }
 
 function appendResponseHistory_(params) {

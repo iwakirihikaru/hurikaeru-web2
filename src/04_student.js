@@ -574,13 +574,16 @@ function buildStudentState_(unit, period, num, studentName, enabledFields, optio
   const unitId = unit?.id || '';
   const lesson = getOrCreateLesson_(unitId, period);
   const response = getResponseRecordByStudentNumber_(lesson.lessonId, num);
+  const masterUsed = String(response?.readSource || '') === 'master';
   const responseReadMeta = {
     scope: 'lesson',
     lessonId: String(lesson.lessonId || ''),
-    preferMaster: true,
-    masterCount: response ? 1 : 0,
+    preferMaster: false,
+    masterCount: masterUsed && response ? 1 : 0,
     mergedCount: response ? 1 : 0,
-    mode: 'master_only',
+    mode: masterUsed ? 'tenant_with_master_fallback' : 'tenant_primary',
+    source: masterUsed ? 'master_fallback' : 'tenant_responses',
+    masterUsed,
   };
   const customs = response
     ? mapAnswersToCustoms_(enabledFields, response.answersMap)
@@ -660,7 +663,94 @@ function hasResponseSnapshotChanged_(response, fields, customs, submitted) {
   return false;
 }
 
+function writeStudentSaveAuditLogSafe_(params) {
+  try {
+    writeAuditLog_(params);
+  } catch (_err) {}
+}
+
+function logStudentSavePerf_(action, metrics) {
+  try {
+    console.log('[student_save_perf] ' + JSON.stringify({
+      action: String(action || ''),
+      timestamp: nowIso_(),
+      lockWaitMs: Number(metrics?.lockWaitMs || 0),
+      lockHoldMs: Number(metrics?.lockHoldMs || 0),
+      rpcTotalMs: Number(metrics?.rpcTotalMs || 0),
+      responseWriteMs: Number(metrics?.responseWriteMs || 0),
+      lessonLiveStateMs: Number(metrics?.lessonLiveStateMs || 0),
+      cacheUpdateMs: Number(metrics?.cacheUpdateMs || 0),
+      masterMirrorMs: Number(metrics?.masterMirrorMs || 0),
+      masterMirrorFailed: metrics?.masterMirrorFailed === true,
+      liveStateUpdated: metrics?.liveStateUpdated !== false,
+      lockBusy: metrics?.lockBusy === true,
+    }));
+  } catch (_err) {}
+}
+
+function runResponsePostPersistTasks_(saved, options) {
+  const opts = options && typeof options === 'object' ? options : {};
+  const metrics = opts.metrics && typeof opts.metrics === 'object' ? opts.metrics : {};
+  const rowValues = Array.isArray(saved?.responseRowValues) ? saved.responseRowValues : [];
+  const responseId = String(saved?.responseId || rowValues[0] || '').trim();
+  if (!rowValues.length) {
+    metrics.cacheUpdateMs = Number(metrics.cacheUpdateMs || 0);
+    metrics.masterMirrorMs = Number(metrics.masterMirrorMs || 0);
+    metrics.masterMirrorFailed = false;
+    return { mirrored: 0, failed: 0 };
+  }
+
+  let t0 = Date.now();
+  try {
+    writeResponseRowCaches_(rowValues, saved?.responseRowNumber);
+    cacheResponseRows_([rowValues]);
+    metrics.cacheUpdateMs = Date.now() - t0;
+  } catch (err) {
+    metrics.cacheUpdateMs = Date.now() - t0;
+    writeStudentSaveAuditLogSafe_({
+      targetType: 'response',
+      targetId: responseId,
+      action: String(opts.cacheAuditAction || 'response_cache_update_failed_after_save'),
+      before: null,
+      after: {
+        error: String(err && err.message ? err.message : err),
+        lessonId: String(saved?.lesson?.lessonId || rowValues[1] || ''),
+      },
+      actor: String(opts.actor || 'student'),
+    });
+  }
+
+  t0 = Date.now();
+  try {
+    const mirrorResult = mirrorResponseRowsWithAudit_(
+      [rowValues],
+      String(opts.mirrorSource || 'student_response_write'),
+      String(opts.mirrorAction || 'master_response_mirror_failed_after_save'),
+      String(opts.actor || 'student')
+    );
+    metrics.masterMirrorMs = Date.now() - t0;
+    metrics.masterMirrorFailed = Number(mirrorResult?.failed || 0) > 0;
+    return mirrorResult;
+  } catch (err) {
+    metrics.masterMirrorMs = Date.now() - t0;
+    metrics.masterMirrorFailed = true;
+    writeStudentSaveAuditLogSafe_({
+      targetType: 'response',
+      targetId: responseId,
+      action: String(opts.mirrorAuditAction || 'master_response_mirror_exception_after_save'),
+      before: null,
+      after: {
+        error: String(err && err.message ? err.message : err),
+        lessonId: String(saved?.lesson?.lessonId || rowValues[1] || ''),
+      },
+      actor: String(opts.actor || 'student'),
+    });
+    return { mirrored: 0, failed: 1 };
+  }
+}
+
 function autoSave(unitId, period, num, customs) {
+  const startedAt = Date.now();
   const units  = getAllUnits();
   const unit   = units.find(u => u.id == unitId);
   const lesson = getOrCreateLesson_(unitId, period);
@@ -671,19 +761,68 @@ function autoSave(unitId, period, num, customs) {
     return { ok: true, skipped: true, reason: 'unchanged' };
   }
   const lock = LockService.getDocumentLock();
+  const lockRequestedAt = Date.now();
   if (!lock.tryLock(LOCK_AUTOSAVE_MS)) {
+    logStudentSavePerf_('autoSave', {
+      lockBusy: true,
+      lockWaitMs: Date.now() - lockRequestedAt,
+      lockHoldMs: 0,
+      rpcTotalMs: Date.now() - startedAt,
+      responseWriteMs: 0,
+      lessonLiveStateMs: 0,
+      cacheUpdateMs: 0,
+      masterMirrorMs: 0,
+      masterMirrorFailed: false,
+      liveStateUpdated: false,
+    });
     return { ok: true, skipped: true, reason: 'busy' };
   }
+  const metrics = {
+    lockWaitMs: Date.now() - lockRequestedAt,
+    lockHoldMs: 0,
+    rpcTotalMs: 0,
+    responseWriteMs: 0,
+    lessonLiveStateMs: 0,
+    cacheUpdateMs: 0,
+    masterMirrorMs: 0,
+    masterMirrorFailed: false,
+    liveStateUpdated: true,
+  };
+  const persistTimings = {};
+  const lockAcquiredAt = Date.now();
+  let saved = null;
   try {
     const student = resolveStudentForWrite_(lesson.lessonId, num, studentName);
-    saveResponseSnapshotToDb_(unitId, period, num, studentName, fields, customs || [], { submitted: false, lesson, student });
+    saved = saveResponseSnapshotToDb_(unitId, period, num, studentName, fields, customs || [], {
+      submitted: false,
+      lesson,
+      student,
+      persistTimings,
+    });
+    metrics.responseWriteMs = Number(persistTimings.responseWriteMs || 0);
+    metrics.lessonLiveStateMs = Number(persistTimings.lessonLiveStateMs || 0);
+    metrics.liveStateUpdated = saved?.liveStateUpdated !== false;
     return { ok: true };
   } finally {
+    metrics.lockHoldMs = Date.now() - lockAcquiredAt;
     lock.releaseLock();
+    if (saved) {
+      runResponsePostPersistTasks_(saved, {
+        actor: 'student_auto_save',
+        mirrorSource: 'student_auto_save',
+        mirrorAction: 'master_response_mirror_failed_auto_save',
+        mirrorAuditAction: 'master_response_mirror_exception_auto_save',
+        cacheAuditAction: 'response_cache_update_failed_auto_save',
+        metrics,
+      });
+    }
+    metrics.rpcTotalMs = Date.now() - startedAt;
+    logStudentSavePerf_('autoSave', metrics);
   }
 }
 
 function submitReview(unitId, period, num, customs, submitOptions) {
+  const startedAt = Date.now();
   const units  = getAllUnits();
   const unit   = units.find(u => u.id == unitId);
   const lesson = getOrCreateLesson_(unitId, period);
@@ -703,11 +842,37 @@ function submitReview(unitId, period, num, customs, submitOptions) {
   }
 
   const lock = LockService.getDocumentLock();
+  const lockRequestedAt = Date.now();
   if (!lock.tryLock(LOCK_SUBMIT_MS)) {
+    logStudentSavePerf_('submitReview', {
+      lockBusy: true,
+      lockWaitMs: Date.now() - lockRequestedAt,
+      lockHoldMs: 0,
+      rpcTotalMs: Date.now() - startedAt,
+      responseWriteMs: 0,
+      lessonLiveStateMs: 0,
+      cacheUpdateMs: 0,
+      masterMirrorMs: 0,
+      masterMirrorFailed: false,
+      liveStateUpdated: false,
+    });
     return { ok: false, error: 'いま提出が混み合っています。数秒後にもう一度ていしゅつしてください。' };
   }
+  const metrics = {
+    lockWaitMs: Date.now() - lockRequestedAt,
+    lockHoldMs: 0,
+    rpcTotalMs: 0,
+    responseWriteMs: 0,
+    lessonLiveStateMs: 0,
+    cacheUpdateMs: 0,
+    masterMirrorMs: 0,
+    masterMirrorFailed: false,
+    liveStateUpdated: true,
+  };
+  const persistTimings = {};
   let result = null;
   let saved = null;
+  const lockAcquiredAt = Date.now();
   const studentAiEnabled = isStudentAiEnabled_();
   const studentAiAutoSubmitEnabled = studentAiEnabled && isStudentAiAutoSubmitEnabled_();
   try {
@@ -718,7 +883,11 @@ function submitReview(unitId, period, num, customs, submitOptions) {
       lesson,
       student,
       deferHistory: true,
+      persistTimings,
     });
+    metrics.responseWriteMs = Number(persistTimings.responseWriteMs || 0);
+    metrics.lessonLiveStateMs = Number(persistTimings.lessonLiveStateMs || 0);
+    metrics.liveStateUpdated = saved?.liveStateUpdated !== false;
     result = {
       ok: true,
       queuedAi: studentAiAutoSubmitEnabled,
@@ -727,41 +896,63 @@ function submitReview(unitId, period, num, customs, submitOptions) {
       studentAiAutoSubmitEnabled,
     };
   } finally {
+    metrics.lockHoldMs = Date.now() - lockAcquiredAt;
     lock.releaseLock();
   }
+  if (saved) {
+    runResponsePostPersistTasks_(saved, {
+      actor: 'student_submit',
+      mirrorSource: 'student_submit',
+      mirrorAction: 'master_response_mirror_failed_submit',
+      mirrorAuditAction: 'master_response_mirror_exception_submit',
+      cacheAuditAction: 'response_cache_update_failed_submit',
+      metrics,
+    });
+  }
   if (studentAiAutoSubmitEnabled && saved) {
-    writeAiEventLogs_([
-      {
-        responseId: saved.responseId,
-        lessonId: saved.lesson.lessonId,
-        unitId,
-        studentId: saved.student.studentId,
-        studentNumber: num,
-        studentName: studentName || saved.student.name || '',
-        eventType: 'submitted',
-        aiStatus: 'pending',
-        detail: saved.isRewrite ? 'rewrite submit' : 'submit',
-        timestamp: nowIso_(),
-      },
-      {
-        responseId: saved.responseId,
-        lessonId: saved.lesson.lessonId,
-        unitId,
-        studentId: saved.student.studentId,
-        studentNumber: num,
-        studentName: studentName || saved.student.name || '',
-        eventType: 'queued',
-        aiStatus: 'pending',
-        detail: `rescueDelay=${AI_TRIGGER_SHORT_RESCUE_DELAY_MS}ms`,
-        timestamp: nowIso_(),
-      },
-    ]);
+    try {
+      writeAiEventLogs_([
+        {
+          responseId: saved.responseId,
+          lessonId: saved.lesson.lessonId,
+          unitId,
+          studentId: saved.student.studentId,
+          studentNumber: num,
+          studentName: studentName || saved.student.name || '',
+          eventType: 'submitted',
+          aiStatus: 'pending',
+          detail: saved.isRewrite ? 'rewrite submit' : 'submit',
+          timestamp: nowIso_(),
+        },
+        {
+          responseId: saved.responseId,
+          lessonId: saved.lesson.lessonId,
+          unitId,
+          studentId: saved.student.studentId,
+          studentNumber: num,
+          studentName: studentName || saved.student.name || '',
+          eventType: 'queued',
+          aiStatus: 'pending',
+          detail: `rescueDelay=${AI_TRIGGER_SHORT_RESCUE_DELAY_MS}ms`,
+          timestamp: nowIso_(),
+        },
+      ]);
+    } catch (err) {
+      writeStudentSaveAuditLogSafe_({
+        targetType: 'response',
+        targetId: saved.responseId || '',
+        action: 'ai_event_log_failed_after_submit',
+        before: null,
+        after: { error: String(err && err.message ? err.message : err) },
+        actor: 'student_submit',
+      });
+    }
   }
   if (result && result.ok && saved?.historyEntry) {
     try {
       appendResponseHistory_(saved.historyEntry);
     } catch (err) {
-      writeAuditLog_({
+      writeStudentSaveAuditLogSafe_({
         targetType: 'response',
         targetId: saved.responseId || '',
         action: 'history_append_failed_after_submit',
@@ -774,6 +965,8 @@ function submitReview(unitId, period, num, customs, submitOptions) {
   if (studentAiAutoSubmitEnabled) {
     safeEnsureAiBatchTrigger_(AI_TRIGGER_SHORT_RESCUE_DELAY_MS, 'submitReview');
   }
+  metrics.rpcTotalMs = Date.now() - startedAt;
+  logStudentSavePerf_('submitReview', metrics);
   return result;
 }
 
