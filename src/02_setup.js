@@ -19,6 +19,7 @@ function initSheets() {
       ['active_unit',    '', 'アクティブ単元ID'],
       ['active_period',  '0','アクティブ時間目（0=未選択）'],
       ['active_timeline_field', '', '他者参照で優先表示する項目キー（空=自動）'],
+      ['active_revision', '0', '授業開始・切替・終了ごとに増える世代番号'],
     ]);
   }
 
@@ -361,6 +362,7 @@ function buildTemplateConfigRows_() {
     ['active_unit', '', 'アクティブ単元ID'],
     ['active_period', '0', 'アクティブ時間目（0=未選択）'],
     ['active_timeline_field', '', '他者参照で優先表示する項目キー（空=自動）'],
+    ['active_revision', '0', '授業開始・切替・終了ごとに増える世代番号'],
   ];
 }
 

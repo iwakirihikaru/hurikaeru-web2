@@ -3309,22 +3309,37 @@ function getActiveSetting(options) {
   const unitId = parseInt(cfg.active_unit) || 0;
   const period = parseInt(cfg.active_period) || 0;
   const timelineFieldKey = String(cfg.active_timeline_field || '');
+  const activeRevision = parseInt(cfg.active_revision, 10) || 0;
   const providedUnits = Array.isArray(opts.units) ? opts.units : null;
   const units  = includeUnit ? (providedUnits || getAllUnits()) : [];
   const unit   = includeUnit ? (units.find(u => u.id == unitId) || null) : null;
   const lesson = includeLesson && unit && period > 0 ? getLessonRecordByUnitPeriod_(unitId, period) : null;
   const fields = includeUnit || includeLesson ? getLessonFields_(lesson, unit) : [];
-  return { unitId, period, unit, units, lesson, fields, timelineFieldKey };
+  return { unitId, period, unit, units, lesson, fields, timelineFieldKey, activeRevision };
+}
+
+function getNextActiveRevision_() {
+  const cfg = readGlobalConfig();
+  const current = parseInt(cfg.active_revision, 10) || 0;
+  return current + 1;
 }
 
 function teacherStartLesson(unitId, period) {
+  const lesson = getOrCreateLesson_(unitId, period);
+  const currentActive = getActiveSetting({ includeUnit: false, includeLesson: true });
+  const alreadyActive = String(currentActive.unitId || '') === String(unitId || '')
+    && Number(currentActive.period || 0) === Number(period || 0)
+    && String(currentActive.lesson?.lessonId || '') === String(lesson.lessonId || '');
+  const nextActiveRevision = alreadyActive
+    ? Number(currentActive.activeRevision || 0)
+    : getNextActiveRevision_();
   writeGlobalConfigBatch({
     active_unit: unitId,
     active_period: period,
     active_timeline_field: '',
+    active_revision: String(nextActiveRevision),
   });
   invalidateStudentEntryRuntimeCaches_();
-  const lesson = getOrCreateLesson_(unitId, period);
   removeDomainCacheKeys_(['teacher_unit_progress_v1']);
   const startCandidatesSnapshot = getTeacherStartCandidatesSnapshot_({ forceRefresh: true });
   const nextStartCandidate = Array.isArray(startCandidatesSnapshot && startCandidatesSnapshot.units)
@@ -3340,12 +3355,14 @@ function teacherStartLesson(unitId, period) {
 }
 
 function teacherEndLesson() {
+  const nextActiveRevision = getNextActiveRevision_();
   writeGlobalConfigBatch({
     active_period: 0,
     active_timeline_field: '',
+    active_revision: String(nextActiveRevision),
   });
   invalidateStudentEntryRuntimeCaches_();
-  return { ok: true };
+  return { ok: true, activeRevision: nextActiveRevision };
 }
 
 function setActiveTimelineField(fieldKey) {

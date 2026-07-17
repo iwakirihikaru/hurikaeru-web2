@@ -9,6 +9,7 @@ function studentInit(num, periodOverride) {
   const timing = {};
   let t0 = Date.now();
   const active = getActiveSetting();
+  const activeRevision = Number(active && active.activeRevision || 0);
   timing.activeMs = Date.now() - t0;
   const period = active.period > 0 ? active.period
                : (parseInt(periodOverride) > 0 ? parseInt(periodOverride) : 0);
@@ -28,6 +29,7 @@ function studentInit(num, periodOverride) {
       unit  : active.unit,
       units : active.units,
       period: 0,
+      activeRevision,
       presets: getPresets(),
       students,
       studentAiEnabled: featureFlags.studentAiEnabled,
@@ -48,6 +50,8 @@ function studentInit(num, periodOverride) {
 
   return attachStudentApiTiming_(Object.assign({}, state, {
     needPeriodSelect: false,
+    lessonId: String(lesson.lessonId || ''),
+    activeRevision,
     unit: active.unit,
     period,
     teacherSetPeriod: active.period > 0,
@@ -62,7 +66,10 @@ function buildStudentEntryClassSnapshot_(students, featureFlags, shell) {
   const active = getActiveSetting();
   const unit = active && active.unit ? active.unit : null;
   const period = Number(active && active.period || 0);
+  const activeRevision = Number(active && active.activeRevision || 0);
   if (!unit || period <= 0) return null;
+  const lesson = getOrCreateLesson_(unit.id, period);
+  if (!lesson || !lesson.lessonId) return null;
 
   const snapshot = getLessonLiveStateSnapshot_(unit.id, period, { createLesson: false })
     || getLessonRuntimeSnapshot_(unit.id, period, { createLesson: false })
@@ -76,10 +83,12 @@ function buildStudentEntryClassSnapshot_(students, featureFlags, shell) {
   const rows = roster.map(student => buildStudentSnapshotTimelineRow_(student, enabledFields, responseMap));
   const statesByNumber = {};
   rows.forEach(row => {
-    statesByNumber[String(row.num)] = buildStudentSnapshotState_(row, enabledFields, featureFlags, shell);
+    statesByNumber[String(row.num)] = buildStudentSnapshotState_(row, enabledFields, featureFlags, shell, lesson.lessonId, activeRevision);
   });
 
   return {
+    lessonId: String(lesson.lessonId || ''),
+    activeRevision,
     unit: {
       id: unit.id || '',
       subject: unit.subject || '',
@@ -134,8 +143,10 @@ function buildStudentSnapshotTimelineRow_(student, fields, responseMap) {
   };
 }
 
-function buildStudentSnapshotState_(row, fields, featureFlags, shell) {
+function buildStudentSnapshotState_(row, fields, featureFlags, shell, lessonId, activeRevision) {
   return {
+    lessonId: String(lessonId || ''),
+    activeRevision: Number(activeRevision || 0),
     fields,
     num: row.num,
     name: row.name || '',
@@ -174,8 +185,13 @@ function studentLoadState(unitId, period, num) {
   const studentName = rosterStudent?.name || '';
   timing.rosterMs = Date.now() - t0;
   t0 = Date.now();
+  const active = getActiveSetting({ units });
+  const activeRevision = String(active?.lesson?.lessonId || '') === String(lesson.lessonId || '')
+    ? Number(active.activeRevision || 0)
+    : 0;
   const payload = buildStudentState_(unit, normalizedPeriod, num, studentName, enabledFields, {
     includePrevReview: false,
+    activeRevision,
     featureFlags: getAiFeatureFlags_(),
     shell: getLiveTenantMaintenanceState(),
   });
@@ -201,11 +217,18 @@ function getTimeline(unitId, period) {
   t0 = Date.now();
   const unit = snapshot.unit || getAllUnits().find(u => String(u.id) === String(unitId)) || null;
   const fields = Array.isArray(snapshot.fields) ? snapshot.fields : [];
+  const lesson = unit ? getLessonRecordByUnitPeriod_(unitId, period) : null;
   const payload = {
     ...buildTimelinePayload_(unitId, period, unit, fields, active.timelineFieldKey || '', isStudentAiEnabled_(), snapshot),
+    lessonId: String(lesson?.lessonId || ''),
+    activeRevision: String(active?.lesson?.lessonId || '') === String(lesson?.lessonId || '')
+      ? Number(active?.activeRevision || 0)
+      : 0,
     active: {
       unitId: active && active.unitId ? String(active.unitId) : '',
       period: Number(active && active.period || 0),
+      lessonId: String(active?.lesson?.lessonId || ''),
+      activeRevision: Number(active?.activeRevision || 0),
     },
     shell: getLiveTenantMaintenanceState(),
   };
@@ -413,6 +436,8 @@ function buildStudentState_(unit, period, num, studentName, enabledFields, optio
     ? getPreviousStudentLearningContextFromDb_(unitId, period, num, unit)
     : { prevReview: '', previousNextGoal: '' };
   return {
+    lessonId: String(lesson.lessonId || ''),
+    activeRevision: Number(opts.activeRevision || 0),
     fields: enabledFields,
     num,
     name: sanitizeStudentName_(studentName) || sanitizeStudentName_(response?.studentName),

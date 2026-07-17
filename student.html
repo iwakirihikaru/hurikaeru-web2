@@ -463,6 +463,8 @@ let currentStudentUnitInfo = null;
 let currentStudentName = '';
 let currentStudentCustoms = [];
 let currentStudentStateKey = '';
+let myLessonId = '';
+let myActiveRevision = 0;
 const AUTO_SAVE_MS = 30000;
 const POLL_IDLE_MS = 4000;
 const POLL_WAITING_AI_MS = 2500;
@@ -501,6 +503,26 @@ function writeStudentCache_(kind, suffix, payload){
   }catch(e){}
 }
 
+function readStudentCacheByLesson_(kind, suffix, lessonId){
+  const cached=readStudentCache_(kind, suffix);
+  if(!cached) return null;
+  const expected=getLessonSessionKey_(lessonId, myActiveRevision);
+  const actual=getPayloadLessonSessionKey_(cached);
+  if(expected && actual && expected===actual) return cached;
+  return null;
+}
+
+function getLessonSessionKey_(lessonId, activeRevision){
+  const normalizedLessonId=String(lessonId||'').trim();
+  const normalizedRevision=Number(activeRevision||0);
+  return normalizedLessonId ? `${normalizedLessonId}@${normalizedRevision}` : '';
+}
+
+function getPayloadLessonSessionKey_(payload){
+  if(!payload || typeof payload!=='object') return '';
+  return getLessonSessionKey_(payload.lessonId, payload.activeRevision);
+}
+
 function findRecentStudentStateCache_(num){
   const target=String(num||'').trim();
   if(!target || typeof localStorage==='undefined') return null;
@@ -532,7 +554,7 @@ function getInitialStudentFocusField_(fields){
 }
 
 function showCachedStudentLanding_(cached){
-  if(!cached || !cached.unit || !cached.period) return false;
+  if(!cached || !cached.unit || !cached.period || !cached.lessonId) return false;
   loadMain(Object.assign({}, cached, { fromCache:true, cacheOnly:true }));
   return true;
 }
@@ -586,7 +608,7 @@ function normalizeStudentIdentity_(state){
 }
 
 function getCurrentStudentStateKey_(){
-  return [myUnitId,myPeriod,myNum].join('_');
+  return [myLessonId||myUnitId,myActiveRevision,myPeriod,myNum].join('_');
 }
 
 function hasMeaningfulCustoms_(values){
@@ -692,6 +714,7 @@ function readStudentClassSnapshotCache_(){
       return null;
     }
     const snapshot=parsed.payload;
+    if(!snapshot || typeof snapshot!=='object' || !String(snapshot.lessonId||'').trim()) return null;
     return snapshot && typeof snapshot==='object' ? snapshot : null;
   }catch(_err){
     return null;
@@ -700,7 +723,7 @@ function readStudentClassSnapshotCache_(){
 
 function writeStudentClassSnapshotCache_(snapshot){
   try{
-    if(!snapshot || typeof snapshot!=='object' || !snapshot.statesByNumber) return;
+    if(!snapshot || typeof snapshot!=='object' || !snapshot.statesByNumber || !String(snapshot.lessonId||'').trim()) return;
     localStorage.setItem(STUDENT_CLASS_SNAPSHOT_CACHE_KEY, JSON.stringify({
       savedAt:Date.now(),
       payload:snapshot,
@@ -804,10 +827,12 @@ function getBootstrapClassSnapshot_(){
 
 function getBootstrapStudentSnapshotState_(num){
   const snapshot=getBootstrapClassSnapshot_();
-  if(!snapshot || !snapshot.statesByNumber) return null;
+  if(!snapshot || !snapshot.statesByNumber || !snapshot.lessonId) return null;
   const state=snapshot.statesByNumber[String(num)];
   if(!state) return null;
   return Object.assign({}, state, {
+    lessonId:String(state.lessonId||snapshot.lessonId||''),
+    activeRevision:Number(state.activeRevision||snapshot.activeRevision||0),
     needPeriodSelect:false,
     unit:snapshot.unit||null,
     period:Number(snapshot.period||0),
@@ -1035,7 +1060,6 @@ function selectNumber(num, options){
     loadMain(bootstrapState);
     return;
   }
-  showCachedStudentLanding_(findRecentStudentStateCache_(num));
   google.script.run
     .withSuccessHandler(d=>{
       initBusy=false;
@@ -1052,6 +1076,17 @@ function selectNumber(num, options){
 
 function onInit(d){
   applyStudentShellState_(d && d.shell || {});
+  const latestSessionKey=getPayloadLessonSessionKey_(d);
+  const currentSessionKey=getLessonSessionKey_(myLessonId, myActiveRevision);
+  if(currentSessionKey && latestSessionKey && currentSessionKey!==latestSessionKey){
+    stopPolling();
+    clearInterval(autoTimer);
+    pollBusy=false;
+    timelineRefreshPending=false;
+    currentStudentStateKey='';
+    currentStudentCustoms=[];
+    submitted=false;
+  }
   if(d.needPeriodSelect){
     showScreen('screen-period');
     const unit=d.unit;
@@ -1084,6 +1119,30 @@ function onInit(d){
   loadMain(d);
 }
 
+function restartStudentSessionForActiveLesson_(reason){
+  if(!myNum || initBusy) return;
+  initBusy=true;
+  stopPolling();
+  clearInterval(autoTimer);
+  pollBusy=false;
+  timelineRefreshPending=false;
+  document.getElementById('submitNote').textContent='さいしんのじゅぎょうにきりかえています…';
+  if(reason){
+    showToast(reason);
+  }
+  google.script.run
+    .withSuccessHandler(d=>{
+      initBusy=false;
+      onInit(d);
+    })
+    .withFailureHandler(()=>{
+      initBusy=false;
+      document.getElementById('submitNote').textContent='';
+      scheduleNextPoll(POLL_IDLE_MS);
+    })
+    .studentInit(myNum,0);
+}
+
 // =====================================
 //  メイン画面
 // =====================================
@@ -1094,6 +1153,8 @@ function loadMain(d){
   timelineRefreshPending=false;
   const identity=normalizeStudentIdentity_(d);
   rememberStudentNumber_(identity.num);
+  myLessonId = String(d && d.lessonId || '').trim();
+  myActiveRevision = Number(d && d.activeRevision || 0);
   myUnitId  = d.unit?.id   || null;
   myPeriod  = d.period      || null;
   myFields  = d.fields      || [];
@@ -1163,15 +1224,21 @@ function loadMain(d){
 
 function loadStudentState(options){
   const opts=options||{};
-  const cacheKey=[myUnitId,myPeriod,myNum].join('_');
+  const cacheKey=[myLessonId||myUnitId,myPeriod,myNum].join('_');
   if(!opts.skipCachedState){
-    const cached=readStudentCache_('state',cacheKey);
+    const cached=readStudentCacheByLesson_('state',cacheKey,myLessonId);
     if(cached) applyStudentState(cached);
   }
   google.script.run
     .withSuccessHandler(payload=>{
       const identity=normalizeStudentIdentity_(payload);
       const normalizedPayload=Object.assign({}, payload||{}, { num: identity.num, name: identity.name });
+      if(getLessonSessionKey_(myLessonId, myActiveRevision)
+        && getPayloadLessonSessionKey_(normalizedPayload)
+        && getLessonSessionKey_(myLessonId, myActiveRevision)!==getPayloadLessonSessionKey_(normalizedPayload)){
+        onInit(normalizedPayload);
+        return;
+      }
       writeStudentCache_('state',cacheKey,normalizedPayload);
       applyStudentState(normalizedPayload);
       if(opts.skipTimelineRefresh!==true) refreshTimeline();
@@ -1192,9 +1259,9 @@ function loadStudentState(options){
 function loadStudentSupplemental(options){
   const opts=options||{};
   if(!opts.skipPreviousReview) loadPreviousReview();
-  const timelineCacheKey=[myUnitId,myPeriod,myNum].join('_');
+  const timelineCacheKey=[myLessonId||myUnitId,myPeriod,myNum].join('_');
   if(!opts.skipCachedTimeline){
-    const cachedTimeline=readStudentCache_('timeline',timelineCacheKey);
+    const cachedTimeline=readStudentCacheByLesson_('timeline',timelineCacheKey,myLessonId);
     if(cachedTimeline) applyTimelinePayload(cachedTimeline);
   }
   refreshTimeline();
@@ -1206,8 +1273,8 @@ function loadPreviousReview(){
     document.getElementById('prevGoalCard').style.display='none';
     return;
   }
-  const cacheKey=[myUnitId,myPeriod,myNum].join('_');
-  const cached=readStudentCache_('prevReview',cacheKey);
+  const cacheKey=[myLessonId||myUnitId,myPeriod,myNum].join('_');
+  const cached=readStudentCacheByLesson_('prevReview',cacheKey,myLessonId);
   if(cached){
     const cachedText=String(cached.prevReview||'').trim();
     const cachedGoal=String(cached.previousNextGoal||'').trim();
@@ -1221,7 +1288,10 @@ function loadPreviousReview(){
     .withSuccessHandler(res=>{
       const text=String(res?.prevReview||'').trim();
       const previousNextGoal=String(res?.previousNextGoal||'').trim();
-      writeStudentCache_('prevReview',cacheKey,res||{prevReview:'',previousNextGoal:''});
+      writeStudentCache_('prevReview',cacheKey,Object.assign({}, res||{prevReview:'',previousNextGoal:''}, {
+        lessonId:myLessonId,
+        activeRevision:myActiveRevision,
+      }));
       if(text){
         document.getElementById('prevCard').style.display='block';
         document.getElementById('prevReviewBox').textContent=text;
@@ -1250,6 +1320,8 @@ function renderPreviousNextGoal_(text){
 
 function applyStudentState(d){
   if(!d) return;
+  if(String(d.lessonId||'').trim()) myLessonId=String(d.lessonId||'').trim();
+  if(Object.prototype.hasOwnProperty.call(d,'activeRevision')) myActiveRevision=Number(d.activeRevision||0);
   myFields=d.fields||myFields;
   if(typeof d.studentAiEnabled!=='undefined') studentAiEnabled=Boolean(d.studentAiEnabled);
   if(typeof d.studentAiAutoSubmitEnabled!=='undefined') studentAiAutoSubmitEnabled=Boolean(d.studentAiAutoSubmitEnabled);
@@ -1259,7 +1331,9 @@ function applyStudentState(d){
   document.getElementById('myNameLabel').textContent=identityLabel;
   const customs=normalizeStudentCustoms_(d.customs);
   buildFields(myFields, customs);
-  writeStudentCache_('state',[myUnitId,myPeriod,myNum].join('_'),{
+  writeStudentCache_('state',[myLessonId||myUnitId,myPeriod,myNum].join('_'),{
+    lessonId:myLessonId,
+    activeRevision:myActiveRevision,
     num:identity.num,
     name:identity.name,
     unitId:myUnitId,
@@ -1814,10 +1888,28 @@ function refreshTimeline(options){
     return;
   }
   pollBusy=true;
-  const cacheKey=[myUnitId,myPeriod,myNum].join('_');
+  const cacheKey=[myLessonId||myUnitId,myPeriod,myNum].join('_');
   google.script.run
     .withSuccessHandler(payload=>{
-      writeStudentCache_('timeline',cacheKey,payload);
+      const active=payload&&payload.active||{};
+      const activeLessonId=String(active&&active.lessonId||'').trim();
+      const activeRevision=Number(active&&active.activeRevision||0);
+      const activeUnitId=String(active&&active.unitId||'').trim();
+      const activePeriod=Number(active&&active.period||0);
+      const currentSessionKey=getLessonSessionKey_(myLessonId, myActiveRevision);
+      const activeSessionKey=getLessonSessionKey_(activeLessonId, activeRevision);
+      if((activeSessionKey && currentSessionKey && activeSessionKey!==currentSessionKey)
+        || (activeUnitId && String(myUnitId||'').trim() && activeUnitId!==String(myUnitId||'').trim())
+        || (activePeriod!==Number(myPeriod||0))) {
+        pollBusy=false;
+        timelineRefreshPending=false;
+        restartStudentSessionForActiveLesson_('じゅぎょうがかわったので、さいしんの画面にきりかえるよ。');
+        return;
+      }
+      writeStudentCache_('timeline',cacheKey,Object.assign({}, payload||{}, {
+        lessonId:myLessonId,
+        activeRevision:myActiveRevision,
+      }));
       const me=applyTimelinePayload(payload);
       pollBusy=false;
       if(timelineRefreshPending){
@@ -2078,6 +2170,8 @@ function changeStudentNumber_(){
   pollBusy=false;
   timelineRefreshPending=false;
   myNum=null;
+  myLessonId='';
+  myActiveRevision=0;
   currentStudentName='';
   currentStudentCustoms=[];
   currentStudentStateKey='';

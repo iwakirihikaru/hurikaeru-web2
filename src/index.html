@@ -471,6 +471,8 @@ let currentStudentName = '';
 let currentStudentCustoms = [];
 let currentStudentStateKey = '';
 let studentActiveReloading = false;
+let myLessonId = '';
+let myActiveRevision = 0;
 const AUTO_SAVE_MS = 30000;
 const POLL_IDLE_MS = 4000;
 const POLL_WAITING_AI_MS = 2500;
@@ -530,6 +532,17 @@ function getStudentCacheKey_(kind, suffix){
   return `furikaeri:${kind}:${String(suffix||'')}`;
 }
 
+function getLessonSessionKey_(lessonId, activeRevision){
+  const normalizedLessonId=String(lessonId||'').trim();
+  const normalizedRevision=Number(activeRevision||0);
+  return normalizedLessonId ? `${normalizedLessonId}@${normalizedRevision}` : '';
+}
+
+function getPayloadLessonSessionKey_(payload){
+  if(!payload || typeof payload!=='object') return '';
+  return getLessonSessionKey_(payload.lessonId, payload.activeRevision);
+}
+
 function readStudentCache_(kind, suffix){
   try{
     const raw=localStorage.getItem(getStudentCacheKey_(kind,suffix));
@@ -549,6 +562,15 @@ function writeStudentCache_(kind, suffix, payload){
       payload: payload||null
     }));
   }catch(e){}
+}
+
+function readStudentCacheByLesson_(kind, suffix, lessonId){
+  const cached=readStudentCache_(kind, suffix);
+  if(!cached) return null;
+  const expected=getLessonSessionKey_(lessonId, myActiveRevision);
+  const actual=getPayloadLessonSessionKey_(cached);
+  if(expected && actual && expected===actual) return cached;
+  return null;
 }
 
 function findRecentStudentStateCache_(num){
@@ -582,7 +604,7 @@ function getInitialStudentFocusField_(fields){
 }
 
 function showCachedStudentLanding_(cached){
-  if(!cached || !cached.unit || !cached.period) return false;
+  if(!cached || !cached.unit || !cached.period || !cached.lessonId) return false;
   loadMain(Object.assign({}, cached, { fromCache:true, cacheOnly:true }));
   return true;
 }
@@ -636,7 +658,7 @@ function normalizeStudentIdentity_(state){
 }
 
 function getCurrentStudentStateKey_(){
-  return [myUnitId,myPeriod,myNum].join('_');
+  return [myLessonId||myUnitId,myActiveRevision,myPeriod,myNum].join('_');
 }
 
 function hasMeaningfulCustoms_(values){
@@ -892,6 +914,8 @@ function getBootstrapStudentSnapshotState_(num){
   const state=snapshot.statesByNumber[String(num)];
   if(!state) return null;
   return Object.assign({}, state, {
+    lessonId:String(state.lessonId||snapshot.lessonId||''),
+    activeRevision:Number(state.activeRevision||snapshot.activeRevision||0),
     needPeriodSelect:false,
     unit:snapshot.unit||null,
     period:Number(snapshot.period||0),
@@ -1166,6 +1190,17 @@ function selectNumber(num, options){
 
 function onInit(d){
   applyStudentShellState_(d && d.shell || {});
+  const latestSessionKey=getPayloadLessonSessionKey_(d);
+  const currentSessionKey=getLessonSessionKey_(myLessonId, myActiveRevision);
+  if(currentSessionKey && latestSessionKey && currentSessionKey!==latestSessionKey){
+    stopPolling();
+    clearInterval(autoTimer);
+    pollBusy=false;
+    timelineRefreshPending=false;
+    currentStudentStateKey='';
+    currentStudentCustoms=[];
+    submitted=false;
+  }
   if(d.needPeriodSelect){
     showScreen('screen-period');
     const unit=d.unit;
@@ -1233,6 +1268,8 @@ function loadMain(d){
   timelineRefreshPending=false;
   const identity=normalizeStudentIdentity_(d);
   rememberStudentNumber_(identity.num);
+  myLessonId = String(d && d.lessonId || '').trim();
+  myActiveRevision = Number(d && d.activeRevision || 0);
   myUnitId  = d.unit?.id   || null;
   myPeriod  = d.period      || null;
   myFields  = d.fields      || [];
@@ -1314,9 +1351,9 @@ function loadMain(d){
 
 function loadStudentState(options){
   const opts=options||{};
-  const cacheKey=[myUnitId,myPeriod,myNum].join('_');
+  const cacheKey=[myLessonId||myUnitId,myPeriod,myNum].join('_');
   if(!opts.skipCachedState){
-    const cached=readStudentCache_('state',cacheKey);
+    const cached=readStudentCacheByLesson_('state',cacheKey,myLessonId);
     if(cached) applyStudentState(cached);
   }
   google.script.run
@@ -1324,6 +1361,12 @@ function loadStudentState(options){
       logStudentApiTiming_('studentLoadState', payload);
       const identity=normalizeStudentIdentity_(payload);
       const normalizedPayload=Object.assign({}, payload||{}, { num: identity.num, name: identity.name });
+      if(getLessonSessionKey_(myLessonId, myActiveRevision)
+        && getPayloadLessonSessionKey_(normalizedPayload)
+        && getLessonSessionKey_(myLessonId, myActiveRevision)!==getPayloadLessonSessionKey_(normalizedPayload)){
+        onInit(normalizedPayload);
+        return;
+      }
       writeStudentCache_('state',cacheKey,normalizedPayload);
       applyStudentState(normalizedPayload);
       if(opts.skipTimelineRefresh!==true) refreshTimeline();
@@ -1345,9 +1388,9 @@ function loadStudentState(options){
 function loadStudentSupplemental(options){
   const opts=options||{};
   if(!opts.skipPreviousReview) loadPreviousReview();
-  const timelineCacheKey=[myUnitId,myPeriod,myNum].join('_');
+  const timelineCacheKey=[myLessonId||myUnitId,myPeriod,myNum].join('_');
   if(!opts.skipCachedTimeline){
-    const cachedTimeline=readStudentCache_('timeline',timelineCacheKey);
+    const cachedTimeline=readStudentCacheByLesson_('timeline',timelineCacheKey,myLessonId);
     if(cachedTimeline) applyTimelinePayload(cachedTimeline);
   }
   refreshTimeline();
@@ -1359,8 +1402,8 @@ function loadPreviousReview(){
     document.getElementById('prevGoalCard').style.display='none';
     return;
   }
-  const cacheKey=[myUnitId,myPeriod,myNum].join('_');
-  const cached=readStudentCache_('prevReview',cacheKey);
+  const cacheKey=[myLessonId||myUnitId,myPeriod,myNum].join('_');
+  const cached=readStudentCacheByLesson_('prevReview',cacheKey,myLessonId);
   if(cached){
     const cachedText=String(cached.prevReview||'').trim();
     const cachedGoal=String(cached.previousNextGoal||'').trim();
@@ -1375,7 +1418,10 @@ function loadPreviousReview(){
       logStudentApiTiming_('getStudentPreviousReview', res);
       const text=String(res?.prevReview||'').trim();
       const previousNextGoal=String(res?.previousNextGoal||'').trim();
-      writeStudentCache_('prevReview',cacheKey,res||{prevReview:'',previousNextGoal:''});
+      writeStudentCache_('prevReview',cacheKey,Object.assign({}, res||{prevReview:'',previousNextGoal:''}, {
+        lessonId:myLessonId,
+        activeRevision:myActiveRevision,
+      }));
       if(text){
         document.getElementById('prevCard').style.display='block';
         document.getElementById('prevReviewBox').textContent=text;
@@ -1404,6 +1450,8 @@ function renderPreviousNextGoal_(text){
 
 function applyStudentState(d){
   if(!d) return;
+  if(String(d.lessonId||'').trim()) myLessonId=String(d.lessonId||'').trim();
+  if(Object.prototype.hasOwnProperty.call(d,'activeRevision')) myActiveRevision=Number(d.activeRevision||0);
   myFields=d.fields||myFields;
   if(typeof d.studentAiEnabled!=='undefined') studentAiEnabled=Boolean(d.studentAiEnabled);
   if(typeof d.studentAiAutoSubmitEnabled!=='undefined') studentAiAutoSubmitEnabled=Boolean(d.studentAiAutoSubmitEnabled);
@@ -1413,7 +1461,9 @@ function applyStudentState(d){
   document.getElementById('myNameLabel').textContent=identityLabel;
   const customs=normalizeStudentCustoms_(d.customs);
   buildFields(myFields, customs);
-  writeStudentCache_('state',[myUnitId,myPeriod,myNum].join('_'),{
+  writeStudentCache_('state',[myLessonId||myUnitId,myPeriod,myNum].join('_'),{
+    lessonId:myLessonId,
+    activeRevision:myActiveRevision,
     num:identity.num,
     name:identity.name,
     unitId:myUnitId,
@@ -1968,11 +2018,14 @@ function refreshTimeline(options){
     return;
   }
   pollBusy=true;
-  const cacheKey=[myUnitId,myPeriod,myNum].join('_');
+  const cacheKey=[myLessonId||myUnitId,myPeriod,myNum].join('_');
   google.script.run
     .withSuccessHandler(payload=>{
       logStudentApiTiming_('getTimeline', payload);
-      writeStudentCache_('timeline',cacheKey,payload);
+      writeStudentCache_('timeline',cacheKey,Object.assign({}, payload||{}, {
+        lessonId:myLessonId,
+        activeRevision:myActiveRevision,
+      }));
       const me=applyTimelinePayload(payload);
       pollBusy=false;
       if(timelineRefreshPending){
@@ -2043,8 +2096,29 @@ function handleStudentActiveLessonChange_(payload){
   if(!active || !myNum || studentActiveReloading) return false;
   const nextUnitId=String(active.unitId||'').trim();
   const nextPeriod=Number(active.period||0);
-  if(!nextUnitId || nextPeriod<=0) return false;
-  if(String(myUnitId||'')===nextUnitId && Number(myPeriod||0)===nextPeriod) return false;
+  const nextLessonId=String(active.lessonId||'').trim();
+  const nextActiveRevision=Number(active.activeRevision||0);
+  if(!nextUnitId || nextPeriod<=0){
+    studentActiveReloading=true;
+    stopPolling();
+    const note=document.getElementById('submitNote');
+    if(note) note.textContent='先生が授業を終了しました。画面を更新しています…';
+    google.script.run
+      .withSuccessHandler(d=>{
+        studentActiveReloading=false;
+        logStudentApiTiming_('studentInitActiveChanged', d);
+        onInit(d);
+      })
+      .withFailureHandler(err=>{
+        logStudentApiFailure_('studentInitActiveChanged', err);
+        studentActiveReloading=false;
+        scheduleNextPoll(POLL_IDLE_MS);
+      })
+      .studentInit(myNum,0);
+    return true;
+  }
+  if(getLessonSessionKey_(myLessonId, myActiveRevision) && getLessonSessionKey_(myLessonId, myActiveRevision)===getLessonSessionKey_(nextLessonId, nextActiveRevision)) return false;
+  if(!nextLessonId && String(myUnitId||'')===nextUnitId && Number(myPeriod||0)===nextPeriod) return false;
   studentActiveReloading=true;
   stopPolling();
   const note=document.getElementById('submitNote');
@@ -2261,6 +2335,8 @@ function changeStudentNumber_(){
   pollBusy=false;
   timelineRefreshPending=false;
   myNum=null;
+  myLessonId='';
+  myActiveRevision=0;
   currentStudentName='';
   currentStudentCustoms=[];
   currentStudentStateKey='';
