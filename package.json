@@ -16,6 +16,7 @@
     "deploy:webapp": "powershell -ExecutionPolicy Bypass -File ./scripts/deploy-webapp.ps1",
     "deploy:script": "powershell -ExecutionPolicy Bypass -File ./scripts/deploy-script.ps1",
     "deploy:core": "powershell -ExecutionPolicy Bypass -File ./scripts/deploy-webapp.ps1",
+    "deploy:main": "powershell -ExecutionPolicy Bypass -File ./scripts/deploy-and-push-main.ps1",
     "build:portable": "node ./scripts/build-static-port.mjs",
     "publish:pages": "powershell -ExecutionPolicy Bypass -File ./scripts/publish-pages-worktree.ps1 -Build",
     "sync:portable-publish": "node ./scripts/sync-portable-publish.mjs",
