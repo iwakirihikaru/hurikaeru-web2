@@ -10,6 +10,8 @@ function teacherInit() {
   let unitsReadMeta = null;
   let active = null;
   let roster = [];
+  let unitProgress = {};
+  let progressNeedsRefresh = false;
   try {
     const unitSnapshot = getAllUnitsSnapshot_({ useMasterContract: true });
     units = Array.isArray(unitSnapshot && unitSnapshot.units) ? unitSnapshot.units : [];
@@ -27,20 +29,20 @@ function teacherInit() {
   } catch (err) {
     errors.push(`roster: ${err && err.message ? err.message : err}`);
   }
-  const deploymentInfo = buildTeacherDeploymentDisplayInfo_(null, { skipShellFallback: true });
-  let unitProgress = {};
   try {
-    unitProgress = readCachedTeacherUnitProgressSnapshot_();
+    unitProgress = getTeacherUnitProgress_({ forceRefresh: false });
   } catch (err) {
-    errors.push(`unitProgressCache: ${err && err.message ? err.message : err}`);
+    errors.push(`unitProgress: ${err && err.message ? err.message : err}`);
+    progressNeedsRefresh = true;
   }
+  const deploymentInfo = buildTeacherDeploymentDisplayInfo_(null, { skipShellFallback: true });
   return {
     units,
     unitsReadMeta,
     active,
     roster,
     unitProgress,
-    progressNeedsRefresh: true,
+    progressNeedsRefresh,
     build: APP_BUILD,
     deploymentVersion: deploymentInfo.version,
     deploymentCreatedAt: deploymentInfo.createdAt,
@@ -78,6 +80,10 @@ function teacherStatusInit() {
     const t0 = Date.now();
     unitProgress = readCachedTeacherUnitProgressSnapshot_();
     progressNeedsRefresh = !Object.keys(unitProgress || {}).length;
+    if (progressNeedsRefresh) {
+      unitProgress = getTeacherUnitProgress_({ forceRefresh: false });
+      progressNeedsRefresh = false;
+    }
     timing.unitProgressMs = Date.now() - t0;
   } catch (err) {
     errors.push(`unitProgress: ${err && err.message ? err.message : err}`);
