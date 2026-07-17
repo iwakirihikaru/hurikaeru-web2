@@ -516,6 +516,20 @@ function getAllUnitsCacheKeys_() {
   ];
 }
 
+function getTeacherStartCandidatesSnapshotCacheKey_() {
+  return `teacher_start_candidates_snapshot_v1:${readDomainCacheVersion_('units')}:${readDomainCacheVersion_('lessons')}`;
+}
+
+function getTeacherStartCandidatesSnapshotCacheKeys_() {
+  return ['teacher_start_candidates_snapshot_v1'];
+}
+
+function invalidateUnitCaches_() {
+  removeDomainCacheKeys_(getAllUnitsCacheKeys_());
+  removeDomainCacheKeys_(getTeacherStartCandidatesSnapshotCacheKeys_());
+  return bumpDomainCacheVersion_('units');
+}
+
 function getDomainCacheVersionKey_(scope) {
   return `domain_cache_version_v1:${String(scope || '').trim()}`;
 }
@@ -2922,6 +2936,63 @@ function getAllUnitsSnapshot_(options) {
   };
 }
 
+function buildTeacherStartCandidateUnitSummary_(unit, progress) {
+  const source = unit && typeof unit === 'object' ? unit : {};
+  const unitId = String(source.id || '').trim();
+  const summaryProgress = progress && typeof progress === 'object' ? progress : {};
+  const lastActivityPeriod = Math.max(0, Number(summaryProgress.lastActivityPeriod || 0));
+  const configuredMax = Math.max(0, Number(source.maxPeriod || 0));
+  const maxPeriod = configuredMax || 10;
+  const suggestedPeriod = Math.max(1, Math.min(
+    maxPeriod === 0 ? 20 : maxPeriod,
+    lastActivityPeriod > 0 ? lastActivityPeriod + 1 : 1
+  ));
+  return {
+    id: unitId,
+    name: String(source.name || '').trim(),
+    subject: String(source.subject || '').trim(),
+    maxPeriod,
+    createdAt: String(source.createdAt || '').trim(),
+    createdAtValue: Number(source.createdAtValue || 0),
+    lastActivityPeriod,
+    lastActivityAt: String(summaryProgress.latestActivityAt || '').trim(),
+    suggestedPeriod,
+  };
+}
+
+function buildTeacherStartCandidatesSnapshotPayload_(units, unitProgress) {
+  const progressMap = unitProgress && typeof unitProgress === 'object' ? unitProgress : {};
+  const list = (Array.isArray(units) ? units : [])
+    .map(unit => buildTeacherStartCandidateUnitSummary_(unit, progressMap[String(unit && unit.id || '')] || {}))
+    .filter(unit => unit.id);
+  return {
+    savedAt: nowIso_(),
+    units: list,
+    unitProgress: progressMap,
+  };
+}
+
+function getTeacherStartCandidatesSnapshot_(options) {
+  const opts = options && typeof options === 'object' ? options : {};
+  const cacheKey = getTeacherStartCandidatesSnapshotCacheKey_();
+  if (!opts.forceRefresh) {
+    const cached = getCachedJson_(cacheKey);
+    if (cached && Array.isArray(cached.units) && cached.units.length) return cached;
+    const genericCached = getCachedJson_('teacher_start_candidates_snapshot_v1');
+    if (genericCached && Array.isArray(genericCached.units) && genericCached.units.length) {
+      putCachedJson_(cacheKey, genericCached, 21600);
+      return genericCached;
+    }
+  }
+  const unitSnapshot = getAllUnitsSnapshot_({ useMasterContract: true });
+  const units = Array.isArray(unitSnapshot && unitSnapshot.units) ? unitSnapshot.units : [];
+  const unitProgress = getTeacherUnitProgress_({ forceRefresh: false });
+  const payload = buildTeacherStartCandidatesSnapshotPayload_(units, unitProgress);
+  putCachedJson_('teacher_start_candidates_snapshot_v1', payload, 21600);
+  putCachedJson_(cacheKey, payload, 21600);
+  return payload;
+}
+
 let lastUnitsReadMeta_ = null;
 
 function setLastUnitsReadMeta_(meta) {
@@ -3078,7 +3149,7 @@ function saveUnit(params) {
     const createdAt = existingUnit && existingUnit.createdAt
       ? String(existingUnit.createdAt || '').trim()
       : Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd');
-    removeDomainCacheKeys_(getAllUnitsCacheKeys_());
+    invalidateUnitCaches_();
     const result = {
       ok: true,
       id: unitId,
@@ -3132,7 +3203,7 @@ function updateUnitFields(id, fields) {
     createdAt: unit.createdAt,
     fields: nextFields,
   }, { updatedBy: 'master_updateUnitFields' });
-  removeDomainCacheKeys_(getAllUnitsCacheKeys_());
+  invalidateUnitCaches_();
   return { ok: true };
 }
 
@@ -3140,7 +3211,7 @@ function deleteUnit(id) {
   const unit = getUnitById_(id);
   if (!unit) return { ok: false };
   syncDeletedUnitToMaster_(id, { updatedBy: 'master_deleteUnit' });
-  removeDomainCacheKeys_(getAllUnitsCacheKeys_());
+  invalidateUnitCaches_();
   return { ok: true };
 }
 
@@ -3171,11 +3242,20 @@ function teacherStartLesson(unitId, period) {
   });
   invalidateStudentEntryRuntimeCaches_();
   const lesson = getOrCreateLesson_(unitId, period);
+  const unitProgress = getTeacherUnitProgress_({ forceRefresh: false });
+  try {
+    const cachedStartCandidates = getCachedJson_('teacher_start_candidates_snapshot_v1');
+    if (cachedStartCandidates && Array.isArray(cachedStartCandidates.units) && cachedStartCandidates.units.length) {
+      const payload = buildTeacherStartCandidatesSnapshotPayload_(cachedStartCandidates.units, unitProgress);
+      putCachedJson_('teacher_start_candidates_snapshot_v1', payload, 21600);
+      putCachedJson_(getTeacherStartCandidatesSnapshotCacheKey_(), payload, 21600);
+    }
+  } catch (_err) {}
   return {
     ok: true,
     lesson,
     active: getActiveSetting(),
-    unitProgress: getTeacherUnitProgress_(),
+    unitProgress,
     status: getLessonStatus(unitId, period),
   };
 }

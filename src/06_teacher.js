@@ -173,6 +173,7 @@ function teacherStatusSnapshot() {
   const timing = {};
   const errors = [];
   let active = null;
+  let startCandidatesSnapshot = null;
   try {
     const t0 = Date.now();
     active = getActiveSetting({ includeUnit: false, includeLesson: false });
@@ -180,9 +181,17 @@ function teacherStatusSnapshot() {
   } catch (err) {
     errors.push(`active: ${err && err.message ? err.message : err}`);
   }
+  try {
+    const t0 = Date.now();
+    startCandidatesSnapshot = getTeacherStartCandidatesSnapshot_({ forceRefresh: false });
+    timing.startCandidatesMs = Date.now() - t0;
+  } catch (err) {
+    errors.push(`startCandidates: ${err && err.message ? err.message : err}`);
+  }
   timing.totalMs = Date.now() - startedAt;
   return {
     active,
+    startCandidatesSnapshot,
     build: APP_BUILD,
     timing,
     errors,

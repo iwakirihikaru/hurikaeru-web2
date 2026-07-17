@@ -216,6 +216,7 @@ const preloadCache = {
   prompts:null,
   portfolio:null,
   status:null,
+  startCandidates:null,
   aggregate:null,
   rosterLoading:false,
   editorLoading:false,
@@ -253,6 +254,9 @@ function loadInit(){
   teacherClientPerfState.teacherInitCalls += 1;
   const requestEpoch=teacherDataEpoch;
   applyEmbeddedTeacherBootstrap_();
+  if((!Array.isArray(allUnits) || !allUnits.length) && preloadCache.startCandidates && Array.isArray(preloadCache.startCandidates.units) && preloadCache.startCandidates.units.length){
+    applyTeacherInitData({ startCandidatesSnapshot:preloadCache.startCandidates }, { includeRoster:false, renderUnitList:false, schedulePreload:false, source:'startCandidatesPreload' });
+  }
   let statusLoaded=false;
   // まず現在授業のポインタだけ軽く取り、その後に shell bootstrap を続ける。
   const loadTeacherInit=()=>{
@@ -476,7 +480,11 @@ function applyTeacherInitData(d, options){
   const opts=options||{};
   const previousUnitId=activeUnitId;
   const previousPeriod=activePeriod;
+  const startCandidatesSnapshot=d.startCandidatesSnapshot && typeof d.startCandidatesSnapshot==='object'
+    ? d.startCandidatesSnapshot
+    : null;
   if(Array.isArray(d.units)) allUnits = d.units;
+  else if(startCandidatesSnapshot && Array.isArray(startCandidatesSnapshot.units) && startCandidatesSnapshot.units.length && (!Array.isArray(allUnits) || !allUnits.length)) allUnits = startCandidatesSnapshot.units;
   if(d.unitsReadMeta && typeof d.unitsReadMeta==='object'){
     teacherUnitsReadMeta = d.unitsReadMeta;
     window.__teacherUnitsReadMeta = d.unitsReadMeta;
@@ -495,6 +503,7 @@ function applyTeacherInitData(d, options){
     }
   }
   if(d.unitProgress && typeof d.unitProgress === 'object') unitProgressByUnitId = d.unitProgress;
+  else if(startCandidatesSnapshot && startCandidatesSnapshot.unitProgress && typeof startCandidatesSnapshot.unitProgress==='object' && (!unitProgressByUnitId || !Object.keys(unitProgressByUnitId).length)) unitProgressByUnitId = startCandidatesSnapshot.unitProgress;
   if(d.build) teacherBuild = d.build;
   if(d.deploymentVersion !== undefined) teacherDeploymentVersion = Number(d.deploymentVersion || 0);
   if(d.deploymentCreatedAt !== undefined) teacherDeploymentCreatedAt = String(d.deploymentCreatedAt || '').trim();
@@ -504,6 +513,10 @@ function applyTeacherInitData(d, options){
       preloadCache.roster = { roster:d.roster };
       persistTeacherPreloadCache_();
     }
+  }
+  if(startCandidatesSnapshot && Array.isArray(startCandidatesSnapshot.units) && startCandidatesSnapshot.units.length){
+    preloadCache.startCandidates = startCandidatesSnapshot;
+    persistTeacherPreloadCache_();
   }
   if(!activeUnitId || !activePeriod){
     clearTeacherStatusPreloadCache_();
@@ -651,6 +664,7 @@ function hydrateTeacherPreloadCache_(){
     if(parsed.prompts) preloadCache.prompts=parsed.prompts;
     if(parsed.portfolio) preloadCache.portfolio=parsed.portfolio;
     if(parsed.status) preloadCache.status=parsed.status;
+    if(parsed.startCandidates) preloadCache.startCandidates=parsed.startCandidates;
     if(parsed.aggregate) preloadCache.aggregate=parsed.aggregate;
   }catch(_err){}
 }
@@ -664,6 +678,7 @@ function persistTeacherPreloadCache_(){
       prompts:preloadCache.prompts||null,
       portfolio:preloadCache.portfolio||null,
       status:preloadCache.status||null,
+      startCandidates:preloadCache.startCandidates||null,
       aggregate:preloadCache.aggregate||null,
     }));
   }catch(_err){}
