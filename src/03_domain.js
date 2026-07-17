@@ -3015,12 +3015,17 @@ function buildTeacherStartCandidateUnitSummary_(unit, progress) {
   const source = unit && typeof unit === 'object' ? unit : {};
   const unitId = String(source.id || '').trim();
   const summaryProgress = progress && typeof progress === 'object' ? progress : {};
-  const lastActivityPeriod = Math.max(0, Number(summaryProgress.lastActivityPeriod || 0));
+  const lastStartedPeriod = Math.max(
+    0,
+    Number(summaryProgress.lastStartedPeriod || 0),
+    Number(summaryProgress.lastActivityPeriod || 0),
+    Number(summaryProgress.maxPeriod || 0)
+  );
   const configuredMax = Math.max(0, Number(source.maxPeriod || 0));
   const maxPeriod = configuredMax || 10;
-  const suggestedPeriod = Math.max(1, Math.min(
+  const suggestedNextPeriod = Math.max(1, Math.min(
     maxPeriod === 0 ? 20 : maxPeriod,
-    lastActivityPeriod > 0 ? lastActivityPeriod + 1 : 1
+    lastStartedPeriod > 0 ? lastStartedPeriod + 1 : 1
   ));
   return {
     id: unitId,
@@ -3029,9 +3034,12 @@ function buildTeacherStartCandidateUnitSummary_(unit, progress) {
     maxPeriod,
     createdAt: String(source.createdAt || '').trim(),
     createdAtValue: Number(source.createdAtValue || 0),
-    lastActivityPeriod,
-    lastActivityAt: String(summaryProgress.latestActivityAt || '').trim(),
-    suggestedPeriod,
+    lastStartedPeriod,
+    lastStartedAt: String(summaryProgress.lastStartedAt || summaryProgress.latestActivityAt || '').trim(),
+    lastActivityPeriod: Math.max(0, Number(summaryProgress.lastActivityPeriod || lastStartedPeriod)),
+    lastActivityAt: String(summaryProgress.latestActivityAt || summaryProgress.lastStartedAt || '').trim(),
+    suggestedNextPeriod,
+    suggestedPeriod: suggestedNextPeriod,
   };
 }
 
@@ -3317,21 +3325,17 @@ function teacherStartLesson(unitId, period) {
   });
   invalidateStudentEntryRuntimeCaches_();
   const lesson = getOrCreateLesson_(unitId, period);
-  const unitProgress = getTeacherUnitProgress_({ forceRefresh: false });
-  try {
-    const cachedStartCandidates = getCachedJson_('teacher_start_candidates_snapshot_v1');
-    if (cachedStartCandidates && Array.isArray(cachedStartCandidates.units) && cachedStartCandidates.units.length) {
-      const payload = buildTeacherStartCandidatesSnapshotPayload_(cachedStartCandidates.units, unitProgress);
-      putCachedJson_('teacher_start_candidates_snapshot_v1', payload, 21600);
-      putCachedJson_(getTeacherStartCandidatesSnapshotCacheKey_(), payload, 21600);
-    }
-  } catch (_err) {}
+  removeDomainCacheKeys_(['teacher_unit_progress_v1']);
+  const startCandidatesSnapshot = getTeacherStartCandidatesSnapshot_({ forceRefresh: true });
+  const nextStartCandidate = Array.isArray(startCandidatesSnapshot && startCandidatesSnapshot.units)
+    ? startCandidatesSnapshot.units.find(item => String(item && item.id || '') === String(unitId || '')) || null
+    : null;
   return {
     ok: true,
     lesson,
-    active: getActiveSetting(),
-    unitProgress,
-    status: getLessonStatus(unitId, period),
+    active: getActiveSetting({ includeUnit: false, includeLesson: false }),
+    startCandidatesSnapshot,
+    nextStartCandidate,
   };
 }
 

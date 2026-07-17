@@ -4,8 +4,10 @@
   "version": "1.0.0",
   "scripts": {
     "clasp": "clasp",
-    "push": "clasp push",
+    "push": "powershell -ExecutionPolicy Bypass -File ./scripts/deploy-script.ps1",
+    "push:codeonly": "clasp push",
     "push:force": "clasp push --force",
+    "push:force:codeonly": "clasp push --force",
     "pull": "clasp pull",
     "open": "clasp open",
     "web:dev": "powershell -ExecutionPolicy Bypass -Command \"Set-Location -LiteralPath './webapp'; & 'C:/Program Files/nodejs/npm.cmd' run dev\"",

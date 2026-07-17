@@ -8,6 +8,7 @@ const TEACHER_RESPONSE_MIRROR_HANDLER = 'processTeacherResponseMirrorQueue';
 const TEACHER_RESPONSE_MIRROR_DELAY_MS = 1500;
 const TEACHER_RESPONSE_MIRROR_RETRY_DELAY_MS = 30000;
 const TEACHER_RESPONSE_MIRROR_TRIGGER_LOCK_MS = 5000;
+const TEACHER_RESPONSE_MIRROR_QUEUE_LOCK_MS = 5000;
 
 function buildTeacherFeedbackJobKey_(lessonId, mode) {
   return `teacher_feedback_job:${String(mode || 'generate')}:${String(lessonId || '').trim()}`;
@@ -89,11 +90,17 @@ function saveTeacherResponseMirrorBatchIds_(batchIds) {
 function storeTeacherResponseMirrorQueueEntry_(batchId, payload) {
   const safeBatchId = String(batchId || '').trim();
   if (!safeBatchId) return;
-  const props = PropertiesService.getScriptProperties();
-  props.setProperty(getTeacherResponseMirrorQueuePropKey_(safeBatchId), JSON.stringify(payload || {}));
-  const ids = loadTeacherResponseMirrorBatchIds_();
-  ids.push(safeBatchId);
-  saveTeacherResponseMirrorBatchIds_(ids);
+  const lock = LockService.getScriptLock();
+  lock.waitLock(TEACHER_RESPONSE_MIRROR_QUEUE_LOCK_MS);
+  try {
+    const props = PropertiesService.getScriptProperties();
+    props.setProperty(getTeacherResponseMirrorQueuePropKey_(safeBatchId), JSON.stringify(payload || {}));
+    const ids = loadTeacherResponseMirrorBatchIds_();
+    ids.push(safeBatchId);
+    saveTeacherResponseMirrorBatchIds_(ids);
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function loadTeacherResponseMirrorQueueEntries_() {
@@ -113,10 +120,16 @@ function loadTeacherResponseMirrorQueueEntries_() {
 function clearTeacherResponseMirrorQueueEntry_(batchId) {
   const safeBatchId = String(batchId || '').trim();
   if (!safeBatchId) return;
-  const props = PropertiesService.getScriptProperties();
-  props.deleteProperty(getTeacherResponseMirrorQueuePropKey_(safeBatchId));
-  const ids = loadTeacherResponseMirrorBatchIds_().filter(id => String(id || '').trim() !== safeBatchId);
-  saveTeacherResponseMirrorBatchIds_(ids);
+  const lock = LockService.getScriptLock();
+  lock.waitLock(TEACHER_RESPONSE_MIRROR_QUEUE_LOCK_MS);
+  try {
+    const props = PropertiesService.getScriptProperties();
+    props.deleteProperty(getTeacherResponseMirrorQueuePropKey_(safeBatchId));
+    const ids = loadTeacherResponseMirrorBatchIds_().filter(id => String(id || '').trim() !== safeBatchId);
+    saveTeacherResponseMirrorBatchIds_(ids);
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function ensureTeacherResponseMirrorTrigger_(delayMs) {
@@ -420,17 +433,24 @@ function buildTeacherUnitLessonProgressSnapshot_() {
       maxPeriod: 0,
       latestActivityAt: '',
       lessonCount: 0,
+      lastStartedPeriod: 0,
+      lastStartedAt: '',
       lastActivityPeriod: 0,
       latestPeriodHasActivity: false,
       lightweight: true,
     };
     current.maxPeriod = Math.max(current.maxPeriod || 0, period);
     current.lessonCount += 1;
+    current.lastStartedPeriod = Math.max(current.lastStartedPeriod || 0, period);
     current.lastActivityPeriod = Math.max(current.lastActivityPeriod || 0, period);
     const candidate = updatedAt || lessonDate;
     if (String(candidate) > String(current.latestActivityAt || '')) {
       current.latestActivityAt = candidate;
     }
+    if (period >= Number(current.lastStartedPeriod || 0) && String(candidate) > String(current.lastStartedAt || '')) {
+      current.lastStartedAt = candidate;
+    }
+    current.suggestedNextPeriod = Math.max(1, period + 1);
     map[unitId] = current;
   });
   return map;
@@ -441,48 +461,7 @@ function getTeacherUnitProgress_(options) {
   const cacheKey = 'teacher_unit_progress_v1';
   const cached = readCachedTeacherUnitProgressSnapshot_();
   if (!opts.forceRefresh && Object.keys(cached).length) return cached;
-  const map = {};
-  const lessonMetaById = {};
-  listLessonRecords_().forEach(lesson => {
-    const lessonId = String(lesson.lessonId || '');
-    const unitId = String(lesson.unitId || '');
-    if (!unitId) return;
-    const period = Number(lesson.period || 0);
-    const lessonDate = String(lesson.lessonDate || '');
-    const updatedAt = String(lesson.updatedAt || lesson.createdAt || '');
-    if (lessonId) lessonMetaById[lessonId] = { unitId, period };
-    const current = map[unitId] || {
-      maxPeriod: 0,
-      latestActivityAt: '',
-      lessonCount: 0,
-      lastActivityPeriod: 0,
-      latestPeriodHasActivity: false,
-    };
-    current.maxPeriod = Math.max(current.maxPeriod, period);
-    current.lessonCount += 1;
-    const candidate = updatedAt || lessonDate;
-    if (String(candidate) > String(current.latestActivityAt || '')) {
-      current.latestActivityAt = candidate;
-    }
-    map[unitId] = current;
-  });
-  const responseRows = listAllResponses_();
-  const lessonActivityMap = {};
-  responseRows.forEach(row => {
-    const lessonId = String(Array.isArray(row) ? row[1] || '' : row.lessonId || '');
-    if (!lessonId || !hasTeacherVisibleResponseActivity_(row)) return;
-    lessonActivityMap[lessonId] = true;
-  });
-  Object.keys(lessonMetaById).forEach(lessonId => {
-    if (!lessonActivityMap[lessonId]) return;
-    const meta = lessonMetaById[lessonId];
-    const current = map[meta.unitId];
-    if (!current) return;
-    current.lastActivityPeriod = Math.max(current.lastActivityPeriod || 0, Number(meta.period || 0));
-    if (Number(meta.period || 0) === Number(current.maxPeriod || 0)) {
-      current.latestPeriodHasActivity = true;
-    }
-  });
+  const map = buildTeacherUnitLessonProgressSnapshot_();
   return putCachedJson_(cacheKey, map, 20);
 }
 
@@ -2068,20 +2047,10 @@ function applyTeacherFeedbackDrafts_(lessonId, drafts, options) {
   const meta = options || {};
   const batchId = meta.batchId || makeId_('teacherreturn');
   const medalMode = normalizeTeacherFeedbackMedalMode_(meta.medalMode);
-  const lock = LockService.getDocumentLock();
-  lock.waitLock(LOCK_AI_RESULT_MS);
   const draftMap = {};
   selectedDrafts.forEach(draft => {
     draftMap[String(draft.responseId || '').trim()] = draft;
   });
-  if (meta.skipEventLogs !== true) {
-    writeAiEventLogs_(buildTeacherFeedbackEvents_(selectedDrafts, 'teacher_feedback_return_started', {
-      batchId,
-      aiStatus: 'processing',
-      detail: `source=${String(meta.source || 'teacher_return')}`,
-      timestamp: nowIso_(),
-    }));
-  }
   let returnedCount = 0;
   const returnedDrafts = [];
   let medalAwarded = false;
@@ -2090,97 +2059,130 @@ function applyTeacherFeedbackDrafts_(lessonId, drafts, options) {
   let draftSaveMs = 0;
   let aggregateMs = 0;
   try {
-    try {
-      const period = meta.period || '';
-      const updatedAt = nowIso_();
-      const responseData = getResponseSheetData_();
-      const rowUpdates = [];
-      const responses = Array.isArray(meta.responseRecords) ? meta.responseRecords : listResponsesForLesson_(lessonId);
-      const updatedResponses = [];
-      if (!responses.length) return { ok:false, error:'提出データがありません。' };
-      responses.forEach(response => {
-        const responseId = String(response?.responseId || '').trim();
-        const draft = draftMap[responseId];
-        if (!draft || !String(draft.draftComment || '').trim()) {
-          updatedResponses.push(response);
-          return;
-        }
-        const nextComment = String(draft.draftComment || '').trim();
-        const nextRank = String(draft.draftRank || '').trim();
-        const nextScore = nextRank ? Number(draft.draftScore || 0) : Number(response?.score || 0);
-        const hasResponseChange = (
-          String(response?.comment || '').trim() !== nextComment ||
-          String(response?.rank || '').trim() !== nextRank ||
-          Number(response?.score || 0) !== nextScore ||
-          String(response?.aiStatus || '').trim() !== 'done' ||
-          String(response?.aiError || '').trim() !== ''
-        );
-        const next = hasResponseChange
-          ? Object.assign({}, response, {
-              comment: nextComment,
-              score: nextScore,
-              rank: nextRank,
-              aiStatus: 'done',
-              aiProcessedAt: updatedAt,
-              aiError: '',
-              updatedAt,
-            })
-          : Object.assign({}, response, {
-              comment: nextComment,
-              score: nextScore,
-              rank: nextRank,
-            });
-        updatedResponses.push(next);
-        if (hasResponseChange) {
-          const row = buildResponseSheetRowValues_(next);
-          const existingRow = findResponseSheetRowEntryByResponseId_(responseId, responseData);
-          if (existingRow) {
-            rowUpdates.push({
-              rowNumber: existingRow.rowNumber,
-              values: row,
-            });
-          }
-        }
-        returnedCount++;
-        returnedDrafts.push({
-          responseId,
-          lessonId: next.lessonId || '',
-          unitId: next.unitId || '',
-          studentId: next.studentId || '',
-          studentNumber: next.studentNumber || '',
-          studentName: next.studentName || '',
-          reviewText: next.reviewText || '',
-          comment: next.comment || '',
-          rank: next.rank || '',
-          period,
-        });
-      });
-      if (!returnedCount) return { ok:false, error:'返却できる下書きがありません。' };
-      const responseWriteStartedAt = Date.now();
-      if (rowUpdates.length) {
-        writeResponseRowUpdates_(rowUpdates, null, null, null, {
-          skipResponseCacheRefresh: true,
-          invalidateResponseCaches: true,
-        });
-        enqueueTeacherResponseMirror_(
-          rowUpdates.map(item => String(item && item.values && item.values[0] || '').trim()),
-          'response_teacher_feedback_return',
-          'master_mirror_failed_teacher_feedback_return',
-          'teacher'
-        );
+    const period = meta.period || '';
+    const updatedAt = nowIso_();
+    const responses = Array.isArray(meta.responseRecords) ? meta.responseRecords : listResponsesForLesson_(lessonId);
+    const updatedResponses = [];
+    const pendingRowUpdates = [];
+    if (!responses.length) return { ok:false, error:'提出データがありません。' };
+    responses.forEach(response => {
+      const responseId = String(response?.responseId || '').trim();
+      const draft = draftMap[responseId];
+      if (!draft || !String(draft.draftComment || '').trim()) {
+        updatedResponses.push(response);
+        return;
       }
-      responseWriteMs = Date.now() - responseWriteStartedAt;
-      if (medalMode === 'auto_award') {
-        const medalStartedAt = Date.now();
-        recalcLessonMedalsFromDb_(lessonId, {
-          responses: updatedResponses,
-          responseData,
+      const nextComment = String(draft.draftComment || '').trim();
+      const nextRank = String(draft.draftRank || '').trim();
+      const nextScore = nextRank ? Number(draft.draftScore || 0) : Number(response?.score || 0);
+      const hasResponseChange = (
+        String(response?.comment || '').trim() !== nextComment ||
+        String(response?.rank || '').trim() !== nextRank ||
+        Number(response?.score || 0) !== nextScore ||
+        String(response?.aiStatus || '').trim() !== 'done' ||
+        String(response?.aiError || '').trim() !== ''
+      );
+      const next = hasResponseChange
+        ? Object.assign({}, response, {
+            comment: nextComment,
+            score: nextScore,
+            rank: nextRank,
+            aiStatus: 'done',
+            aiProcessedAt: updatedAt,
+            aiError: '',
+            updatedAt,
+          })
+        : Object.assign({}, response, {
+            comment: nextComment,
+            score: nextScore,
+            rank: nextRank,
+          });
+      updatedResponses.push(next);
+      if (hasResponseChange) {
+        pendingRowUpdates.push({
+          responseId,
+          values: buildResponseSheetRowValues_(next),
         });
-        aggregateMs = Date.now() - medalStartedAt;
-        medalAwarded = true;
+      }
+      returnedCount++;
+      returnedDrafts.push({
+        responseId,
+        lessonId: next.lessonId || '',
+        unitId: next.unitId || '',
+        studentId: next.studentId || '',
+        studentNumber: next.studentNumber || '',
+        studentName: next.studentName || '',
+        reviewText: next.reviewText || '',
+        comment: next.comment || '',
+        rank: next.rank || '',
+        period,
+      });
+    });
+    if (!returnedCount) return { ok:false, error:'返却できる下書きがありません。' };
+    if (meta.skipEventLogs !== true) {
+      writeAiEventLogs_(buildTeacherFeedbackEvents_(selectedDrafts, 'teacher_feedback_return_started', {
+        batchId,
+        aiStatus: 'processing',
+        detail: `source=${String(meta.source || 'teacher_return')}`,
+        timestamp: nowIso_(),
+      }));
+    }
+
+    const lock = LockService.getDocumentLock();
+    const mirroredResponseIds = [];
+    const responseWriteStartedAt = Date.now();
+    lock.waitLock(LOCK_AI_RESULT_MS);
+    try {
+      if (pendingRowUpdates.length) {
+        const responseData = getResponseSheetData_();
+        const rowNumberByResponseId = {};
+        const rows = Array.isArray(responseData && responseData.rows) ? responseData.rows : [];
+        for (let i = 0; i < rows.length; i++) {
+          const responseId = String(rows[i] && rows[i][0] || '').trim();
+          if (responseId) rowNumberByResponseId[responseId] = i + 2;
+        }
+        const rowUpdates = pendingRowUpdates
+          .map(item => {
+            const rowNumber = Number(rowNumberByResponseId[item.responseId] || 0);
+            if (!rowNumber) return null;
+            return {
+              rowNumber,
+              values: item.values,
+            };
+          })
+          .filter(Boolean);
+        if (rowUpdates.length) {
+          writeResponseRowUpdates_(rowUpdates, null, null, null, {
+            skipResponseCacheRefresh: true,
+            invalidateResponseCaches: true,
+          });
+          rowUpdates.forEach(item => {
+            const responseId = String(item && item.values && item.values[0] || '').trim();
+            if (responseId) mirroredResponseIds.push(responseId);
+          });
+        }
       }
     } finally {
       lock.releaseLock();
+    }
+    responseWriteMs = Date.now() - responseWriteStartedAt;
+
+    if (mirroredResponseIds.length) {
+      enqueueTeacherResponseMirror_(
+        mirroredResponseIds,
+        'response_teacher_feedback_return',
+        'master_mirror_failed_teacher_feedback_return',
+        'teacher'
+      );
+    }
+
+    if (medalMode === 'auto_award') {
+      const medalStartedAt = Date.now();
+      recalcLessonMedalsFromDb_(lessonId, {
+        responses: updatedResponses,
+      });
+      aggregateMs = Date.now() - medalStartedAt;
+      medalAwarded = true;
     }
 
     const returnedAt = nowIso_();

@@ -52,6 +52,15 @@ Deploy `portable/` as a static site.
 
 本番ずれを防ぐときは、個別ではなく一括実行を使います。
 
+GAS は `clasp push` だけでは本番 Web アプリに反映されません。`push` 後に `version` / `deploy` が必要です。
+
+- ふつうの反映:
+  - `npm run push`
+- GAS だけ反映:
+  - `npm run deploy:script`
+- `clasp push` 相当のコード同期だけが必要な特殊作業:
+  - `npm run push:codeonly`
+
 ```powershell
 npm run deploy:full
 ```

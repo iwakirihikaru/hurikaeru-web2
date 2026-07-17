@@ -408,12 +408,7 @@ function scheduleTeacherUnitProgressRefresh_(data){
         const map=res && res.unitProgress;
         if(!map || typeof map!=='object') return;
         unitProgressByUnitId = map;
-        populateUnitSelects();
         applySuggestedStartPeriodAfterProgressRefresh_();
-        const unitListSection=document.getElementById('unitListWrap');
-        if(unitListSection && unitListSection.offsetParent!==null){
-          renderUnitList();
-        }
       })
       .withFailureHandler(()=>{})
       .teacherUnitProgressRefresh();
@@ -484,7 +479,7 @@ function applyTeacherInitData(d, options){
     ? d.startCandidatesSnapshot
     : null;
   if(Array.isArray(d.units)) allUnits = d.units;
-  else if(startCandidatesSnapshot && Array.isArray(startCandidatesSnapshot.units) && startCandidatesSnapshot.units.length && (!Array.isArray(allUnits) || !allUnits.length)) allUnits = startCandidatesSnapshot.units;
+  allUnits = mergeStartCandidateUnits_(allUnits, startCandidatesSnapshot);
   if(d.unitsReadMeta && typeof d.unitsReadMeta==='object'){
     teacherUnitsReadMeta = d.unitsReadMeta;
     window.__teacherUnitsReadMeta = d.unitsReadMeta;
@@ -1017,9 +1012,38 @@ function getSuggestedStartUnit(units){
   return list.sort(compareSuggestedStartUnit_)[0]||null;
 }
 
+function mergeStartCandidateUnits_(units, snapshot){
+  const baseUnits=Array.isArray(units)?units:[];
+  const snapshotUnits=snapshot && Array.isArray(snapshot.units)?snapshot.units:[];
+  if(!snapshotUnits.length) return baseUnits;
+  if(!baseUnits.length) return snapshotUnits.slice();
+  const byId={};
+  baseUnits.forEach(unit=>{
+    const id=String(unit && unit.id || '');
+    if(id) byId[id]={...unit};
+  });
+  snapshotUnits.forEach(unit=>{
+    const id=String(unit && unit.id || '');
+    if(!id) return;
+    byId[id]={...(byId[id]||{}), ...unit};
+  });
+  const merged=baseUnits.map(unit=>byId[String(unit && unit.id || '')] || unit);
+  snapshotUnits.forEach(unit=>{
+    const id=String(unit && unit.id || '');
+    if(!id || merged.some(item=>String(item && item.id || '')===id)) return;
+    merged.push(byId[id] || unit);
+  });
+  return merged;
+}
+
 function getUnitRecentSortValue_(unit){
   const progress=unitProgressByUnitId[String(unit && unit.id || '')]||{};
-  const activityValue=Date.parse(String(progress.latestActivityAt||''))||0;
+  const activityValue=Date.parse(String(
+    unit && (unit.lastStartedAt || unit.lastActivityAt)
+    || progress.lastStartedAt
+    || progress.latestActivityAt
+    || ''
+  ))||0;
   const createdValue=Number(unit && unit.createdAtValue || 0) || toUnitCreatedAtValue(unit);
   return Math.max(activityValue, createdValue);
 }
@@ -1600,7 +1624,9 @@ function compareSuggestedStartUnit_(a,b){
   if(recentCmp!==0) return recentCmp;
   const progressA=unitProgressByUnitId[String(a && a.id || '')]||{};
   const progressB=unitProgressByUnitId[String(b && b.id || '')]||{};
-  const countCmp=Number(progressB.lessonCount||0)-Number(progressA.lessonCount||0);
+  const rankA=Number((a && (a.lastStartedPeriod || a.lastActivityPeriod)) || progressA.lastStartedPeriod || progressA.lessonCount || 0);
+  const rankB=Number((b && (b.lastStartedPeriod || b.lastActivityPeriod)) || progressB.lastStartedPeriod || progressB.lessonCount || 0);
+  const countCmp=rankB-rankA;
   if(countCmp!==0) return countCmp;
   const idCmp=Number(b && b.id || 0)-Number(a && a.id || 0);
   if(idCmp!==0) return idCmp;
@@ -1610,9 +1636,14 @@ function compareSuggestedStartUnit_(a,b){
 function getSuggestedPeriodForUnit(unit){
   if(!unit) return '';
   const progress=unitProgressByUnitId[String(unit.id||'')]||{};
-  const lastActivityPeriod=Math.max(0, Number(progress.lastActivityPeriod||0));
+  const snapshotSuggested=Math.max(0, Number(unit.suggestedNextPeriod || unit.suggestedPeriod || progress.suggestedNextPeriod || 0));
+  if(snapshotSuggested>0){
+    const max=getSelectablePeriodMaxForUnit_(unit, Math.max(0, snapshotSuggested-1));
+    return String(Math.min(snapshotSuggested, max));
+  }
+  const lastStartedPeriod=Math.max(0, Number(unit.lastStartedPeriod || progress.lastStartedPeriod || unit.lastActivityPeriod || progress.lastActivityPeriod || 0));
   const maxProgressPeriod=Math.max(0, Number(progress.maxPeriod||0));
-  const basePeriod=lastActivityPeriod>0 ? lastActivityPeriod : maxProgressPeriod;
+  const basePeriod=lastStartedPeriod>0 ? lastStartedPeriod : maxProgressPeriod;
   const max=getSelectablePeriodMaxForUnit_(unit, basePeriod);
   const next=Math.max(1, basePeriod>0 ? basePeriod+1 : 1);
   return String(Math.min(next, max));
@@ -1686,9 +1717,9 @@ function updatePeriodSelect(options){
   const sel=document.getElementById('startPeriod');
   const current=String(sel && sel.value || '');
   const progress=unit?unitProgressByUnitId[String(unit.id||'')]||{}:{};
-  const lastActivityPeriod=Math.max(0, Number(progress.lastActivityPeriod||0));
+  const lastStartedPeriod=Math.max(0, Number(unit && (unit.lastStartedPeriod || unit.lastActivityPeriod) || progress.lastStartedPeriod || progress.lastActivityPeriod || 0));
   const maxProgressPeriod=Math.max(0, Number(progress.maxPeriod||0));
-  const basePeriod=lastActivityPeriod>0 ? lastActivityPeriod : maxProgressPeriod;
+  const basePeriod=lastStartedPeriod>0 ? lastStartedPeriod : maxProgressPeriod;
   const max=unit?getSelectablePeriodMaxForUnit_(unit, basePeriod):10;
   const suggested=unit?getSuggestedPeriodForUnit(unit):'';
   const selectedValue=(startPeriodManuallySelected && !opts.forceSuggested && current) ? current : suggested;
@@ -1816,11 +1847,8 @@ function startLesson(){
       if(res && res.active){
         applyTeacherInitData({
           active:res.active,
-          unitProgress:res.unitProgress||unitProgressByUnitId,
+          startCandidatesSnapshot:res.startCandidatesSnapshot||null,
         }, { includeRoster:false, renderUnitList:true, schedulePreload:false, source:'teacherStartLesson' });
-      }
-      if(res && res.status){
-        renderStatus(res.status);
       }
       loadStatusInit({ lightweight:false, startPolling:true });
       showToast('授業を開始しました！',{tone:'success'});
