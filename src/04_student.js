@@ -646,12 +646,30 @@ function getMedalColor_(medal) {
   return idx >= 0 ? MEDAL_COLORS[idx] : '';
 }
 
+function hasResponseSnapshotChanged_(response, fields, customs, submitted) {
+  const currentAnswersMap = buildAnswersMap_(fields, customs || []);
+  const currentReview = extractReviewText_(fields, currentAnswersMap);
+  if (!response) {
+    return Boolean(currentReview) || Object.keys(currentAnswersMap).some(key => String(currentAnswersMap[key] || '').trim()) || submitted === true;
+  }
+  const previousAnswersJson = JSON.stringify(response.answersMap || {});
+  const nextAnswersJson = JSON.stringify(currentAnswersMap);
+  if (previousAnswersJson !== nextAnswersJson) return true;
+  if (String(response.reviewText || '') !== String(currentReview || '')) return true;
+  if (Boolean(response.submitted) !== Boolean(submitted)) return true;
+  return false;
+}
+
 function autoSave(unitId, period, num, customs) {
   const units  = getAllUnits();
   const unit   = units.find(u => u.id == unitId);
   const lesson = getOrCreateLesson_(unitId, period);
   const fields = getEnabledFields_({ fields: getLessonFields_(lesson, unit) });
   const studentName = findRosterStudentName_(num);
+  const existingResponse = getResponseRecordByStudentNumber_(lesson.lessonId, num);
+  if (!hasResponseSnapshotChanged_(existingResponse, fields, customs || [], false)) {
+    return { ok: true, skipped: true, reason: 'unchanged' };
+  }
   const lock = LockService.getDocumentLock();
   if (!lock.tryLock(LOCK_AUTOSAVE_MS)) {
     return { ok: true, skipped: true, reason: 'busy' };
@@ -665,14 +683,20 @@ function autoSave(unitId, period, num, customs) {
   }
 }
 
-function submitReview(unitId, period, num, customs) {
+function submitReview(unitId, period, num, customs, submitOptions) {
   const units  = getAllUnits();
   const unit   = units.find(u => u.id == unitId);
   const lesson = getOrCreateLesson_(unitId, period);
   const fields = getEnabledFields_({ fields: getLessonFields_(lesson, unit) });
-  const answersMap = buildAnswersMap_(fields, customs || []);
-  const review = extractReviewText_(fields, answersMap);
   const studentName = findRosterStudentName_(num);
+  const opts = submitOptions && typeof submitOptions === 'object' ? submitOptions : {};
+  const saveAnswers = opts.saveAnswers !== false;
+  const existingResponse = getResponseRecordByStudentNumber_(lesson.lessonId, num);
+  const sourceCustoms = saveAnswers
+    ? (customs || [])
+    : (existingResponse ? mapAnswersToCustoms_(fields, existingResponse.answersMap || {}) : []);
+  const answersMap = buildAnswersMap_(fields, sourceCustoms);
+  const review = extractReviewText_(fields, answersMap);
 
   if (!review || review.length < 5) {
     return { ok: false, error: 'ふりかえりをもっとくわしくかいてね！' };
@@ -688,7 +712,7 @@ function submitReview(unitId, period, num, customs) {
   const studentAiAutoSubmitEnabled = studentAiEnabled && isStudentAiAutoSubmitEnabled_();
   try {
     const student = resolveStudentForWrite_(lesson.lessonId, num, studentName);
-    saved = saveResponseSnapshotToDb_(unitId, period, num, studentName, fields, customs || [], {
+    saved = saveResponseSnapshotToDb_(unitId, period, num, studentName, fields, sourceCustoms, {
       submitted: true,
       queueStudentAi: studentAiAutoSubmitEnabled,
       lesson,

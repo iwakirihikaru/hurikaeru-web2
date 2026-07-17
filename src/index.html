@@ -488,7 +488,13 @@ let myLessonId = '';
 let myActiveRevision = 0;
 let currentStudentInitRequestId = 0;
 let currentTimelineRequestId = 0;
-const AUTO_SAVE_MS = 30000;
+let autoSaveInFlight = false;
+let studentDraftSaveTimer = null;
+let studentDraftDirty = false;
+let lastServerSavedSignature = '';
+const AUTO_SAVE_BASE_MS = 28000;
+const AUTO_SAVE_JITTER_MS = 8000;
+const LOCAL_DRAFT_SAVE_MS = 1000;
 const POLL_IDLE_MS = 4000;
 const POLL_WAITING_AI_MS = 2500;
 const POLL_DONE_MS = 6000;
@@ -697,6 +703,73 @@ function writeStudentCache_(kind, suffix, payload){
       payload: payload||null
     }));
   }catch(e){}
+}
+
+function getNormalizedCustomValues_(values){
+  const incoming=Array.isArray(values)?values:[];
+  const fieldCount=Array.isArray(myFields)?myFields.length:incoming.length;
+  const normalized=incoming.slice(0,fieldCount).map(value=>String(value==null?'':value));
+  while(normalized.length<fieldCount) normalized.push('');
+  return normalized;
+}
+
+function getStudentDraftSignature_(values){
+  return JSON.stringify(getNormalizedCustomValues_(values));
+}
+
+function buildCurrentStudentDraftCache_(){
+  if(!myUnitId || !myPeriod || !myNum || !Array.isArray(myFields) || !myFields.length) return null;
+  const identity=normalizeStudentIdentity_({});
+  const customs=getNormalizedCustomValues_(getCustomValues());
+  return {
+    lessonId:myLessonId,
+    activeRevision:myActiveRevision,
+    num:identity.num,
+    name:identity.name,
+    unitId:myUnitId,
+    period:myPeriod,
+    unit:currentStudentUnitInfo ? {
+      id:currentStudentUnitInfo.id||myUnitId,
+      subject:currentStudentUnitInfo.subject||'',
+      name:currentStudentUnitInfo.name||''
+    } : null,
+    fields:myFields,
+    customs,
+    submitted:Boolean(submitted),
+    comment:lastAiCommentText||'',
+    rank:'',
+    medal:'',
+    medalColor:'',
+    aiStatus:lastKnownAiStatus||'',
+    teacherTimelineFieldKey:teacherTimelineFieldKey||'',
+    studentAiEnabled:studentAiEnabled,
+    studentAiAutoSubmitEnabled:studentAiAutoSubmitEnabled,
+    lastServerSavedSignature:lastServerSavedSignature||getStudentDraftSignature_(customs),
+    draftDirty:studentDraftDirty===true,
+  };
+}
+
+function persistStudentDraftLocally_(){
+  const payload=buildCurrentStudentDraftCache_();
+  if(!payload) return;
+  writeStudentCache_('state',[myLessonId||myUnitId,myPeriod,myNum].join('_'),payload);
+}
+
+function scheduleLocalDraftSave_(){
+  if(studentDraftSaveTimer) clearTimeout(studentDraftSaveTimer);
+  studentDraftSaveTimer=setTimeout(()=>{
+    studentDraftSaveTimer=null;
+    persistStudentDraftLocally_();
+  }, LOCAL_DRAFT_SAVE_MS);
+}
+
+function markStudentSaveSynced_(values){
+  lastServerSavedSignature=getStudentDraftSignature_(values);
+  studentDraftDirty=false;
+}
+
+function getNextAutoSaveDelay_(){
+  return AUTO_SAVE_BASE_MS + Math.floor(Math.random()*AUTO_SAVE_JITTER_MS);
 }
 
 function readStudentCacheByLesson_(kind, suffix, lessonId){
@@ -1560,6 +1633,8 @@ function applyStudentState(d){
   document.getElementById('hdrMeta').textContent=identityLabel;
   document.getElementById('myNameLabel').textContent=identityLabel;
   const customs=normalizeStudentCustoms_(d.customs);
+  const incomingServerSignature=String(d.lastServerSavedSignature||getStudentDraftSignature_(customs));
+  const incomingDraftDirty=Boolean(d.draftDirty) && incomingServerSignature!==getStudentDraftSignature_(customs);
   buildFields(myFields, customs);
   writeStudentCache_('state',[myLessonId||myUnitId,myPeriod,myNum].join('_'),{
     lessonId:myLessonId,
@@ -1585,8 +1660,12 @@ function applyStudentState(d){
     studentAiEnabled:studentAiEnabled,
     studentAiAutoSubmitEnabled:studentAiAutoSubmitEnabled,
     prevReview:d.prevReview||'',
-    previousNextGoal:d.previousNextGoal||''
+    previousNextGoal:d.previousNextGoal||'',
+    lastServerSavedSignature:incomingServerSignature,
+    draftDirty:incomingDraftDirty
   });
+  lastServerSavedSignature=incomingServerSignature;
+  studentDraftDirty=incomingDraftDirty;
   submitted=Boolean(d.submitted);
   const aiStatus=String(d.aiStatus||'');
   const returnedComment=String(d.comment||'').trim();
@@ -1746,6 +1825,9 @@ function bindFieldInputEvents_(){
 }
 
 function handleFieldValueChanged_(){
+  const values=getCustomValues();
+  studentDraftDirty=getStudentDraftSignature_(values)!==lastServerSavedSignature;
+  scheduleLocalDraftSave_();
   renderStudentEntryChips();
   if(window._lastTl) renderTl(window._lastTl);
 }
@@ -1949,18 +2031,40 @@ function buildChipMarkup_(labels, count, cls){
 //  自動保存
 // =====================================
 function resetAutoSave(){
-  clearInterval(autoTimer);
+  clearTimeout(autoTimer);
   if(!submitted){
-    autoTimer=setInterval(()=>doSave(true),AUTO_SAVE_MS);
+    autoTimer=setTimeout(()=>{
+      autoTimer=null;
+      doSave(true);
+      resetAutoSave();
+    }, getNextAutoSaveDelay_());
   }
 }
 
 function doSave(silent){
-  if(submitted||submitInFlight) return;
+  if(submitted||submitInFlight||autoSaveInFlight) return;
+  const values=getCustomValues();
+  const saveSignature=getStudentDraftSignature_(values);
+  if(saveSignature===lastServerSavedSignature){
+    studentDraftDirty=false;
+    return;
+  }
+  autoSaveInFlight=true;
   google.script.run
-    .withSuccessHandler(()=>{if(!silent)showToast('✅ ほぞんしたよ！');})
-    .withFailureHandler(()=>{})
-    .autoSave(myUnitId,myPeriod,myNum,getCustomValues());
+    .withSuccessHandler(res=>{
+      autoSaveInFlight=false;
+      if(res && res.ok && res.reason!=='busy'){
+        if(getStudentDraftSignature_(getCustomValues())===saveSignature){
+          markStudentSaveSynced_(values);
+        }
+        persistStudentDraftLocally_();
+        if(!silent) showToast('✅ ほぞんしたよ！');
+      }
+    })
+    .withFailureHandler(()=>{
+      autoSaveInFlight=false;
+    })
+    .autoSave(myUnitId,myPeriod,myNum,values);
 }
 
 // =====================================
@@ -1977,14 +2081,15 @@ function doSubmit(){
   const btn=document.getElementById('submitBtn');
   btn.disabled=true;btn.textContent='✅ ていしゅつずみ';
   const values=getCustomValues();
+  const submitOptions={ saveAnswers:getStudentDraftSignature_(values)!==lastServerSavedSignature };
   submitted=true;
   lockSubmitted();
   document.getElementById('submitNote').textContent='⏳ ていしゅつ中…そのまままっててね';
 
-  runStudentSubmit_(values, 0);
+  runStudentSubmit_(submitOptions.saveAnswers ? values : null, submitOptions, 0);
 }
 
-function runStudentSubmit_(values, attempt){
+function runStudentSubmit_(values, submitOptions, attempt){
   google.script.run
     .withSuccessHandler(res=>{
       if(!res.ok){
@@ -1993,6 +2098,8 @@ function runStudentSubmit_(values, attempt){
         return;
       }
       submitInFlight=false;
+      markStudentSaveSynced_(values || getCustomValues());
+      persistStudentDraftLocally_();
       lastKnownAiStatus=res.queuedAi?'pending':'';
       if(res.queuedAi){
         showToast('🎉 ていしゅつできたよ！AIのコメントをまっててね✨');
@@ -2008,12 +2115,12 @@ function runStudentSubmit_(values, attempt){
     })
     .withFailureHandler(e=>{
       if(attempt<1 && isRetriableSubmitError_(e)){
-        setTimeout(()=>runStudentSubmit_(values, attempt+1), 700);
+        setTimeout(()=>runStudentSubmit_(values, submitOptions, attempt+1), 700);
         return;
       }
       handleSubmitUnknownFailure_(e);
     })
-    .submitReview(myUnitId,myPeriod,myNum,values);
+    .submitReview(myUnitId,myPeriod,myNum,values,submitOptions||{});
 }
 
 function isRetriableSubmitError_(error){
