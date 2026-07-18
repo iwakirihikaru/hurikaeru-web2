@@ -1494,6 +1494,16 @@ function buildLessonStatus_(unitId, period) {
       lessonId: String(lesson.lessonId || ''),
       unitName: String(unit?.name || ''),
       subject: String(unit?.subject || ''),
+      fields: fields
+        .filter(field => String(field?.key || '') !== String(understandingField?.key || ''))
+        .map(field => ({
+          key: String(field?.key || ''),
+          label: String(field?.label || field?.key || ''),
+          emoji: String(field?.emoji || ''),
+          type: String(field?.type || 'text'),
+        })),
+      reviewFieldKey: String(reviewField?.key || REVIEW_FIELD_KEY),
+      understandingFieldKey: String(understandingField?.key || ''),
       teacherAiEnabled,
       responseReadMeta,
       draftCount: drafts.filter(draft => String(draft.status || '') === 'draft' && (String(draft.draftComment || '').trim() || String(draft.draftRank || '').trim())).length,

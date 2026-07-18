@@ -43,10 +43,41 @@
         </div>
       </div>
     </div>
-    <div class="card" style="overflow-x:auto;">
-      <table class="tbl status-table">
-        <thead><tr><th>児童 / 提出内容</th><th>フィードバック</th></tr></thead>
-        <tbody id="statusBody"><tr><td colspan="2" style="text-align:center;padding:18px;"><span class="spinner"></span></td></tr></tbody>
-      </table>
+    <div class="card status-overview-card">
+      <div class="status-overview-head">
+        <div>
+          <h3>児童の回答一覧</h3>
+          <div class="status-overview-note">名前と回答を複数人まとめて確認できます。</div>
+        </div>
+        <button class="btn-subtle status-feedback-shortcut" type="button" onclick="toggleStatusFeedbackDetails()">個別フィードバックを開く</button>
+      </div>
+      <div id="statusLessonSummary"></div>
+      <div id="statusFieldTabs"></div>
+      <div id="statusCardGrid"><div class="status-grid-empty"><span class="spinner"></span></div></div>
+      <div id="statusPager"></div>
+    </div>
+    <details class="card status-feedback-details" id="statusFeedbackDetails">
+      <summary>個別フィードバック・返却を開く</summary>
+      <div class="status-feedback-detail-note">既存の個別フィードバック、個別修正、返却操作はこのまま使えます。</div>
+      <div style="overflow-x:auto;">
+        <table class="tbl status-table">
+          <thead><tr><th>児童 / 提出内容</th><th>フィードバック</th></tr></thead>
+          <tbody id="statusBody"><tr><td colspan="2" style="text-align:center;padding:18px;"><span class="spinner"></span></td></tr></tbody>
+        </table>
+      </div>
+    </details>
+  </div>
+  <div class="modal-bg" id="statusCardModalBg" onclick="handleStatusCardModalBackdrop(event)">
+    <div class="modal status-card-modal" role="dialog" aria-modal="true" aria-labelledby="statusCardModalTitle" onclick="event.stopPropagation()">
+      <div class="status-card-modal-head">
+        <div class="status-card-modal-student" id="statusCardModalStudent"></div>
+        <button class="btn-cancel status-card-modal-close" type="button" onclick="closeStatusCardModal()">閉じる</button>
+      </div>
+      <div class="status-card-modal-label" id="statusCardModalLabel"></div>
+      <div class="status-card-modal-body" id="statusCardModalBody"></div>
+      <div class="status-card-modal-actions">
+        <button class="btn-subtle status-card-modal-nav" id="statusCardModalPrevBtn" type="button" onclick="moveStatusCardModal(-1)">← 前の児童</button>
+        <button class="btn-update status-card-modal-nav" id="statusCardModalNextBtn" type="button" onclick="moveStatusCardModal(1)">次の児童 →</button>
+      </div>
     </div>
   </div>
