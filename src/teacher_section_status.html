@@ -91,6 +91,7 @@
           <div class="status-card-modal-meta" id="statusCardModalMeta"></div>
         </div>
         <div class="status-card-modal-toolbar">
+          <button class="status-favorite-btn" id="statusCardModalFavoriteBtn" type="button" hidden onclick="toggleStatusFavorite(event,this.getAttribute('data-response-id')||'')" onkeydown="handleStatusFavoriteButtonKeydown(event,this.getAttribute('data-response-id')||'')">☆</button>
           <button class="btn-subtle status-feedback-jump-btn" id="statusFeedbackJumpBtn" type="button" onclick="openStatusFeedbackFromModal()">個別フィードバックへ</button>
           <button class="btn-cancel status-card-modal-close" type="button" onclick="closeStatusCardModal()">閉じる</button>
         </div>

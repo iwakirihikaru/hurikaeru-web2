@@ -336,6 +336,16 @@ body{font-family:var(--font);background:var(--bg);color:#212121;}
 .status-card-sidebadges{
   display:flex;align-items:center;justify-content:flex-end;gap:6px;flex:0 0 auto;white-space:nowrap;
 }
+.status-favorite-btn{
+  display:inline-flex;align-items:center;justify-content:center;min-width:38px;min-height:38px;
+  padding:0 8px;border:1.5px solid #D8E6D9;border-radius:999px;background:#fff;color:#607D66;
+  font-family:var(--font);font-size:18px;font-weight:bold;line-height:1;cursor:pointer;flex:0 0 auto;
+}
+.status-favorite-btn:hover{background:#F5FAF5;}
+.status-favorite-btn:focus-visible{outline:3px solid rgba(67,160,71,.24);outline-offset:2px;}
+.status-favorite-btn[disabled]{cursor:default;opacity:.6;}
+.status-favorite-btn.status-favorite-active{border-color:#F6C342;background:#FFF7D6;color:#C88700;}
+.status-favorite-btn.status-favorite-busy{color:#9AA6AC;}
 .status-rank-chip{
   display:inline-flex;align-items:center;justify-content:center;min-height:20px;padding:2px 8px;border-radius:999px;
   font-size:11px;font-weight:bold;line-height:1;color:#fff;
@@ -650,6 +660,7 @@ body{font-family:var(--font);background:var(--bg);color:#212121;}
     width:94vw;height:min(calc(var(--status-modal-vh, 1vh) * 92),94vh);
     max-height:min(calc(var(--status-modal-vh, 1vh) * 92),94vh);padding:16px;
   }
+  .status-favorite-btn{min-width:34px;min-height:34px;font-size:16px;}
   .status-card-modal-head{flex-direction:column;}
   .status-card-modal-toolbar{width:100%;flex-direction:column;align-items:stretch;}
   .status-feedback-jump-btn,

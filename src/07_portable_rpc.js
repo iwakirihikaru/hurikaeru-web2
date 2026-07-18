@@ -34,6 +34,7 @@
   generateTeacherFeedbackDrafts: function(unitId, period, includeRank, autoReturn, responseIds, onlyMissing, medalMode) { return generateTeacherFeedbackDrafts(unitId, period, includeRank, autoReturn, responseIds, onlyMissing, medalMode); },
   saveTeacherFeedbackDraft: function(responseId, draftComment, draftRank) { return saveTeacherFeedbackDraft(responseId, draftComment, draftRank); },
   saveTeacherFeedbackDraftsBulk: function(items) { return saveTeacherFeedbackDraftsBulk(items); },
+  setTeacherResponseFavorite: function(responseId, isFavorite, options) { return setTeacherResponseFavorite(responseId, isFavorite, options); },
   saveTeacherFeedbackMedal: function(responseId, medal) { return saveTeacherFeedbackMedal(responseId, medal); },
   returnTeacherFeedbackDrafts: function(unitId, period, responseIds, medalMode, options) { return returnTeacherFeedbackDrafts(unitId, period, responseIds, medalMode, options); },
   clearTeacherFeedbackDrafts: function(unitId, period, responseIds) { return clearTeacherFeedbackDrafts(unitId, period, responseIds); },

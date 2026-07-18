@@ -722,6 +722,7 @@ function mapLessonLiveStateRow_(row) {
     aiStartedAt: row[24] || '',
     aiLatencyMs: Number(row[25] || 0),
     aiModelLatencyMs: Number(row[26] || 0),
+    isFavorite: row[27] === true,
     readSource: 'live_state',
   };
 }
@@ -758,6 +759,7 @@ function buildLessonLiveStateRowValues_(responseRow, lesson) {
     item.aiStartedAt || '',
     Number(item.aiLatencyMs || 0),
     Number(item.aiModelLatencyMs || 0),
+    item.isFavorite === true,
   ];
 }
 
@@ -2355,6 +2357,7 @@ function mapResponseRow_(row) {
     aiStartedAt: row[22] || '',
     aiLatencyMs: Number(row[23] || 0),
     aiModelLatencyMs: Number(row[24] || 0),
+    isFavorite: row[25] === true,
   };
 }
 
@@ -2717,6 +2720,7 @@ function buildResponseSheetRowValues_(response) {
     item.aiStartedAt || '',
     Number(item.aiLatencyMs || 0),
     Number(item.aiModelLatencyMs || 0),
+    item.isFavorite === true,
   ];
 }
 
