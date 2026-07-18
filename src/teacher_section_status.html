@@ -17,7 +17,36 @@
             <button class="btn-medal" id="awardMedalsBtn" type="button" onclick="awardMedals()">🏅 メダル発表</button>
           </div>
         </div>
-        <div class="status-feedback-block">
+      </div>
+    </div>
+    <div class="card status-overview-card">
+      <div class="status-overview-head">
+        <div>
+          <h3>児童の回答一覧</h3>
+          <div class="status-overview-note">一覧では見つける、拡大表示では読む、の役割に分けて確認できます。</div>
+        </div>
+      </div>
+      <div class="status-view-tabs" role="tablist" aria-label="授業スタート表示切替">
+        <button class="status-view-tab active" id="statusViewTabResponses" type="button" role="tab" aria-selected="true" aria-controls="statusResponsesPane" onclick="switchStatusViewTab('responses')">回答を見る</button>
+        <button class="status-view-tab" id="statusViewTabFeedback" type="button" role="tab" aria-selected="false" aria-controls="statusFeedbackPane" onclick="switchStatusViewTab('feedback')">フィードバック</button>
+      </div>
+      <div class="status-view-pane active" id="statusResponsesPane" role="tabpanel" aria-labelledby="statusViewTabResponses">
+        <div id="statusLessonSummary"></div>
+        <div id="statusFieldTabs"></div>
+        <div class="status-density-card">
+          <div class="status-density-head">
+            <div>
+              <div class="status-density-title">表示列</div>
+              <div class="status-density-note"><span>1列は読む用</span><span>5列は見渡す用</span></div>
+            </div>
+            <div class="status-density-value" id="statusDensityValue">3列: 標準</div>
+          </div>
+          <div class="status-density-buttons" id="statusDensityButtons" role="group" aria-label="回答一覧の列数"></div>
+        </div>
+        <div id="statusCardGrid"><div class="status-grid-empty"><span class="spinner"></span></div></div>
+      </div>
+      <div class="status-view-pane" id="statusFeedbackPane" role="tabpanel" aria-labelledby="statusViewTabFeedback" hidden>
+        <div class="status-feedback-block status-feedback-block-pane">
           <div class="status-top-label">児童一括フィードバック</div>
           <div class="status-feedback-actions">
             <select class="inp" id="teacherFeedbackRankMode">
@@ -41,12 +70,38 @@
           <div class="status-feedback-meta" id="statusPerfDebug" style="display:none;"></div>
           <div class="status-feedback-result" id="teacherFeedbackResult"></div>
         </div>
+        <div class="status-feedback-detail-note">既存の個別フィードバック、個別修正、返却操作はこのまま使えます。</div>
+        <div style="overflow-x:auto;">
+          <table class="tbl status-table">
+            <thead><tr><th>児童 / 提出内容</th><th>フィードバック</th></tr></thead>
+            <tbody id="statusBody"><tr><td colspan="2" style="text-align:center;padding:18px;"><span class="spinner"></span></td></tr></tbody>
+          </table>
+        </div>
       </div>
     </div>
-    <div class="card" style="overflow-x:auto;">
-      <table class="tbl status-table">
-        <thead><tr><th>児童 / 提出内容</th><th>フィードバック</th></tr></thead>
-        <tbody id="statusBody"><tr><td colspan="2" style="text-align:center;padding:18px;"><span class="spinner"></span></td></tr></tbody>
-      </table>
+  </div>
+  <div class="modal-bg" id="statusCardModalBg" onclick="handleStatusCardModalBackdrop(event)">
+    <div class="modal status-card-modal" role="dialog" aria-modal="true" aria-labelledby="statusCardModalTitle" onclick="event.stopPropagation()">
+      <div class="status-card-modal-head">
+        <div class="status-card-modal-titlegroup">
+          <div class="status-card-modal-student" id="statusCardModalTitle"></div>
+          <div class="status-card-modal-number" id="statusCardModalNumber"></div>
+        </div>
+        <button class="btn-cancel status-card-modal-close" type="button" onclick="closeStatusCardModal()">閉じる</button>
+      </div>
+      <div class="status-card-modal-main">
+        <div class="status-card-modal-pane status-card-modal-answer">
+          <div class="status-card-modal-pane-title">回答内容</div>
+          <div class="status-card-modal-body" id="statusCardModalBody"></div>
+        </div>
+        <div class="status-card-modal-pane status-card-modal-feedback">
+          <div class="status-card-modal-pane-title">フィードバック</div>
+          <div class="status-card-modal-feedback-body" id="statusCardModalFeedback"></div>
+        </div>
+      </div>
+      <div class="status-card-modal-actions">
+        <button class="btn-subtle status-card-modal-nav" id="statusCardModalPrevBtn" type="button" onclick="moveStatusCardModal(-1)">← 前の児童</button>
+        <button class="btn-update status-card-modal-nav" id="statusCardModalNextBtn" type="button" onclick="moveStatusCardModal(1)">次の児童 →</button>
+      </div>
     </div>
   </div>

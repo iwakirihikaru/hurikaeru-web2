@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<script src="./runtime-shim.js?v=3dc7b19e3b"></script>
+<script src="./runtime-shim.js?v=7dd7bdc6fd"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ふりカエル 先生ページ</title>
@@ -251,6 +251,236 @@ body{font-family:var(--font);background:var(--bg);color:#212121;}
 .status-draft-textarea{min-height:84px;resize:vertical;line-height:1.7;}
 .status-draft-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:center;}
 .status-draft-note{font-size:11px;color:#8D6E63;line-height:1.6;}
+.status-overview-card{padding:16px;}
+.status-overview-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px;}
+.status-overview-head h3{margin:0;font-size:17px;color:var(--navy);}
+.status-overview-note{font-size:12px;color:var(--muted);margin-top:4px;}
+.status-feedback-block-pane{margin-bottom:14px;}
+.status-lesson-summary{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;
+  margin-bottom:12px;
+}
+.status-lesson-box{
+  padding:12px 14px;border-radius:14px;border:1px solid #DDEAD9;
+  background:linear-gradient(135deg,#F9FEF9,#EEF8F0);
+}
+.status-lesson-box.primary{
+  grid-column:span 2;background:linear-gradient(135deg,#EFF8F0,#E2F1E6);
+}
+.status-lesson-k{font-size:11px;font-weight:bold;color:#5A7C64;margin-bottom:4px;}
+.status-lesson-v{font-size:14px;line-height:1.6;color:#1F2D3D;font-weight:bold;word-break:break-word;}
+.status-field-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;}
+.status-field-tab{
+  display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border-radius:999px;
+  border:1.5px solid #CFE3D4;background:#fff;color:#2F5D3A;font-size:13px;font-weight:bold;
+  cursor:pointer;font-family:var(--font);
+}
+.status-field-tab.active{background:linear-gradient(135deg,#43A047,#2E7D32);border-color:#2E7D32;color:#fff;}
+.status-field-tab.single{cursor:default;}
+.status-view-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;}
+.status-view-tab{
+  display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:10px 18px;border-radius:999px;
+  border:1.5px solid #CFE3D4;background:#fff;color:#2F5D3A;font-size:14px;font-weight:bold;cursor:pointer;font-family:var(--font);
+}
+.status-view-tab.active{background:linear-gradient(135deg,#2E7D32,#1B5E20);border-color:#1B5E20;color:#fff;}
+.status-view-pane{display:none;}
+.status-view-pane.active{display:block;}
+.status-density-card{
+  margin-bottom:14px;padding:14px 16px;border-radius:16px;border:1px solid #DDEAD9;
+  background:linear-gradient(135deg,#FCFEFC,#F1F8F2);
+}
+.status-density-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px;}
+.status-density-title{font-size:13px;font-weight:bold;color:#355640;}
+.status-density-note{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:#607D66;margin-top:4px;}
+.status-density-value{
+  align-self:center;min-width:110px;padding:6px 10px;border-radius:999px;background:#E8F5E9;
+  color:#1B5E20;font-size:12px;font-weight:bold;text-align:center;
+}
+.status-density-buttons{
+  display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;
+}
+.status-density-btn{
+  min-height:44px;padding:8px 10px;border-radius:12px;border:1.5px solid #CFE3D4;
+  background:#fff;color:#355640;font-size:13px;font-weight:bold;cursor:pointer;font-family:var(--font);
+}
+.status-density-btn.active{
+  background:linear-gradient(135deg,#2E7D32,#1B5E20);border-color:#1B5E20;color:#fff;
+}
+.status-card-grid{
+  --status-card-columns:3;
+  --status-card-min-height:220px;
+  display:grid;grid-template-columns:repeat(var(--status-card-columns),minmax(0,1fr));gap:12px;align-items:start;
+}
+.status-card{
+  --status-card-padding:14px;
+  --status-card-text-size:15px;
+  --status-card-line-height:1.75;
+  --status-card-meta-size:12px;
+  --status-card-chip-size:11px;
+  --status-card-student-size:15px;
+  --status-card-section-gap:8px;
+  --status-card-block-gap:7px;
+  display:flex;flex-direction:column;gap:10px;min-width:0;min-height:var(--status-card-min-height);
+  padding:var(--status-card-padding);border:none;border-radius:16px;background:linear-gradient(180deg,#FFFFFF 0%,#F8FBF8 100%);
+  box-shadow:0 8px 18px rgba(46,125,50,.08);border:1px solid #D9E8DD;cursor:pointer;
+  text-align:left;font-family:var(--font);
+}
+.status-card:hover{transform:translateY(-1px);}
+.status-card:focus-visible{outline:3px solid rgba(67,160,71,.28);outline-offset:2px;}
+.status-card-head{display:flex;align-items:flex-start;gap:10px;}
+.status-card-name{min-width:0;width:100%;}
+.status-card-studentline{display:flex;align-items:baseline;gap:8px;min-width:0;white-space:nowrap;}
+.status-card-number{
+  flex:0 0 auto;font-size:var(--status-card-meta-size);font-weight:bold;color:#5D7A67;line-height:1.35;
+}
+.status-card-student{
+  min-width:0;font-size:var(--status-card-student-size);font-weight:bold;color:#1E2D3D;line-height:1.35;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.status-card-student.compact{font-size:calc(var(--status-card-student-size) - 1px);}
+.status-card-student.tight{font-size:calc(var(--status-card-student-size) - 2px);}
+.status-card-content{display:flex;flex-direction:column;gap:var(--status-card-section-gap);min-height:0;flex:1;}
+.status-card-section{
+  display:flex;flex-direction:column;gap:var(--status-card-block-gap);padding:8px 9px;border-radius:12px;
+  background:#FAFCFA;border:1px solid #E1ECE4;
+}
+.status-card-section-title{
+  font-size:var(--status-card-meta-size);font-weight:bold;color:#50715A;line-height:1.45;
+}
+.status-card-field,
+.status-card-review-chip{
+  display:inline-flex;align-items:center;gap:4px;max-width:100%;padding:5px 10px;border-radius:999px;
+  background:#E9F5EB;color:#2E7D32;font-size:var(--status-card-chip-size);font-weight:bold;line-height:1.4;
+}
+.status-card-review-list{display:flex;flex-direction:column;gap:7px;}
+.status-card-review-item{
+  display:flex;flex-direction:column;gap:6px;padding:7px 8px;border-radius:10px;
+  background:#fff;border:1px solid #E7EEF8;
+}
+.status-card-review-chip{background:#E8F0FE;color:var(--navy);align-self:flex-start;}
+.status-card-body{display:flex;flex-direction:column;gap:8px;min-height:0;flex:1;}
+.status-card-text{
+  font-size:var(--status-card-text-size);line-height:var(--status-card-line-height);color:#263238;word-break:break-word;white-space:pre-wrap;
+}
+.status-card-empty{color:#90A4AE;}
+.status-card-foot{font-size:11px;color:#78909C;}
+.status-card-grid.cols-1 .status-card{
+  --status-card-padding:18px;
+  --status-card-text-size:16px;
+  --status-card-line-height:1.9;
+  --status-card-meta-size:13px;
+  --status-card-chip-size:12px;
+  --status-card-student-size:17px;
+}
+.status-card-grid.cols-2 .status-card{
+  --status-card-padding:16px;
+  --status-card-text-size:15px;
+  --status-card-line-height:1.8;
+  --status-card-student-size:16px;
+}
+.status-card-grid.cols-3 .status-card{
+  --status-card-padding:14px;
+  --status-card-text-size:14px;
+  --status-card-line-height:1.75;
+  --status-card-meta-size:12px;
+  --status-card-chip-size:11px;
+  --status-card-student-size:15px;
+}
+.status-card-grid.cols-4 .status-card{
+  --status-card-padding:12px;
+  --status-card-text-size:13px;
+  --status-card-line-height:1.68;
+  --status-card-meta-size:11px;
+  --status-card-chip-size:10px;
+  --status-card-student-size:14px;
+  --status-card-section-gap:7px;
+  --status-card-block-gap:6px;
+}
+.status-card-grid.cols-5 .status-card{
+  --status-card-padding:11px;
+  --status-card-text-size:12px;
+  --status-card-line-height:1.58;
+  --status-card-meta-size:10px;
+  --status-card-chip-size:10px;
+  --status-card-student-size:13px;
+  --status-card-section-gap:6px;
+  --status-card-block-gap:5px;
+}
+.status-card.length-medium{
+  --status-card-text-size:calc(var(--status-card-text-size) - .4px);
+  --status-card-line-height:calc(var(--status-card-line-height) - .04);
+}
+.status-card.length-long{
+  --status-card-text-size:calc(var(--status-card-text-size) - 1px);
+  --status-card-line-height:calc(var(--status-card-line-height) - .08);
+}
+.status-card.length-xlong{
+  --status-card-text-size:calc(var(--status-card-text-size) - 1.6px);
+  --status-card-line-height:calc(var(--status-card-line-height) - .12);
+}
+.status-card.length-xxlong{
+  --status-card-text-size:calc(var(--status-card-text-size) - 2px);
+  --status-card-line-height:calc(var(--status-card-line-height) - .16);
+}
+.status-card.expand-height{min-height:calc(var(--status-card-min-height) + 40px);}
+.status-grid-empty{
+  display:flex;align-items:center;justify-content:center;min-height:180px;padding:18px;
+  border-radius:14px;background:#F8FBFF;border:1px dashed #D6E3F3;color:#78909C;text-align:center;
+}
+.status-feedback-detail-note{font-size:12px;color:var(--muted);margin:12px 0 10px;}
+.status-modal-open{overflow:hidden;}
+.status-card-modal{
+  width:min(94vw,1800px);max-width:1800px;height:min(calc(var(--status-modal-vh, 1vh) * 94),96vh);
+  max-height:min(calc(var(--status-modal-vh, 1vh) * 94),96vh);padding:18px 18px 16px;display:flex;flex-direction:column;
+}
+.status-card-modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px;}
+.status-card-modal-titlegroup{min-width:0;}
+.status-card-modal-student{font-size:20px;font-weight:bold;color:var(--navy);line-height:1.5;}
+.status-card-modal-number{font-size:13px;color:#607D8B;line-height:1.6;margin-top:4px;}
+.status-card-modal-close{margin-top:0;min-width:96px;}
+.status-card-modal-main{
+  flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1.45fr) minmax(320px,.95fr);gap:14px;
+}
+.status-card-modal-pane{
+  min-height:0;display:flex;flex-direction:column;border-radius:16px;background:#FAFCFA;border:1px solid #E0ECE3;
+}
+.status-card-modal-pane-title{
+  padding:12px 14px 0;font-size:12px;font-weight:bold;color:#4B6A54;
+}
+.status-card-modal-body{
+  flex:1;overflow:auto;padding:14px 14px 16px;
+}
+.status-card-modal-answer .status-card-content{
+  gap:10px;
+}
+.status-card-modal-answer .status-card-section{
+  padding:11px 12px;border-radius:14px;
+}
+.status-card-modal-answer .status-card-section-title{
+  font-size:13px;
+}
+.status-card-modal-answer .status-card-field,
+.status-card-modal-answer .status-card-review-chip{
+  font-size:11px;
+}
+.status-card-modal-answer .status-card-text{
+  font-size:16px;line-height:1.9;
+}
+.status-card-modal-feedback-body{
+  flex:1;overflow:auto;padding:12px 14px 16px;
+}
+.status-card-modal-feedback-body .status-draft-box{
+  margin-top:0;min-height:100%;
+}
+.status-card-modal-feedback-body .status-draft-textarea{
+  min-height:220px;font-size:14px;line-height:1.8;
+}
+.status-card-modal-feedback-body .status-draft-rank,
+.status-card-modal-feedback-body .status-draft-medal{
+  font-size:13px;
+}
+.status-card-modal-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:space-between;margin-top:14px;}
+.status-card-modal-nav{flex:1;min-width:180px;min-height:44px;}
 @media(max-width:820px){
   .container{padding:10px;}
   .card{padding:14px;}
@@ -274,6 +504,13 @@ body{font-family:var(--font);background:var(--bg);color:#212121;}
   .lesson-banner-actions .btn-end{
     width:100%;
     margin-top:0;
+  }
+  .status-view-tabs{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+  }
+  .status-view-tab{
+    width:100%;
   }
   .status-feedback-actions{
     display:grid;
@@ -408,6 +645,26 @@ body{font-family:var(--font);background:var(--bg);color:#212121;}
     width:100%;
     margin-top:0;
   }
+  .status-lesson-box.primary{grid-column:span 1;}
+  .status-density-head{flex-direction:column;}
+  .status-density-buttons{grid-template-columns:repeat(3,minmax(0,1fr));}
+  .status-card-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
+  .status-card{min-height:200px;}
+  .status-card-text{font-size:14px;}
+  .status-card-modal{
+    width:94vw;height:min(calc(var(--status-modal-vh, 1vh) * 92),94vh);
+    max-height:min(calc(var(--status-modal-vh, 1vh) * 92),94vh);padding:16px;
+  }
+  .status-card-modal-head{flex-direction:column;}
+  .status-card-modal-close{width:100%;}
+  .status-card-modal-main{grid-template-columns:1fr;}
+  .status-card-modal-feedback-body .status-draft-textarea{min-height:160px;}
+  .status-card-modal-actions{flex-direction:column;}
+  .status-card-modal-nav{width:100%;}
+}
+@media(max-width:520px){
+  .status-density-buttons{grid-template-columns:repeat(2,minmax(0,1fr));}
+  .status-card-grid{grid-template-columns:1fr;}
 }
 .rank-chip{display:inline-block;padding:2px 9px;border-radius:10px;font-weight:bold;font-size:11px;color:#fff;}
 .r-C{background:#B0BEC5;}.r-Cp{background:#90A4AE;}
@@ -780,7 +1037,36 @@ button:not([disabled]):active,button.is-pressed{transform:translateY(1px);filter
             <button class="btn-medal" id="awardMedalsBtn" type="button" onclick="awardMedals()">🏅 メダル発表</button>
           </div>
         </div>
-        <div class="status-feedback-block">
+      </div>
+    </div>
+    <div class="card status-overview-card">
+      <div class="status-overview-head">
+        <div>
+          <h3>児童の回答一覧</h3>
+          <div class="status-overview-note">一覧では見つける、拡大表示では読む、の役割に分けて確認できます。</div>
+        </div>
+      </div>
+      <div class="status-view-tabs" role="tablist" aria-label="授業スタート表示切替">
+        <button class="status-view-tab active" id="statusViewTabResponses" type="button" role="tab" aria-selected="true" aria-controls="statusResponsesPane" onclick="switchStatusViewTab('responses')">回答を見る</button>
+        <button class="status-view-tab" id="statusViewTabFeedback" type="button" role="tab" aria-selected="false" aria-controls="statusFeedbackPane" onclick="switchStatusViewTab('feedback')">フィードバック</button>
+      </div>
+      <div class="status-view-pane active" id="statusResponsesPane" role="tabpanel" aria-labelledby="statusViewTabResponses">
+        <div id="statusLessonSummary"></div>
+        <div id="statusFieldTabs"></div>
+        <div class="status-density-card">
+          <div class="status-density-head">
+            <div>
+              <div class="status-density-title">表示列</div>
+              <div class="status-density-note"><span>1列は読む用</span><span>5列は見渡す用</span></div>
+            </div>
+            <div class="status-density-value" id="statusDensityValue">3列: 標準</div>
+          </div>
+          <div class="status-density-buttons" id="statusDensityButtons" role="group" aria-label="回答一覧の列数"></div>
+        </div>
+        <div id="statusCardGrid"><div class="status-grid-empty"><span class="spinner"></span></div></div>
+      </div>
+      <div class="status-view-pane" id="statusFeedbackPane" role="tabpanel" aria-labelledby="statusViewTabFeedback" hidden>
+        <div class="status-feedback-block status-feedback-block-pane">
           <div class="status-top-label">児童一括フィードバック</div>
           <div class="status-feedback-actions">
             <select class="inp" id="teacherFeedbackRankMode">
@@ -804,13 +1090,39 @@ button:not([disabled]):active,button.is-pressed{transform:translateY(1px);filter
           <div class="status-feedback-meta" id="statusPerfDebug" style="display:none;"></div>
           <div class="status-feedback-result" id="teacherFeedbackResult"></div>
         </div>
+        <div class="status-feedback-detail-note">既存の個別フィードバック、個別修正、返却操作はこのまま使えます。</div>
+        <div style="overflow-x:auto;">
+          <table class="tbl status-table">
+            <thead><tr><th>児童 / 提出内容</th><th>フィードバック</th></tr></thead>
+            <tbody id="statusBody"><tr><td colspan="2" style="text-align:center;padding:18px;"><span class="spinner"></span></td></tr></tbody>
+          </table>
+        </div>
       </div>
     </div>
-    <div class="card" style="overflow-x:auto;">
-      <table class="tbl status-table">
-        <thead><tr><th>児童 / 提出内容</th><th>フィードバック</th></tr></thead>
-        <tbody id="statusBody"><tr><td colspan="2" style="text-align:center;padding:18px;"><span class="spinner"></span></td></tr></tbody>
-      </table>
+  </div>
+  <div class="modal-bg" id="statusCardModalBg" onclick="handleStatusCardModalBackdrop(event)">
+    <div class="modal status-card-modal" role="dialog" aria-modal="true" aria-labelledby="statusCardModalTitle" onclick="event.stopPropagation()">
+      <div class="status-card-modal-head">
+        <div class="status-card-modal-titlegroup">
+          <div class="status-card-modal-student" id="statusCardModalTitle"></div>
+          <div class="status-card-modal-number" id="statusCardModalNumber"></div>
+        </div>
+        <button class="btn-cancel status-card-modal-close" type="button" onclick="closeStatusCardModal()">閉じる</button>
+      </div>
+      <div class="status-card-modal-main">
+        <div class="status-card-modal-pane status-card-modal-answer">
+          <div class="status-card-modal-pane-title">回答内容</div>
+          <div class="status-card-modal-body" id="statusCardModalBody"></div>
+        </div>
+        <div class="status-card-modal-pane status-card-modal-feedback">
+          <div class="status-card-modal-pane-title">フィードバック</div>
+          <div class="status-card-modal-feedback-body" id="statusCardModalFeedback"></div>
+        </div>
+      </div>
+      <div class="status-card-modal-actions">
+        <button class="btn-subtle status-card-modal-nav" id="statusCardModalPrevBtn" type="button" onclick="moveStatusCardModal(-1)">← 前の児童</button>
+        <button class="btn-update status-card-modal-nav" id="statusCardModalNextBtn" type="button" onclick="moveStatusCardModal(1)">次の児童 →</button>
+      </div>
     </div>
   </div>
 
@@ -3421,7 +3733,19 @@ var unitListPage = 1;
 var lastUnitListSignature = '';
 var UNIT_LIST_PAGE_SIZE = 10;
 var TEACHER_FEEDBACK_PREFS_KEY = 'teacher_feedback_prefs_v1';
+var STATUS_VIEW_PREFS_KEY = 'teacher_status_view_prefs_v1';
 var teacherFeedbackPrefsLoaded = false;
+var selectedStatusFieldKeys = [];
+var latestStatusLessonKey = '';
+var latestStatusFieldOptions = [];
+var latestStatusViewRows = [];
+var statusModalStudentKey = '';
+var statusModalScrollY = 0;
+var statusCardEventsBound = false;
+var selectedStatusViewTab = 'responses';
+var statusCardColumnCount = 3;
+var statusViewScrollByTab = { responses: 0, feedback: 0 };
+var statusModalBodyLockY = 0;
 function formatStatusTimingLine_(label, timing, keys) {
     if (!timing || typeof timing !== 'object' || !Array.isArray(keys) || !keys.length)
         return '';
@@ -3538,8 +3862,157 @@ function bindTeacherFeedbackPrefs_() {
         el.addEventListener('change', saveTeacherFeedbackPrefs_);
     });
 }
+function loadStatusViewPrefs_() {
+    try {
+        var raw = localStorage.getItem(STATUS_VIEW_PREFS_KEY);
+        var parsed = raw ? JSON.parse(raw) : {};
+        return parsed && typeof parsed === 'object' ? parsed : {};
+    }
+    catch (_err) {
+        return {};
+    }
+}
+function saveStatusViewPrefs_() {
+    try {
+        localStorage.setItem(STATUS_VIEW_PREFS_KEY, JSON.stringify({
+            tab: selectedStatusViewTab === 'feedback' ? 'feedback' : 'responses',
+            columns: Math.max(1, Math.min(5, Number(statusCardColumnCount || 3) || 3)),
+        }));
+    }
+    catch (_err) { }
+}
+function getStatusDensityLabel_(columns) {
+    var normalized = Math.max(1, Math.min(5, Number(columns || 3) || 3));
+    if (normalized === 1)
+        return 'じっくり読む';
+    if (normalized === 2)
+        return '大きめ';
+    if (normalized === 3)
+        return '標準';
+    if (normalized === 4)
+        return '一覧';
+    return '全体を見る';
+}
+function getStatusCardDensityConfig_(columns) {
+    var normalized = Math.max(1, Math.min(5, Number(columns || 3) || 3));
+    var map = {
+        1: { clamp: 14, minHeight: 360 },
+        2: { clamp: 9, minHeight: 300 },
+        3: { clamp: 7, minHeight: 248 },
+        4: { clamp: 5, minHeight: 220 },
+        5: { clamp: 3, minHeight: 188 },
+    };
+    return map[normalized] || map[3];
+}
+function applyStatusViewPrefs_() {
+    var prefs = loadStatusViewPrefs_();
+    selectedStatusViewTab = String(prefs.tab || selectedStatusViewTab || 'responses') === 'feedback' ? 'feedback' : 'responses';
+    statusCardColumnCount = Math.max(1, Math.min(5, Number(prefs.columns || statusCardColumnCount || 3) || 3));
+    updateStatusDensityControls_();
+    applyStatusViewTabState_();
+}
+function bindStatusViewPrefs_() {
+    applyStatusViewPrefs_();
+    updateStatusDensityControls_();
+}
+function updateStatusDensityControls_() {
+    var valueEl = document.getElementById('statusDensityValue');
+    var buttonsEl = document.getElementById('statusDensityButtons');
+    var columns = Math.max(1, Math.min(5, Number(statusCardColumnCount || 3) || 3));
+    if (valueEl)
+        valueEl.textContent = "".concat(columns, "\u5217: ").concat(getStatusDensityLabel_(columns));
+    if (buttonsEl) {
+        buttonsEl.innerHTML = [1, 2, 3, 4, 5].map(function (count) {
+            return "<button class=\"status-density-btn".concat(count === columns ? ' active' : '', "\" type=\"button\" aria-pressed=\"").concat(count === columns ? 'true' : 'false', "\" onclick=\"updateStatusDensityPreference_(").concat(count, ", true)\">").concat(count, "\u5217</button>");
+        }).join('');
+    }
+}
+function updateStatusDensityPreference_(value, save) {
+    var nextCount = Math.max(1, Math.min(5, Number(value || statusCardColumnCount || 3) || 3));
+    var scrollYBefore = getStatusViewportScrollY_();
+    if (statusCardColumnCount !== nextCount) {
+        statusCardColumnCount = nextCount;
+        renderStatusCardGrid_();
+        syncStatusCardModal_();
+        restoreStatusViewportScroll_(scrollYBefore);
+    }
+    updateStatusDensityControls_();
+    if (save !== false) {
+        saveStatusViewPrefs_();
+    }
+}
+function applyStatusViewTabState_() {
+    var responsesTab = document.getElementById('statusViewTabResponses');
+    var feedbackTab = document.getElementById('statusViewTabFeedback');
+    var responsesPane = document.getElementById('statusResponsesPane');
+    var feedbackPane = document.getElementById('statusFeedbackPane');
+    var showFeedback = selectedStatusViewTab === 'feedback';
+    if (responsesTab) {
+        responsesTab.classList.toggle('active', !showFeedback);
+        responsesTab.setAttribute('aria-selected', !showFeedback ? 'true' : 'false');
+    }
+    if (feedbackTab) {
+        feedbackTab.classList.toggle('active', showFeedback);
+        feedbackTab.setAttribute('aria-selected', showFeedback ? 'true' : 'false');
+    }
+    if (responsesPane) {
+        responsesPane.classList.toggle('active', !showFeedback);
+        responsesPane.hidden = showFeedback;
+    }
+    if (feedbackPane) {
+        feedbackPane.classList.toggle('active', showFeedback);
+        feedbackPane.hidden = !showFeedback;
+    }
+}
+function switchStatusViewTab(tabName) {
+    var nextTab = String(tabName || '').trim() === 'feedback' ? 'feedback' : 'responses';
+    if (nextTab === selectedStatusViewTab)
+        return;
+    statusViewScrollByTab[selectedStatusViewTab] = getStatusViewportScrollY_();
+    selectedStatusViewTab = nextTab;
+    applyStatusViewTabState_();
+    saveStatusViewPrefs_();
+    restoreStatusViewportScroll_(statusViewScrollByTab[nextTab] || 0);
+}
+function syncStatusModalViewportVar_() {
+    if (typeof document === 'undefined')
+        return;
+    var nextHeight = window && window.visualViewport ? window.visualViewport.height : window.innerHeight;
+    if (!nextHeight)
+        return;
+    document.documentElement.style.setProperty('--status-modal-vh', "".concat(nextHeight * 0.01, "px"));
+}
+function lockStatusModalBackgroundScroll_() {
+    if (typeof document === 'undefined')
+        return;
+    var body = document.body;
+    if (!body || body.classList.contains('status-modal-open'))
+        return;
+    statusModalBodyLockY = getStatusViewportScrollY_();
+    syncStatusModalViewportVar_();
+    body.classList.add('status-modal-open');
+    body.style.position = 'fixed';
+    body.style.top = "-".concat(statusModalBodyLockY, "px");
+    body.style.left = '0';
+    body.style.right = '0';
+    body.style.width = '100%';
+}
+function unlockStatusModalBackgroundScroll_() {
+    if (typeof document === 'undefined')
+        return;
+    var body = document.body;
+    if (!body || !body.classList.contains('status-modal-open'))
+        return;
+    body.classList.remove('status-modal-open');
+    body.style.position = '';
+    body.style.top = '';
+    body.style.left = '';
+    body.style.right = '';
+    body.style.width = '';
+}
 function loadStatus() {
     bindTeacherFeedbackPrefs_();
+    bindStatusViewPrefs_();
     if (!activeUnitId || !activePeriod)
         return;
     if (preloadCache.statusLoading)
@@ -3587,9 +4060,122 @@ function applyActiveFromStatusMeta_(meta) {
     populateUnitSelects();
     return true;
 }
+function getStatusLessonKey_(meta) {
+    var unitId = String(meta && meta.unitId || '').trim();
+    var period = Number(meta && meta.period || 0);
+    return unitId && period > 0 ? "".concat(unitId, ":").concat(period) : '';
+}
+function buildStatusFieldOptions_(meta, rows) {
+    var fields = Array.isArray(meta && meta.fields) ? meta.fields : [];
+    var understandingFieldKey = String(meta && meta.understandingFieldKey || '').trim();
+    var options = [];
+    var seen = {};
+    fields.forEach(function (field) {
+        var key = String(field && field.key || '').trim();
+        if (!key || key === understandingFieldKey || seen[key])
+            return;
+        seen[key] = true;
+        options.push({
+            key: key,
+            label: String(field && field.label || key),
+            emoji: String(field && field.emoji || ''),
+            type: String(field && field.type || 'text'),
+        });
+    });
+    (Array.isArray(rows) ? rows : []).forEach(function (student) {
+        (Array.isArray(student && student.entries) ? student.entries : []).forEach(function (entry) {
+            var key = String(entry && entry.key || '').trim();
+            if (!key || key === understandingFieldKey || seen[key])
+                return;
+            seen[key] = true;
+            options.push({
+                key: key,
+                label: String(entry && entry.label || key),
+                emoji: String(entry && entry.emoji || ''),
+                type: String(entry && entry.type || 'text'),
+            });
+        });
+    });
+    return options;
+}
+function buildStatusViewRows_(rows, fieldOptions) {
+    return (Array.isArray(rows) ? rows : []).map(function (student) {
+        var entryMap = {};
+        (Array.isArray(student && student.entries) ? student.entries : []).forEach(function (entry) {
+            var key = String(entry && entry.key || '').trim();
+            if (key)
+                entryMap[key] = entry;
+        });
+        return {
+            student: student,
+            key: getStatusStudentKey_(student),
+            entryMap: entryMap,
+            previewMap: buildStatusPreviewMap_(entryMap, fieldOptions),
+        };
+    });
+}
+function buildStatusPreviewMap_(entryMap, fieldOptions) {
+    var previewMap = {};
+    (Array.isArray(fieldOptions) ? fieldOptions : []).forEach(function (field) {
+        var key = String(field && field.key || '').trim();
+        if (!key)
+            return;
+        var entry = entryMap[key] || null;
+        previewMap[key] = entry ? String(entry.value || '') : '';
+    });
+    return previewMap;
+}
+function getStatusFieldOptionByKey_(fieldKey) {
+    var targetKey = String(fieldKey || '').trim();
+    for (var i = 0; i < latestStatusFieldOptions.length; i++) {
+        if (String(latestStatusFieldOptions[i] && latestStatusFieldOptions[i].key || '') === targetKey) {
+            return latestStatusFieldOptions[i];
+        }
+    }
+    return null;
+}
+function getSelectedStatusFieldKeys_() {
+    var keys = (Array.isArray(selectedStatusFieldKeys) ? selectedStatusFieldKeys : [])
+        .map(function (value) { return String(value || '').trim(); })
+        .filter(Boolean)
+        .filter(function (value, index, array) { return array.indexOf(value) === index; });
+    if (!keys.length && latestStatusFieldOptions.length) {
+        keys = [String(latestStatusFieldOptions[0].key || '')];
+    }
+    return keys;
+}
+function getSelectedStatusFields_() {
+    return getSelectedStatusFieldKeys_()
+        .map(function (fieldKey) { return getStatusFieldOptionByKey_(fieldKey); })
+        .filter(Boolean);
+}
+function areAllStatusFieldsSelected_() {
+    return latestStatusFieldOptions.length > 1 && getSelectedStatusFieldKeys_().length === latestStatusFieldOptions.length;
+}
+function ensureStatusSelection_(lessonChanged) {
+    latestStatusFieldOptions = buildStatusFieldOptions_(latestStatusMeta, latestStatusRows);
+    latestStatusViewRows = buildStatusViewRows_(latestStatusRows, latestStatusFieldOptions);
+    if (lessonChanged) {
+        statusModalStudentKey = '';
+    }
+    if (!latestStatusFieldOptions.length) {
+        selectedStatusFieldKeys = [];
+        return;
+    }
+    var availableKeys = latestStatusFieldOptions.map(function (field) { return String(field && field.key || ''); });
+    var filtered = getStatusFieldKeysFromSelection_(availableKeys);
+    selectedStatusFieldKeys = filtered.length ? filtered : [availableKeys[0]];
+}
+function getStatusFieldKeysFromSelection_(availableKeys) {
+    return getSelectedStatusFieldKeys_().filter(function (fieldKey) { return availableKeys.indexOf(fieldKey) >= 0; });
+}
 function renderStatus(d) {
+    var previousLessonKey = latestStatusLessonKey;
+    var scrollYBefore = getStatusViewportScrollY_();
     latestStatusRows = Array.isArray(d && d.students) ? d.students : [];
     latestStatusMeta = d && d.meta || {};
+    latestStatusLessonKey = getStatusLessonKey_(latestStatusMeta);
+    var lessonChanged = previousLessonKey !== latestStatusLessonKey;
     applyActiveFromStatusMeta_(latestStatusMeta);
     if (!latestStatusRows.length && !(latestStatusMeta && (latestStatusMeta.unitId || latestStatusMeta.lessonId))) {
         clearRenderedStatus_();
@@ -3599,6 +4185,8 @@ function renderStatus(d) {
         meta: latestStatusMeta,
         students: latestStatusRows,
     });
+    bindStatusCardEvents_();
+    ensureStatusSelection_(lessonChanged);
     renderStatusPerfDebug_();
     var st = latestStatusRows;
     var aiReturnedCount = st.filter(function (s) { return String(s.comment || '').trim(); }).length;
@@ -3608,11 +4196,390 @@ function renderStatus(d) {
     document.getElementById('statSubmitted').textContent = st.filter(function (s) { return s.submitted; }).length;
     document.getElementById('statAI').textContent = aiReturnedCount;
     syncTeacherFeedbackControls(st, draftCount);
-    if (!st.length) {
-        document.getElementById('statusBody').innerHTML = '<tr><td colspan="2" style="text-align:center;padding:18px;color:#78909C;">授業を開始すると、ここに児童の記録とフィードバックが表示されます。</td></tr>';
+    renderStatusLessonSummary_();
+    renderStatusFieldTabs_();
+    renderStatusCardGrid_();
+    renderStatusFeedbackTable_();
+    syncStatusCardModal_();
+    if (lessonChanged) {
+        scrollStatusGridToTop_();
+    }
+    else {
+        restoreStatusViewportScroll_(scrollYBefore);
+    }
+}
+function renderStatusLessonSummary_() {
+    var el = document.getElementById('statusLessonSummary');
+    if (!el)
+        return;
+    var boxes = [];
+    if (String(latestStatusMeta && latestStatusMeta.unitName || '').trim()) {
+        boxes.push("<div class=\"status-lesson-box primary\"><div class=\"status-lesson-k\">\u6388\u696D</div><div class=\"status-lesson-v\">".concat(esc(String(latestStatusMeta.unitName || '')), "</div></div>"));
+    }
+    if (String(latestStatusMeta && latestStatusMeta.subject || '').trim()) {
+        boxes.push("<div class=\"status-lesson-box\"><div class=\"status-lesson-k\">\u6559\u79D1</div><div class=\"status-lesson-v\">".concat(esc(String(latestStatusMeta.subject || '')), "</div></div>"));
+    }
+    if (Number(latestStatusMeta && latestStatusMeta.period || 0) > 0) {
+        boxes.push("<div class=\"status-lesson-box\"><div class=\"status-lesson-k\">\u6642\u9593\u76EE</div><div class=\"status-lesson-v\">\u7B2C".concat(Number(latestStatusMeta.period || 0), "\u6642</div></div>"));
+    }
+    el.className = 'status-lesson-summary';
+    el.innerHTML = boxes.join('');
+}
+function renderStatusFieldTabs_() {
+    var el = document.getElementById('statusFieldTabs');
+    if (!el)
+        return;
+    el.className = 'status-field-tabs';
+    if (!latestStatusFieldOptions.length) {
+        el.innerHTML = '';
         return;
     }
-    document.getElementById('statusBody').innerHTML = st.map(function (s) { return "\n    <tr>\n      <td data-label=\"\u5150\u7AE5 / \u63D0\u51FA\u5185\u5BB9\" class=\"status-student-cell\">".concat(renderStatusStudentCell(s), "</td>\n      <td data-label=\"\u30D5\u30A3\u30FC\u30C9\u30D0\u30C3\u30AF\" class=\"status-comment-cell\">").concat(renderStatusComment(s), "</td>\n    </tr>"); }).join('');
+    var selectedKeys = getSelectedStatusFieldKeys_();
+    var single = latestStatusFieldOptions.length === 1;
+    var buttons = latestStatusFieldOptions.map(function (field) {
+        var key = String(field && field.key || '');
+        var active = selectedKeys.indexOf(key) >= 0;
+        var label = ((field && field.emoji) ? "".concat(field.emoji, " ") : '') + String(field && field.label || key);
+        return "<button class=\"status-field-tab".concat(active ? ' active' : '', " ").concat(single ? 'single' : '', "\" type=\"button\" aria-pressed=\"").concat(active ? 'true' : 'false', "\" ").concat(single ? 'disabled' : '', " onclick=\"toggleStatusField('").concat(escAttr(key), "')\">").concat(esc(label), "</button>");
+    });
+    if (!single) {
+        buttons.unshift("<button class=\"status-field-tab".concat(areAllStatusFieldsSelected_() ? ' active' : '', "\" type=\"button\" aria-pressed=\"").concat(areAllStatusFieldsSelected_() ? 'true' : 'false', "\" onclick=\"toggleAllStatusFields()\">\u3059\u3079\u3066</button>"));
+    }
+    el.innerHTML = buttons.join('');
+}
+function renderStatusCardGrid_() {
+    var el = document.getElementById('statusCardGrid');
+    if (!el)
+        return;
+    var density = getStatusCardDensityConfig_(statusCardColumnCount);
+    if (!latestStatusRows.length) {
+        el.className = "status-card-grid cols-".concat(statusCardColumnCount);
+        el.style.setProperty('--status-card-columns', String(statusCardColumnCount));
+        el.style.setProperty('--status-card-min-height', "".concat(density.minHeight, "px"));
+        el.innerHTML = '<div class="status-grid-empty">授業を開始すると、ここに児童の回答が表示されます。</div>';
+        return;
+    }
+    var selectedFields = getSelectedStatusFields_();
+    el.className = "status-card-grid cols-".concat(statusCardColumnCount);
+    el.style.setProperty('--status-card-columns', String(statusCardColumnCount));
+    el.style.setProperty('--status-card-min-height', "".concat(density.minHeight, "px"));
+    el.innerHTML = latestStatusViewRows.map(function (row) { return renderStatusCard_(row, selectedFields); }).join('');
+}
+function renderStatusCard_(row, fields) {
+    var student = row.student || {};
+    var content = buildStatusContentHtml_(row, fields, { mode: 'card' });
+    var variantClass = getStatusCardVariantClass_(content.textLength, fields.length);
+    var studentName = safeStudentName(student);
+    var studentClass = studentName.length >= 13 ? 'status-card-student tight' : studentName.length >= 9 ? 'status-card-student compact' : 'status-card-student';
+    return "\n    <div class=\"status-card ".concat(variantClass, "\" role=\"button\" tabindex=\"0\" data-student-key=\"").concat(escAttr(row.key), "\" onclick=\"openStatusCardModal('").concat(escAttr(row.key), "')\" onkeydown=\"handleStatusCardKeydown(event,'").concat(escAttr(row.key), "')\">\n      <div class=\"status-card-head\">\n        <div class=\"status-card-name\">\n          <div class=\"status-card-studentline\">\n            <span class=\"status-card-number\">").concat(esc(getStatusStudentNumberLabel_(student)), "</span>\n            <span class=\"").concat(studentClass, "\">").concat(esc(studentName), "</span>\n          </div>\n        </div>\n      </div>\n      ").concat(content.html, "\n    </div>");
+}
+function handleStatusCardKeydown(event, studentKey) {
+    var key = String(event && event.key || '');
+    if (key !== 'Enter' && key !== ' ')
+        return;
+    if (event && typeof event.preventDefault === 'function')
+        event.preventDefault();
+    openStatusCardModal(studentKey);
+}
+function renderStatusFeedbackTable_() {
+    var body = document.getElementById('statusBody');
+    if (!body)
+        return;
+    if (!latestStatusRows.length) {
+        body.innerHTML = '<tr><td colspan="2" style="text-align:center;padding:18px;color:#78909C;">授業を開始すると、ここに児童の記録とフィードバックが表示されます。</td></tr>';
+        return;
+    }
+    body.innerHTML = latestStatusRows.map(function (s) { return "\n    <tr>\n      <td data-label=\"\u5150\u7AE5 / \u63D0\u51FA\u5185\u5BB9\" class=\"status-student-cell\">".concat(renderStatusStudentCell(s), "</td>\n      <td data-label=\"\u30D5\u30A3\u30FC\u30C9\u30D0\u30C3\u30AF\" class=\"status-comment-cell\">").concat(renderStatusComment(s), "</td>\n    </tr>"); }).join('');
+}
+function getStatusStudentKey_(student) {
+    var responseId = String(student && student.responseId || '').trim();
+    if (responseId)
+        return "response:".concat(responseId);
+    return "student:".concat(String(student && student.num || '').trim());
+}
+function getStatusStudentNumberLabel_(student) {
+    var num = String(student && student.num || '').trim();
+    return num ? "".concat(num, "\u756A") : '番号なし';
+}
+function getSelectedStatusField_() {
+    return getSelectedStatusFields_()[0] || null;
+}
+function toggleStatusField(fieldKey) {
+    var nextKey = String(fieldKey || '').trim();
+    if (!nextKey)
+        return;
+    var selectedKeys = getSelectedStatusFieldKeys_();
+    var exists = selectedKeys.indexOf(nextKey) >= 0;
+    if (exists && selectedKeys.length === 1)
+        return;
+    var scrollYBefore = getStatusViewportScrollY_();
+    selectedStatusFieldKeys = exists
+        ? selectedKeys.filter(function (key) { return key !== nextKey; })
+        : selectedKeys.concat([nextKey]);
+    renderStatusFieldTabs_();
+    renderStatusCardGrid_();
+    syncStatusCardModal_();
+    restoreStatusViewportScroll_(scrollYBefore);
+}
+function toggleAllStatusFields() {
+    if (latestStatusFieldOptions.length <= 1)
+        return;
+    var scrollYBefore = getStatusViewportScrollY_();
+    if (areAllStatusFieldsSelected_()) {
+        selectedStatusFieldKeys = [String(latestStatusFieldOptions[0] && latestStatusFieldOptions[0].key || '')];
+    }
+    else {
+        selectedStatusFieldKeys = latestStatusFieldOptions.map(function (field) { return String(field && field.key || ''); });
+    }
+    renderStatusFieldTabs_();
+    renderStatusCardGrid_();
+    syncStatusCardModal_();
+    restoreStatusViewportScroll_(scrollYBefore);
+}
+function getStatusReviewHintLabels_(entry) {
+    return String(entry && entry.hints || '')
+        .split(',')
+        .map(function (text) { return String(text || '').trim(); })
+        .filter(Boolean);
+}
+function stripStatusReviewHintLines_(text, entry) {
+    var value = String(text || '');
+    getStatusReviewHintLabels_(entry).forEach(function (label) {
+        value = value.split(label).join('');
+    });
+    return value.replace(/\n{3,}/g, '\n\n').trim();
+}
+function splitStatusReviewSections_(entry) {
+    var text = String(entry && entry.value || '').trim();
+    var labels = getStatusReviewHintLabels_(entry);
+    if (!text || !labels.length) {
+        return [];
+    }
+    var pattern = new RegExp('(?:^|\\n)\\s*(' + labels.map(teacherEscapeRegex_).join('|') + ')\\s*(?=\\n|$)', 'g');
+    var matches = [];
+    var match = null;
+    while ((match = pattern.exec(text))) {
+        matches.push({
+            label: String(match[1] || '').trim(),
+            start: match.index,
+            end: pattern.lastIndex,
+        });
+    }
+    if (!matches.length) {
+        return [];
+    }
+    return matches.map(function (item, index) {
+        var nextStart = index + 1 < matches.length ? matches[index + 1].start : text.length;
+        var body = text.slice(item.end, nextStart).replace(/^\s+|\s+$/g, '');
+        return {
+            label: item.label,
+            body: body,
+            isEmpty: !body,
+        };
+    }).filter(function (item, index, array) {
+        return item.label && (item.body || index === array.length - 1);
+    });
+}
+function renderStatusReviewSectionHtml_(entry, mode) {
+    var sections = splitStatusReviewSections_(entry);
+    var reviewText = String(entry && entry.value || '').trim();
+    var countText = stripStatusReviewHintLines_(reviewText, entry);
+    if (!sections.length) {
+        return {
+            html: "<div class=\"status-card-text".concat(reviewText ? '' : ' status-card-empty', "\">").concat(reviewText ? renderTeacherReviewText_(reviewText, [entry]) : 'まだ入力がありません', "</div>"),
+            textLength: countText.length,
+        };
+    }
+    return {
+        html: "<div class=\"status-card-review-list\">".concat(sections.map(function (section) {
+            var body = String(section && section.body || '').trim();
+            return "<div class=\"status-card-review-item\"><span class=\"status-card-review-chip\">".concat(esc(section.label || '項目'), "</span><div class=\"status-card-text").concat(body ? '' : ' status-card-empty', "\">").concat(body ? esc(body).replace(/\n/g, '<br>') : 'まだ入力がありません', "</div></div>");
+        }).join(''), "</div>"),
+        textLength: countText.length,
+    };
+}
+function buildStatusContentHtml_(row, fields, options) {
+    var selectedFields = Array.isArray(fields) && fields.length ? fields : getSelectedStatusFields_();
+    var contentFields = selectedFields.length ? selectedFields : latestStatusFieldOptions.slice(0, 1);
+    var sections = contentFields.map(function (field) {
+        var entry = row && row.entryMap ? row.entryMap[String(field && field.key || '')] : null;
+        var heading = ((field && field.emoji) ? "".concat(field.emoji, " ") : '') + String(field && field.label || field && field.key || '回答');
+        if (!entry) {
+            return {
+                html: "<section class=\"status-card-section\"><div class=\"status-card-section-title\">".concat(esc(heading), "</div><div class=\"status-card-text status-card-empty\">\u307E\u3060\u5165\u529B\u304C\u3042\u308A\u307E\u305B\u3093</div></section>"),
+                textLength: 0,
+            };
+        }
+        if (String(entry && entry.type || '') === 'review') {
+            var reviewSection = renderStatusReviewSectionHtml_(entry, String(options && options.mode || 'card'));
+            return {
+                html: "<section class=\"status-card-section\"><div class=\"status-card-section-title\">".concat(esc(heading), "</div>").concat(reviewSection.html, "</section>"),
+                textLength: reviewSection.textLength,
+            };
+        }
+        var valueHtml = renderStatusEntryValue(entry);
+        var valueText = String(entry && entry.value || '').trim();
+        return {
+            html: "<section class=\"status-card-section\"><div class=\"status-card-section-title\">".concat(esc(heading), "</div><div class=\"status-card-text").concat(valueText ? '' : ' status-card-empty', "\">").concat(valueText ? valueHtml : 'まだ入力がありません', "</div></section>"),
+            textLength: valueText.length,
+        };
+    });
+    return {
+        html: "<div class=\"status-card-content\">".concat(sections.map(function (section) { return section.html; }).join(''), "</div>"),
+        textLength: sections.reduce(function (sum, section) { return sum + Number(section && section.textLength || 0); }, 0),
+    };
+}
+function getStatusCardVariantClass_(textLength, sectionCount) {
+    var total = Math.max(0, Number(textLength || 0)) + (Math.max(1, Number(sectionCount || 1)) - 1) * 90;
+    var classes = [];
+    if (total >= 560) {
+        classes.push('length-xxlong');
+    }
+    else if (total >= 380) {
+        classes.push('length-xlong');
+    }
+    else if (total >= 240) {
+        classes.push('length-long');
+    }
+    else if (total >= 120) {
+        classes.push('length-medium');
+    }
+    if (total >= 320 || sectionCount >= 3) {
+        classes.push('expand-height');
+    }
+    return classes.join(' ');
+}
+function findStatusViewRowByKey_(studentKey) {
+    var targetKey = String(studentKey || '').trim();
+    if (!targetKey)
+        return null;
+    for (var i = 0; i < latestStatusViewRows.length; i++) {
+        if (String(latestStatusViewRows[i].key || '') === targetKey)
+            return latestStatusViewRows[i];
+    }
+    return null;
+}
+function findStatusViewRowIndexByKey_(studentKey) {
+    var targetKey = String(studentKey || '').trim();
+    if (!targetKey)
+        return -1;
+    for (var i = 0; i < latestStatusViewRows.length; i++) {
+        if (String(latestStatusViewRows[i].key || '') === targetKey)
+            return i;
+    }
+    return -1;
+}
+function openStatusCardModal(studentKey) {
+    var key = String(studentKey || '').trim();
+    if (!key)
+        return;
+    statusModalScrollY = getStatusViewportScrollY_();
+    statusModalStudentKey = key;
+    lockStatusModalBackgroundScroll_();
+    syncStatusCardModal_();
+}
+function closeStatusCardModal() {
+    statusModalStudentKey = '';
+    var bg = document.getElementById('statusCardModalBg');
+    if (bg)
+        bg.classList.remove('show');
+    unlockStatusModalBackgroundScroll_();
+    restoreStatusViewportScroll_(statusModalScrollY);
+}
+function handleStatusCardModalBackdrop(event) {
+    if (event && event.target && event.target.id === 'statusCardModalBg') {
+        closeStatusCardModal();
+    }
+}
+function moveStatusCardModal(delta) {
+    var currentIndex = findStatusViewRowIndexByKey_(statusModalStudentKey);
+    if (currentIndex < 0)
+        return;
+    var nextIndex = currentIndex + (Number(delta) || 0);
+    if (nextIndex < 0 || nextIndex >= latestStatusViewRows.length)
+        return;
+    statusModalStudentKey = latestStatusViewRows[nextIndex].key;
+    syncStatusCardModal_();
+}
+function syncStatusCardModal_() {
+    var bg = document.getElementById('statusCardModalBg');
+    if (!bg)
+        return;
+    if (!statusModalStudentKey) {
+        bg.classList.remove('show');
+        return;
+    }
+    var row = findStatusViewRowByKey_(statusModalStudentKey);
+    if (!row) {
+        closeStatusCardModal();
+        return;
+    }
+    var fields = getSelectedStatusFields_();
+    var student = row.student || {};
+    var index = findStatusViewRowIndexByKey_(statusModalStudentKey);
+    var studentEl = document.getElementById('statusCardModalTitle');
+    var numberEl = document.getElementById('statusCardModalNumber');
+    var bodyEl = document.getElementById('statusCardModalBody');
+    var feedbackEl = document.getElementById('statusCardModalFeedback');
+    var prevBtn = document.getElementById('statusCardModalPrevBtn');
+    var nextBtn = document.getElementById('statusCardModalNextBtn');
+    if (studentEl) {
+        studentEl.textContent = safeStudentName(student);
+    }
+    if (numberEl) {
+        numberEl.textContent = getStatusStudentNumberLabel_(student);
+    }
+    if (bodyEl) {
+        bodyEl.innerHTML = buildStatusContentHtml_(row, fields, { mode: 'modal' }).html;
+        bodyEl.scrollTop = 0;
+    }
+    if (feedbackEl) {
+        feedbackEl.innerHTML = renderTeacherDraftEditor(student, String(student.draftComment || '').trim(), String(student.draftRank || '').trim());
+        feedbackEl.scrollTop = 0;
+    }
+    if (prevBtn)
+        prevBtn.disabled = index <= 0;
+    if (nextBtn)
+        nextBtn.disabled = index < 0 || index >= latestStatusViewRows.length - 1;
+    bg.classList.add('show');
+}
+function getStatusViewportScrollY_() {
+    if (typeof window === 'undefined')
+        return 0;
+    return Number(window.pageYOffset || window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0);
+}
+function restoreStatusViewportScroll_(scrollY) {
+    if (typeof window === 'undefined')
+        return;
+    var nextY = Math.max(0, Number(scrollY) || 0);
+    window.setTimeout(function () { return window.scrollTo(0, nextY); }, 0);
+}
+function scrollStatusGridToTop_() {
+    if (typeof window === 'undefined')
+        return;
+    var grid = document.getElementById('statusCardGrid');
+    if (!grid || typeof grid.getBoundingClientRect !== 'function')
+        return;
+    var top = grid.getBoundingClientRect().top + getStatusViewportScrollY_() - 12;
+    window.setTimeout(function () { return window.scrollTo(0, Math.max(0, top)); }, 0);
+}
+function bindStatusCardEvents_() {
+    if (statusCardEventsBound)
+        return;
+    statusCardEventsBound = true;
+    syncStatusModalViewportVar_();
+    window.addEventListener('resize', syncStatusModalViewportVar_);
+    if (window.visualViewport && typeof window.visualViewport.addEventListener === 'function') {
+        window.visualViewport.addEventListener('resize', syncStatusModalViewportVar_);
+    }
+    document.addEventListener('keydown', function (event) {
+        if (!event || event.key !== 'Escape')
+            return;
+        if (statusModalStudentKey) {
+            closeStatusCardModal();
+        }
+    });
+    bindStatusViewPrefs_();
 }
 function renderStatusStudentCell(student) {
     return "\n    <div class=\"status-student-stack\">\n      <div class=\"status-student-head\">\n        <span class=\"status-name-text\">".concat(esc(formatStatusStudentName(student)), "</span>\n      </div>\n      <div class=\"status-student-meta\">\n        <span>").concat(renderUnderstandingChip(student.understanding), "</span>\n        <span class=\"status-inline-block\">").concat(renderMedal(student.medal, student.medalColor), "</span>\n      </div>\n      ").concat(renderStatusEntries(student), "\n    </div>");
@@ -3661,6 +4628,13 @@ function renderStatusComment(student) {
 function clearRenderedStatus_() {
     latestStatusRows = [];
     latestStatusMeta = {};
+    latestStatusLessonKey = '';
+    latestStatusFieldOptions = [];
+    latestStatusViewRows = [];
+    selectedStatusFieldKeys = [];
+    statusModalStudentKey = '';
+    statusModalScrollY = 0;
+    statusModalBodyLockY = 0;
     var totalEl = document.getElementById('statTotal');
     var writtenEl = document.getElementById('statWritten');
     var submittedEl = document.getElementById('statSubmitted');
@@ -3675,10 +4649,24 @@ function clearRenderedStatus_() {
         aiEl.textContent = '0';
     syncTeacherFeedbackControls([], 0);
     renderStatusPerfDebug_();
+    var lessonSummary = document.getElementById('statusLessonSummary');
+    if (lessonSummary)
+        lessonSummary.innerHTML = '';
+    var fieldTabs = document.getElementById('statusFieldTabs');
+    if (fieldTabs)
+        fieldTabs.innerHTML = '';
+    var cardGrid = document.getElementById('statusCardGrid');
+    if (cardGrid) {
+        cardGrid.className = "status-card-grid cols-".concat(statusCardColumnCount);
+        cardGrid.style.setProperty('--status-card-columns', String(statusCardColumnCount));
+        cardGrid.style.setProperty('--status-card-min-height', "".concat(getStatusCardDensityConfig_(statusCardColumnCount).minHeight, "px"));
+        cardGrid.innerHTML = '<div class="status-grid-empty">授業を開始すると、ここに児童の回答が表示されます。</div>';
+    }
     var body = document.getElementById('statusBody');
     if (body) {
         body.innerHTML = '<tr><td colspan="2" style="text-align:center;padding:18px;color:#78909C;">授業を開始すると、ここに児童の記録とフィードバックが表示されます。</td></tr>';
     }
+    closeStatusCardModal();
 }
 function renderTeacherDraftEditor(student, draftComment, draftRank) {
     var responseId = String(student.responseId || '').trim();
@@ -3784,7 +4772,9 @@ function findTeacherDraftRow_(responseId) {
     var normalized = String(responseId || '').trim();
     if (!normalized)
         return null;
-    var field = document.querySelector(".status-draft-textarea[data-response-id=\"".concat(escAttr(normalized), "\"]"))
+    var field = document.querySelector(".status-card-modal-feedback .status-draft-textarea[data-response-id=\"".concat(escAttr(normalized), "\"]"))
+        || document.querySelector(".status-card-modal-feedback .status-draft-rank[data-response-id=\"".concat(escAttr(normalized), "\"]"))
+        || document.querySelector(".status-draft-textarea[data-response-id=\"".concat(escAttr(normalized), "\"]"))
         || document.querySelector(".status-draft-rank[data-response-id=\"".concat(escAttr(normalized), "\"]"));
     return field ? field.closest('.status-draft-box') : null;
 }

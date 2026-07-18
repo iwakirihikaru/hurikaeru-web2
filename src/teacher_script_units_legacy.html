@@ -21,7 +21,19 @@ var unitListPage = 1;
 var lastUnitListSignature = '';
 var UNIT_LIST_PAGE_SIZE = 10;
 var TEACHER_FEEDBACK_PREFS_KEY = 'teacher_feedback_prefs_v1';
+var STATUS_VIEW_PREFS_KEY = 'teacher_status_view_prefs_v1';
 var teacherFeedbackPrefsLoaded = false;
+var selectedStatusFieldKeys = [];
+var latestStatusLessonKey = '';
+var latestStatusFieldOptions = [];
+var latestStatusViewRows = [];
+var statusModalStudentKey = '';
+var statusModalScrollY = 0;
+var statusCardEventsBound = false;
+var selectedStatusViewTab = 'responses';
+var statusCardColumnCount = 3;
+var statusViewScrollByTab = { responses: 0, feedback: 0 };
+var statusModalBodyLockY = 0;
 function formatStatusTimingLine_(label, timing, keys) {
     if (!timing || typeof timing !== 'object' || !Array.isArray(keys) || !keys.length)
         return '';
@@ -138,8 +150,157 @@ function bindTeacherFeedbackPrefs_() {
         el.addEventListener('change', saveTeacherFeedbackPrefs_);
     });
 }
+function loadStatusViewPrefs_() {
+    try {
+        var raw = localStorage.getItem(STATUS_VIEW_PREFS_KEY);
+        var parsed = raw ? JSON.parse(raw) : {};
+        return parsed && typeof parsed === 'object' ? parsed : {};
+    }
+    catch (_err) {
+        return {};
+    }
+}
+function saveStatusViewPrefs_() {
+    try {
+        localStorage.setItem(STATUS_VIEW_PREFS_KEY, JSON.stringify({
+            tab: selectedStatusViewTab === 'feedback' ? 'feedback' : 'responses',
+            columns: Math.max(1, Math.min(5, Number(statusCardColumnCount || 3) || 3)),
+        }));
+    }
+    catch (_err) { }
+}
+function getStatusDensityLabel_(columns) {
+    var normalized = Math.max(1, Math.min(5, Number(columns || 3) || 3));
+    if (normalized === 1)
+        return 'じっくり読む';
+    if (normalized === 2)
+        return '大きめ';
+    if (normalized === 3)
+        return '標準';
+    if (normalized === 4)
+        return '一覧';
+    return '全体を見る';
+}
+function getStatusCardDensityConfig_(columns) {
+    var normalized = Math.max(1, Math.min(5, Number(columns || 3) || 3));
+    var map = {
+        1: { clamp: 14, minHeight: 360 },
+        2: { clamp: 9, minHeight: 300 },
+        3: { clamp: 7, minHeight: 248 },
+        4: { clamp: 5, minHeight: 220 },
+        5: { clamp: 3, minHeight: 188 },
+    };
+    return map[normalized] || map[3];
+}
+function applyStatusViewPrefs_() {
+    var prefs = loadStatusViewPrefs_();
+    selectedStatusViewTab = String(prefs.tab || selectedStatusViewTab || 'responses') === 'feedback' ? 'feedback' : 'responses';
+    statusCardColumnCount = Math.max(1, Math.min(5, Number(prefs.columns || statusCardColumnCount || 3) || 3));
+    updateStatusDensityControls_();
+    applyStatusViewTabState_();
+}
+function bindStatusViewPrefs_() {
+    applyStatusViewPrefs_();
+    updateStatusDensityControls_();
+}
+function updateStatusDensityControls_() {
+    var valueEl = document.getElementById('statusDensityValue');
+    var buttonsEl = document.getElementById('statusDensityButtons');
+    var columns = Math.max(1, Math.min(5, Number(statusCardColumnCount || 3) || 3));
+    if (valueEl)
+        valueEl.textContent = "".concat(columns, "\u5217: ").concat(getStatusDensityLabel_(columns));
+    if (buttonsEl) {
+        buttonsEl.innerHTML = [1, 2, 3, 4, 5].map(function (count) {
+            return "<button class=\"status-density-btn".concat(count === columns ? ' active' : '', "\" type=\"button\" aria-pressed=\"").concat(count === columns ? 'true' : 'false', "\" onclick=\"updateStatusDensityPreference_(").concat(count, ", true)\">").concat(count, "\u5217</button>");
+        }).join('');
+    }
+}
+function updateStatusDensityPreference_(value, save) {
+    var nextCount = Math.max(1, Math.min(5, Number(value || statusCardColumnCount || 3) || 3));
+    var scrollYBefore = getStatusViewportScrollY_();
+    if (statusCardColumnCount !== nextCount) {
+        statusCardColumnCount = nextCount;
+        renderStatusCardGrid_();
+        syncStatusCardModal_();
+        restoreStatusViewportScroll_(scrollYBefore);
+    }
+    updateStatusDensityControls_();
+    if (save !== false) {
+        saveStatusViewPrefs_();
+    }
+}
+function applyStatusViewTabState_() {
+    var responsesTab = document.getElementById('statusViewTabResponses');
+    var feedbackTab = document.getElementById('statusViewTabFeedback');
+    var responsesPane = document.getElementById('statusResponsesPane');
+    var feedbackPane = document.getElementById('statusFeedbackPane');
+    var showFeedback = selectedStatusViewTab === 'feedback';
+    if (responsesTab) {
+        responsesTab.classList.toggle('active', !showFeedback);
+        responsesTab.setAttribute('aria-selected', !showFeedback ? 'true' : 'false');
+    }
+    if (feedbackTab) {
+        feedbackTab.classList.toggle('active', showFeedback);
+        feedbackTab.setAttribute('aria-selected', showFeedback ? 'true' : 'false');
+    }
+    if (responsesPane) {
+        responsesPane.classList.toggle('active', !showFeedback);
+        responsesPane.hidden = showFeedback;
+    }
+    if (feedbackPane) {
+        feedbackPane.classList.toggle('active', showFeedback);
+        feedbackPane.hidden = !showFeedback;
+    }
+}
+function switchStatusViewTab(tabName) {
+    var nextTab = String(tabName || '').trim() === 'feedback' ? 'feedback' : 'responses';
+    if (nextTab === selectedStatusViewTab)
+        return;
+    statusViewScrollByTab[selectedStatusViewTab] = getStatusViewportScrollY_();
+    selectedStatusViewTab = nextTab;
+    applyStatusViewTabState_();
+    saveStatusViewPrefs_();
+    restoreStatusViewportScroll_(statusViewScrollByTab[nextTab] || 0);
+}
+function syncStatusModalViewportVar_() {
+    if (typeof document === 'undefined')
+        return;
+    var nextHeight = window && window.visualViewport ? window.visualViewport.height : window.innerHeight;
+    if (!nextHeight)
+        return;
+    document.documentElement.style.setProperty('--status-modal-vh', "".concat(nextHeight * 0.01, "px"));
+}
+function lockStatusModalBackgroundScroll_() {
+    if (typeof document === 'undefined')
+        return;
+    var body = document.body;
+    if (!body || body.classList.contains('status-modal-open'))
+        return;
+    statusModalBodyLockY = getStatusViewportScrollY_();
+    syncStatusModalViewportVar_();
+    body.classList.add('status-modal-open');
+    body.style.position = 'fixed';
+    body.style.top = "-".concat(statusModalBodyLockY, "px");
+    body.style.left = '0';
+    body.style.right = '0';
+    body.style.width = '100%';
+}
+function unlockStatusModalBackgroundScroll_() {
+    if (typeof document === 'undefined')
+        return;
+    var body = document.body;
+    if (!body || !body.classList.contains('status-modal-open'))
+        return;
+    body.classList.remove('status-modal-open');
+    body.style.position = '';
+    body.style.top = '';
+    body.style.left = '';
+    body.style.right = '';
+    body.style.width = '';
+}
 function loadStatus() {
     bindTeacherFeedbackPrefs_();
+    bindStatusViewPrefs_();
     if (!activeUnitId || !activePeriod)
         return;
     if (preloadCache.statusLoading)
@@ -187,9 +348,122 @@ function applyActiveFromStatusMeta_(meta) {
     populateUnitSelects();
     return true;
 }
+function getStatusLessonKey_(meta) {
+    var unitId = String(meta && meta.unitId || '').trim();
+    var period = Number(meta && meta.period || 0);
+    return unitId && period > 0 ? "".concat(unitId, ":").concat(period) : '';
+}
+function buildStatusFieldOptions_(meta, rows) {
+    var fields = Array.isArray(meta && meta.fields) ? meta.fields : [];
+    var understandingFieldKey = String(meta && meta.understandingFieldKey || '').trim();
+    var options = [];
+    var seen = {};
+    fields.forEach(function (field) {
+        var key = String(field && field.key || '').trim();
+        if (!key || key === understandingFieldKey || seen[key])
+            return;
+        seen[key] = true;
+        options.push({
+            key: key,
+            label: String(field && field.label || key),
+            emoji: String(field && field.emoji || ''),
+            type: String(field && field.type || 'text'),
+        });
+    });
+    (Array.isArray(rows) ? rows : []).forEach(function (student) {
+        (Array.isArray(student && student.entries) ? student.entries : []).forEach(function (entry) {
+            var key = String(entry && entry.key || '').trim();
+            if (!key || key === understandingFieldKey || seen[key])
+                return;
+            seen[key] = true;
+            options.push({
+                key: key,
+                label: String(entry && entry.label || key),
+                emoji: String(entry && entry.emoji || ''),
+                type: String(entry && entry.type || 'text'),
+            });
+        });
+    });
+    return options;
+}
+function buildStatusViewRows_(rows, fieldOptions) {
+    return (Array.isArray(rows) ? rows : []).map(function (student) {
+        var entryMap = {};
+        (Array.isArray(student && student.entries) ? student.entries : []).forEach(function (entry) {
+            var key = String(entry && entry.key || '').trim();
+            if (key)
+                entryMap[key] = entry;
+        });
+        return {
+            student: student,
+            key: getStatusStudentKey_(student),
+            entryMap: entryMap,
+            previewMap: buildStatusPreviewMap_(entryMap, fieldOptions),
+        };
+    });
+}
+function buildStatusPreviewMap_(entryMap, fieldOptions) {
+    var previewMap = {};
+    (Array.isArray(fieldOptions) ? fieldOptions : []).forEach(function (field) {
+        var key = String(field && field.key || '').trim();
+        if (!key)
+            return;
+        var entry = entryMap[key] || null;
+        previewMap[key] = entry ? String(entry.value || '') : '';
+    });
+    return previewMap;
+}
+function getStatusFieldOptionByKey_(fieldKey) {
+    var targetKey = String(fieldKey || '').trim();
+    for (var i = 0; i < latestStatusFieldOptions.length; i++) {
+        if (String(latestStatusFieldOptions[i] && latestStatusFieldOptions[i].key || '') === targetKey) {
+            return latestStatusFieldOptions[i];
+        }
+    }
+    return null;
+}
+function getSelectedStatusFieldKeys_() {
+    var keys = (Array.isArray(selectedStatusFieldKeys) ? selectedStatusFieldKeys : [])
+        .map(function (value) { return String(value || '').trim(); })
+        .filter(Boolean)
+        .filter(function (value, index, array) { return array.indexOf(value) === index; });
+    if (!keys.length && latestStatusFieldOptions.length) {
+        keys = [String(latestStatusFieldOptions[0].key || '')];
+    }
+    return keys;
+}
+function getSelectedStatusFields_() {
+    return getSelectedStatusFieldKeys_()
+        .map(function (fieldKey) { return getStatusFieldOptionByKey_(fieldKey); })
+        .filter(Boolean);
+}
+function areAllStatusFieldsSelected_() {
+    return latestStatusFieldOptions.length > 1 && getSelectedStatusFieldKeys_().length === latestStatusFieldOptions.length;
+}
+function ensureStatusSelection_(lessonChanged) {
+    latestStatusFieldOptions = buildStatusFieldOptions_(latestStatusMeta, latestStatusRows);
+    latestStatusViewRows = buildStatusViewRows_(latestStatusRows, latestStatusFieldOptions);
+    if (lessonChanged) {
+        statusModalStudentKey = '';
+    }
+    if (!latestStatusFieldOptions.length) {
+        selectedStatusFieldKeys = [];
+        return;
+    }
+    var availableKeys = latestStatusFieldOptions.map(function (field) { return String(field && field.key || ''); });
+    var filtered = getStatusFieldKeysFromSelection_(availableKeys);
+    selectedStatusFieldKeys = filtered.length ? filtered : [availableKeys[0]];
+}
+function getStatusFieldKeysFromSelection_(availableKeys) {
+    return getSelectedStatusFieldKeys_().filter(function (fieldKey) { return availableKeys.indexOf(fieldKey) >= 0; });
+}
 function renderStatus(d) {
+    var previousLessonKey = latestStatusLessonKey;
+    var scrollYBefore = getStatusViewportScrollY_();
     latestStatusRows = Array.isArray(d && d.students) ? d.students : [];
     latestStatusMeta = d && d.meta || {};
+    latestStatusLessonKey = getStatusLessonKey_(latestStatusMeta);
+    var lessonChanged = previousLessonKey !== latestStatusLessonKey;
     applyActiveFromStatusMeta_(latestStatusMeta);
     if (!latestStatusRows.length && !(latestStatusMeta && (latestStatusMeta.unitId || latestStatusMeta.lessonId))) {
         clearRenderedStatus_();
@@ -199,6 +473,8 @@ function renderStatus(d) {
         meta: latestStatusMeta,
         students: latestStatusRows,
     });
+    bindStatusCardEvents_();
+    ensureStatusSelection_(lessonChanged);
     renderStatusPerfDebug_();
     var st = latestStatusRows;
     var aiReturnedCount = st.filter(function (s) { return String(s.comment || '').trim(); }).length;
@@ -208,11 +484,390 @@ function renderStatus(d) {
     document.getElementById('statSubmitted').textContent = st.filter(function (s) { return s.submitted; }).length;
     document.getElementById('statAI').textContent = aiReturnedCount;
     syncTeacherFeedbackControls(st, draftCount);
-    if (!st.length) {
-        document.getElementById('statusBody').innerHTML = '<tr><td colspan="2" style="text-align:center;padding:18px;color:#78909C;">授業を開始すると、ここに児童の記録とフィードバックが表示されます。</td></tr>';
+    renderStatusLessonSummary_();
+    renderStatusFieldTabs_();
+    renderStatusCardGrid_();
+    renderStatusFeedbackTable_();
+    syncStatusCardModal_();
+    if (lessonChanged) {
+        scrollStatusGridToTop_();
+    }
+    else {
+        restoreStatusViewportScroll_(scrollYBefore);
+    }
+}
+function renderStatusLessonSummary_() {
+    var el = document.getElementById('statusLessonSummary');
+    if (!el)
+        return;
+    var boxes = [];
+    if (String(latestStatusMeta && latestStatusMeta.unitName || '').trim()) {
+        boxes.push("<div class=\"status-lesson-box primary\"><div class=\"status-lesson-k\">\u6388\u696D</div><div class=\"status-lesson-v\">".concat(esc(String(latestStatusMeta.unitName || '')), "</div></div>"));
+    }
+    if (String(latestStatusMeta && latestStatusMeta.subject || '').trim()) {
+        boxes.push("<div class=\"status-lesson-box\"><div class=\"status-lesson-k\">\u6559\u79D1</div><div class=\"status-lesson-v\">".concat(esc(String(latestStatusMeta.subject || '')), "</div></div>"));
+    }
+    if (Number(latestStatusMeta && latestStatusMeta.period || 0) > 0) {
+        boxes.push("<div class=\"status-lesson-box\"><div class=\"status-lesson-k\">\u6642\u9593\u76EE</div><div class=\"status-lesson-v\">\u7B2C".concat(Number(latestStatusMeta.period || 0), "\u6642</div></div>"));
+    }
+    el.className = 'status-lesson-summary';
+    el.innerHTML = boxes.join('');
+}
+function renderStatusFieldTabs_() {
+    var el = document.getElementById('statusFieldTabs');
+    if (!el)
+        return;
+    el.className = 'status-field-tabs';
+    if (!latestStatusFieldOptions.length) {
+        el.innerHTML = '';
         return;
     }
-    document.getElementById('statusBody').innerHTML = st.map(function (s) { return "\n    <tr>\n      <td data-label=\"\u5150\u7AE5 / \u63D0\u51FA\u5185\u5BB9\" class=\"status-student-cell\">".concat(renderStatusStudentCell(s), "</td>\n      <td data-label=\"\u30D5\u30A3\u30FC\u30C9\u30D0\u30C3\u30AF\" class=\"status-comment-cell\">").concat(renderStatusComment(s), "</td>\n    </tr>"); }).join('');
+    var selectedKeys = getSelectedStatusFieldKeys_();
+    var single = latestStatusFieldOptions.length === 1;
+    var buttons = latestStatusFieldOptions.map(function (field) {
+        var key = String(field && field.key || '');
+        var active = selectedKeys.indexOf(key) >= 0;
+        var label = ((field && field.emoji) ? "".concat(field.emoji, " ") : '') + String(field && field.label || key);
+        return "<button class=\"status-field-tab".concat(active ? ' active' : '', " ").concat(single ? 'single' : '', "\" type=\"button\" aria-pressed=\"").concat(active ? 'true' : 'false', "\" ").concat(single ? 'disabled' : '', " onclick=\"toggleStatusField('").concat(escAttr(key), "')\">").concat(esc(label), "</button>");
+    });
+    if (!single) {
+        buttons.unshift("<button class=\"status-field-tab".concat(areAllStatusFieldsSelected_() ? ' active' : '', "\" type=\"button\" aria-pressed=\"").concat(areAllStatusFieldsSelected_() ? 'true' : 'false', "\" onclick=\"toggleAllStatusFields()\">\u3059\u3079\u3066</button>"));
+    }
+    el.innerHTML = buttons.join('');
+}
+function renderStatusCardGrid_() {
+    var el = document.getElementById('statusCardGrid');
+    if (!el)
+        return;
+    var density = getStatusCardDensityConfig_(statusCardColumnCount);
+    if (!latestStatusRows.length) {
+        el.className = "status-card-grid cols-".concat(statusCardColumnCount);
+        el.style.setProperty('--status-card-columns', String(statusCardColumnCount));
+        el.style.setProperty('--status-card-min-height', "".concat(density.minHeight, "px"));
+        el.innerHTML = '<div class="status-grid-empty">授業を開始すると、ここに児童の回答が表示されます。</div>';
+        return;
+    }
+    var selectedFields = getSelectedStatusFields_();
+    el.className = "status-card-grid cols-".concat(statusCardColumnCount);
+    el.style.setProperty('--status-card-columns', String(statusCardColumnCount));
+    el.style.setProperty('--status-card-min-height', "".concat(density.minHeight, "px"));
+    el.innerHTML = latestStatusViewRows.map(function (row) { return renderStatusCard_(row, selectedFields); }).join('');
+}
+function renderStatusCard_(row, fields) {
+    var student = row.student || {};
+    var content = buildStatusContentHtml_(row, fields, { mode: 'card' });
+    var variantClass = getStatusCardVariantClass_(content.textLength, fields.length);
+    var studentName = safeStudentName(student);
+    var studentClass = studentName.length >= 13 ? 'status-card-student tight' : studentName.length >= 9 ? 'status-card-student compact' : 'status-card-student';
+    return "\n    <div class=\"status-card ".concat(variantClass, "\" role=\"button\" tabindex=\"0\" data-student-key=\"").concat(escAttr(row.key), "\" onclick=\"openStatusCardModal('").concat(escAttr(row.key), "')\" onkeydown=\"handleStatusCardKeydown(event,'").concat(escAttr(row.key), "')\">\n      <div class=\"status-card-head\">\n        <div class=\"status-card-name\">\n          <div class=\"status-card-studentline\">\n            <span class=\"status-card-number\">").concat(esc(getStatusStudentNumberLabel_(student)), "</span>\n            <span class=\"").concat(studentClass, "\">").concat(esc(studentName), "</span>\n          </div>\n        </div>\n      </div>\n      ").concat(content.html, "\n    </div>");
+}
+function handleStatusCardKeydown(event, studentKey) {
+    var key = String(event && event.key || '');
+    if (key !== 'Enter' && key !== ' ')
+        return;
+    if (event && typeof event.preventDefault === 'function')
+        event.preventDefault();
+    openStatusCardModal(studentKey);
+}
+function renderStatusFeedbackTable_() {
+    var body = document.getElementById('statusBody');
+    if (!body)
+        return;
+    if (!latestStatusRows.length) {
+        body.innerHTML = '<tr><td colspan="2" style="text-align:center;padding:18px;color:#78909C;">授業を開始すると、ここに児童の記録とフィードバックが表示されます。</td></tr>';
+        return;
+    }
+    body.innerHTML = latestStatusRows.map(function (s) { return "\n    <tr>\n      <td data-label=\"\u5150\u7AE5 / \u63D0\u51FA\u5185\u5BB9\" class=\"status-student-cell\">".concat(renderStatusStudentCell(s), "</td>\n      <td data-label=\"\u30D5\u30A3\u30FC\u30C9\u30D0\u30C3\u30AF\" class=\"status-comment-cell\">").concat(renderStatusComment(s), "</td>\n    </tr>"); }).join('');
+}
+function getStatusStudentKey_(student) {
+    var responseId = String(student && student.responseId || '').trim();
+    if (responseId)
+        return "response:".concat(responseId);
+    return "student:".concat(String(student && student.num || '').trim());
+}
+function getStatusStudentNumberLabel_(student) {
+    var num = String(student && student.num || '').trim();
+    return num ? "".concat(num, "\u756A") : '番号なし';
+}
+function getSelectedStatusField_() {
+    return getSelectedStatusFields_()[0] || null;
+}
+function toggleStatusField(fieldKey) {
+    var nextKey = String(fieldKey || '').trim();
+    if (!nextKey)
+        return;
+    var selectedKeys = getSelectedStatusFieldKeys_();
+    var exists = selectedKeys.indexOf(nextKey) >= 0;
+    if (exists && selectedKeys.length === 1)
+        return;
+    var scrollYBefore = getStatusViewportScrollY_();
+    selectedStatusFieldKeys = exists
+        ? selectedKeys.filter(function (key) { return key !== nextKey; })
+        : selectedKeys.concat([nextKey]);
+    renderStatusFieldTabs_();
+    renderStatusCardGrid_();
+    syncStatusCardModal_();
+    restoreStatusViewportScroll_(scrollYBefore);
+}
+function toggleAllStatusFields() {
+    if (latestStatusFieldOptions.length <= 1)
+        return;
+    var scrollYBefore = getStatusViewportScrollY_();
+    if (areAllStatusFieldsSelected_()) {
+        selectedStatusFieldKeys = [String(latestStatusFieldOptions[0] && latestStatusFieldOptions[0].key || '')];
+    }
+    else {
+        selectedStatusFieldKeys = latestStatusFieldOptions.map(function (field) { return String(field && field.key || ''); });
+    }
+    renderStatusFieldTabs_();
+    renderStatusCardGrid_();
+    syncStatusCardModal_();
+    restoreStatusViewportScroll_(scrollYBefore);
+}
+function getStatusReviewHintLabels_(entry) {
+    return String(entry && entry.hints || '')
+        .split(',')
+        .map(function (text) { return String(text || '').trim(); })
+        .filter(Boolean);
+}
+function stripStatusReviewHintLines_(text, entry) {
+    var value = String(text || '');
+    getStatusReviewHintLabels_(entry).forEach(function (label) {
+        value = value.split(label).join('');
+    });
+    return value.replace(/\n{3,}/g, '\n\n').trim();
+}
+function splitStatusReviewSections_(entry) {
+    var text = String(entry && entry.value || '').trim();
+    var labels = getStatusReviewHintLabels_(entry);
+    if (!text || !labels.length) {
+        return [];
+    }
+    var pattern = new RegExp('(?:^|\\n)\\s*(' + labels.map(teacherEscapeRegex_).join('|') + ')\\s*(?=\\n|$)', 'g');
+    var matches = [];
+    var match = null;
+    while ((match = pattern.exec(text))) {
+        matches.push({
+            label: String(match[1] || '').trim(),
+            start: match.index,
+            end: pattern.lastIndex,
+        });
+    }
+    if (!matches.length) {
+        return [];
+    }
+    return matches.map(function (item, index) {
+        var nextStart = index + 1 < matches.length ? matches[index + 1].start : text.length;
+        var body = text.slice(item.end, nextStart).replace(/^\s+|\s+$/g, '');
+        return {
+            label: item.label,
+            body: body,
+            isEmpty: !body,
+        };
+    }).filter(function (item, index, array) {
+        return item.label && (item.body || index === array.length - 1);
+    });
+}
+function renderStatusReviewSectionHtml_(entry, mode) {
+    var sections = splitStatusReviewSections_(entry);
+    var reviewText = String(entry && entry.value || '').trim();
+    var countText = stripStatusReviewHintLines_(reviewText, entry);
+    if (!sections.length) {
+        return {
+            html: "<div class=\"status-card-text".concat(reviewText ? '' : ' status-card-empty', "\">").concat(reviewText ? renderTeacherReviewText_(reviewText, [entry]) : 'まだ入力がありません', "</div>"),
+            textLength: countText.length,
+        };
+    }
+    return {
+        html: "<div class=\"status-card-review-list\">".concat(sections.map(function (section) {
+            var body = String(section && section.body || '').trim();
+            return "<div class=\"status-card-review-item\"><span class=\"status-card-review-chip\">".concat(esc(section.label || '項目'), "</span><div class=\"status-card-text").concat(body ? '' : ' status-card-empty', "\">").concat(body ? esc(body).replace(/\n/g, '<br>') : 'まだ入力がありません', "</div></div>");
+        }).join(''), "</div>"),
+        textLength: countText.length,
+    };
+}
+function buildStatusContentHtml_(row, fields, options) {
+    var selectedFields = Array.isArray(fields) && fields.length ? fields : getSelectedStatusFields_();
+    var contentFields = selectedFields.length ? selectedFields : latestStatusFieldOptions.slice(0, 1);
+    var sections = contentFields.map(function (field) {
+        var entry = row && row.entryMap ? row.entryMap[String(field && field.key || '')] : null;
+        var heading = ((field && field.emoji) ? "".concat(field.emoji, " ") : '') + String(field && field.label || field && field.key || '回答');
+        if (!entry) {
+            return {
+                html: "<section class=\"status-card-section\"><div class=\"status-card-section-title\">".concat(esc(heading), "</div><div class=\"status-card-text status-card-empty\">\u307E\u3060\u5165\u529B\u304C\u3042\u308A\u307E\u305B\u3093</div></section>"),
+                textLength: 0,
+            };
+        }
+        if (String(entry && entry.type || '') === 'review') {
+            var reviewSection = renderStatusReviewSectionHtml_(entry, String(options && options.mode || 'card'));
+            return {
+                html: "<section class=\"status-card-section\"><div class=\"status-card-section-title\">".concat(esc(heading), "</div>").concat(reviewSection.html, "</section>"),
+                textLength: reviewSection.textLength,
+            };
+        }
+        var valueHtml = renderStatusEntryValue(entry);
+        var valueText = String(entry && entry.value || '').trim();
+        return {
+            html: "<section class=\"status-card-section\"><div class=\"status-card-section-title\">".concat(esc(heading), "</div><div class=\"status-card-text").concat(valueText ? '' : ' status-card-empty', "\">").concat(valueText ? valueHtml : 'まだ入力がありません', "</div></section>"),
+            textLength: valueText.length,
+        };
+    });
+    return {
+        html: "<div class=\"status-card-content\">".concat(sections.map(function (section) { return section.html; }).join(''), "</div>"),
+        textLength: sections.reduce(function (sum, section) { return sum + Number(section && section.textLength || 0); }, 0),
+    };
+}
+function getStatusCardVariantClass_(textLength, sectionCount) {
+    var total = Math.max(0, Number(textLength || 0)) + (Math.max(1, Number(sectionCount || 1)) - 1) * 90;
+    var classes = [];
+    if (total >= 560) {
+        classes.push('length-xxlong');
+    }
+    else if (total >= 380) {
+        classes.push('length-xlong');
+    }
+    else if (total >= 240) {
+        classes.push('length-long');
+    }
+    else if (total >= 120) {
+        classes.push('length-medium');
+    }
+    if (total >= 320 || sectionCount >= 3) {
+        classes.push('expand-height');
+    }
+    return classes.join(' ');
+}
+function findStatusViewRowByKey_(studentKey) {
+    var targetKey = String(studentKey || '').trim();
+    if (!targetKey)
+        return null;
+    for (var i = 0; i < latestStatusViewRows.length; i++) {
+        if (String(latestStatusViewRows[i].key || '') === targetKey)
+            return latestStatusViewRows[i];
+    }
+    return null;
+}
+function findStatusViewRowIndexByKey_(studentKey) {
+    var targetKey = String(studentKey || '').trim();
+    if (!targetKey)
+        return -1;
+    for (var i = 0; i < latestStatusViewRows.length; i++) {
+        if (String(latestStatusViewRows[i].key || '') === targetKey)
+            return i;
+    }
+    return -1;
+}
+function openStatusCardModal(studentKey) {
+    var key = String(studentKey || '').trim();
+    if (!key)
+        return;
+    statusModalScrollY = getStatusViewportScrollY_();
+    statusModalStudentKey = key;
+    lockStatusModalBackgroundScroll_();
+    syncStatusCardModal_();
+}
+function closeStatusCardModal() {
+    statusModalStudentKey = '';
+    var bg = document.getElementById('statusCardModalBg');
+    if (bg)
+        bg.classList.remove('show');
+    unlockStatusModalBackgroundScroll_();
+    restoreStatusViewportScroll_(statusModalScrollY);
+}
+function handleStatusCardModalBackdrop(event) {
+    if (event && event.target && event.target.id === 'statusCardModalBg') {
+        closeStatusCardModal();
+    }
+}
+function moveStatusCardModal(delta) {
+    var currentIndex = findStatusViewRowIndexByKey_(statusModalStudentKey);
+    if (currentIndex < 0)
+        return;
+    var nextIndex = currentIndex + (Number(delta) || 0);
+    if (nextIndex < 0 || nextIndex >= latestStatusViewRows.length)
+        return;
+    statusModalStudentKey = latestStatusViewRows[nextIndex].key;
+    syncStatusCardModal_();
+}
+function syncStatusCardModal_() {
+    var bg = document.getElementById('statusCardModalBg');
+    if (!bg)
+        return;
+    if (!statusModalStudentKey) {
+        bg.classList.remove('show');
+        return;
+    }
+    var row = findStatusViewRowByKey_(statusModalStudentKey);
+    if (!row) {
+        closeStatusCardModal();
+        return;
+    }
+    var fields = getSelectedStatusFields_();
+    var student = row.student || {};
+    var index = findStatusViewRowIndexByKey_(statusModalStudentKey);
+    var studentEl = document.getElementById('statusCardModalTitle');
+    var numberEl = document.getElementById('statusCardModalNumber');
+    var bodyEl = document.getElementById('statusCardModalBody');
+    var feedbackEl = document.getElementById('statusCardModalFeedback');
+    var prevBtn = document.getElementById('statusCardModalPrevBtn');
+    var nextBtn = document.getElementById('statusCardModalNextBtn');
+    if (studentEl) {
+        studentEl.textContent = safeStudentName(student);
+    }
+    if (numberEl) {
+        numberEl.textContent = getStatusStudentNumberLabel_(student);
+    }
+    if (bodyEl) {
+        bodyEl.innerHTML = buildStatusContentHtml_(row, fields, { mode: 'modal' }).html;
+        bodyEl.scrollTop = 0;
+    }
+    if (feedbackEl) {
+        feedbackEl.innerHTML = renderTeacherDraftEditor(student, String(student.draftComment || '').trim(), String(student.draftRank || '').trim());
+        feedbackEl.scrollTop = 0;
+    }
+    if (prevBtn)
+        prevBtn.disabled = index <= 0;
+    if (nextBtn)
+        nextBtn.disabled = index < 0 || index >= latestStatusViewRows.length - 1;
+    bg.classList.add('show');
+}
+function getStatusViewportScrollY_() {
+    if (typeof window === 'undefined')
+        return 0;
+    return Number(window.pageYOffset || window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0);
+}
+function restoreStatusViewportScroll_(scrollY) {
+    if (typeof window === 'undefined')
+        return;
+    var nextY = Math.max(0, Number(scrollY) || 0);
+    window.setTimeout(function () { return window.scrollTo(0, nextY); }, 0);
+}
+function scrollStatusGridToTop_() {
+    if (typeof window === 'undefined')
+        return;
+    var grid = document.getElementById('statusCardGrid');
+    if (!grid || typeof grid.getBoundingClientRect !== 'function')
+        return;
+    var top = grid.getBoundingClientRect().top + getStatusViewportScrollY_() - 12;
+    window.setTimeout(function () { return window.scrollTo(0, Math.max(0, top)); }, 0);
+}
+function bindStatusCardEvents_() {
+    if (statusCardEventsBound)
+        return;
+    statusCardEventsBound = true;
+    syncStatusModalViewportVar_();
+    window.addEventListener('resize', syncStatusModalViewportVar_);
+    if (window.visualViewport && typeof window.visualViewport.addEventListener === 'function') {
+        window.visualViewport.addEventListener('resize', syncStatusModalViewportVar_);
+    }
+    document.addEventListener('keydown', function (event) {
+        if (!event || event.key !== 'Escape')
+            return;
+        if (statusModalStudentKey) {
+            closeStatusCardModal();
+        }
+    });
+    bindStatusViewPrefs_();
 }
 function renderStatusStudentCell(student) {
     return "\n    <div class=\"status-student-stack\">\n      <div class=\"status-student-head\">\n        <span class=\"status-name-text\">".concat(esc(formatStatusStudentName(student)), "</span>\n      </div>\n      <div class=\"status-student-meta\">\n        <span>").concat(renderUnderstandingChip(student.understanding), "</span>\n        <span class=\"status-inline-block\">").concat(renderMedal(student.medal, student.medalColor), "</span>\n      </div>\n      ").concat(renderStatusEntries(student), "\n    </div>");
@@ -261,6 +916,13 @@ function renderStatusComment(student) {
 function clearRenderedStatus_() {
     latestStatusRows = [];
     latestStatusMeta = {};
+    latestStatusLessonKey = '';
+    latestStatusFieldOptions = [];
+    latestStatusViewRows = [];
+    selectedStatusFieldKeys = [];
+    statusModalStudentKey = '';
+    statusModalScrollY = 0;
+    statusModalBodyLockY = 0;
     var totalEl = document.getElementById('statTotal');
     var writtenEl = document.getElementById('statWritten');
     var submittedEl = document.getElementById('statSubmitted');
@@ -275,10 +937,24 @@ function clearRenderedStatus_() {
         aiEl.textContent = '0';
     syncTeacherFeedbackControls([], 0);
     renderStatusPerfDebug_();
+    var lessonSummary = document.getElementById('statusLessonSummary');
+    if (lessonSummary)
+        lessonSummary.innerHTML = '';
+    var fieldTabs = document.getElementById('statusFieldTabs');
+    if (fieldTabs)
+        fieldTabs.innerHTML = '';
+    var cardGrid = document.getElementById('statusCardGrid');
+    if (cardGrid) {
+        cardGrid.className = "status-card-grid cols-".concat(statusCardColumnCount);
+        cardGrid.style.setProperty('--status-card-columns', String(statusCardColumnCount));
+        cardGrid.style.setProperty('--status-card-min-height', "".concat(getStatusCardDensityConfig_(statusCardColumnCount).minHeight, "px"));
+        cardGrid.innerHTML = '<div class="status-grid-empty">授業を開始すると、ここに児童の回答が表示されます。</div>';
+    }
     var body = document.getElementById('statusBody');
     if (body) {
         body.innerHTML = '<tr><td colspan="2" style="text-align:center;padding:18px;color:#78909C;">授業を開始すると、ここに児童の記録とフィードバックが表示されます。</td></tr>';
     }
+    closeStatusCardModal();
 }
 function renderTeacherDraftEditor(student, draftComment, draftRank) {
     var responseId = String(student.responseId || '').trim();
@@ -384,7 +1060,9 @@ function findTeacherDraftRow_(responseId) {
     var normalized = String(responseId || '').trim();
     if (!normalized)
         return null;
-    var field = document.querySelector(".status-draft-textarea[data-response-id=\"".concat(escAttr(normalized), "\"]"))
+    var field = document.querySelector(".status-card-modal-feedback .status-draft-textarea[data-response-id=\"".concat(escAttr(normalized), "\"]"))
+        || document.querySelector(".status-card-modal-feedback .status-draft-rank[data-response-id=\"".concat(escAttr(normalized), "\"]"))
+        || document.querySelector(".status-draft-textarea[data-response-id=\"".concat(escAttr(normalized), "\"]"))
         || document.querySelector(".status-draft-rank[data-response-id=\"".concat(escAttr(normalized), "\"]"));
     return field ? field.closest('.status-draft-box') : null;
 }
