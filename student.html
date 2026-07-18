@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<script src="./runtime-shim.js?v=41d2984806"></script>
+<script src="./runtime-shim.js?v=7dd7bdc6fd"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>ふりカエル</title>
@@ -439,7 +439,6 @@ textarea.f{min-height:70px;}
   </div>
 </div>
 
-<div id="studentApiDebug" class="student-api-debug">Pages client-20260704-1035 / API waiting</div>
 <div id="toast"></div>
 
 <script>
@@ -514,6 +513,13 @@ const STUDENT_CLASS_SNAPSHOT_CACHE_KEY = 'furikaeri:studentClassSnapshot';
 let studentClassSnapshotPreloadBusy = false;
 let studentClassSnapshotPreloadScheduled = false;
 const STUDENT_CLIENT_BUILD = 'client-20260704-1035';
+const studentDiagnosticsEnabled = (() => {
+  try{
+    return new URLSearchParams(window.location.search || '').get('diagnostics') === '1';
+  }catch(_err){
+    return false;
+  }
+})();
 const studentClientPerfState = {
   pageStartedAt:(typeof performance!=='undefined' && performance && typeof performance.now==='function') ? performance.now() : Date.now(),
   initCalls:0,
@@ -1046,6 +1052,17 @@ function logStudentApiTiming_(label,payload){
 function buildTimelineTransportMetrics_(timing){
   const meta=timing && typeof timing==='object' ? timing : null;
   if(!meta) return {};
+  const pickElapsedMs=(monoStart, monoEnd, epochStart, epochEnd)=>(
+    monoStart>0 && monoEnd>0
+      ? Math.max(0, monoEnd-monoStart)
+      : (epochStart>0 && epochEnd>0 ? Math.max(0, epochEnd-epochStart) : 0)
+  );
+  const clientRpcStartedMonotonicMs=Number(meta.clientRpcStartedMonotonicMs||0);
+  const clientFetchStartedMonotonicMs=Number(meta.clientFetchStartedMonotonicMs||0);
+  const clientResponseHeadersReceivedMonotonicMs=Number(meta.clientResponseHeadersReceivedMonotonicMs||0);
+  const clientResponseTextReceivedMonotonicMs=Number(meta.clientResponseTextReceivedMonotonicMs||0);
+  const clientJsonParseFinishedMonotonicMs=Number(meta.clientJsonParseFinishedMonotonicMs||0);
+  const clientSuccessHandlerMonotonicMs=Number(meta.clientSuccessHandlerMonotonicMs||0);
   const clientRpcStartedAtMs=Number(meta.clientRpcStartedAtMs||0);
   const clientFetchStartedAtMs=Number(meta.clientFetchStartedAtMs||0);
   const clientResponseHeadersReceivedAtMs=Number(meta.clientResponseHeadersReceivedAtMs||0);
@@ -1055,24 +1072,12 @@ function buildTimelineTransportMetrics_(timing){
   const serverDispatchStartedAtMs=Number(meta.serverDispatchStartedAtMs||0);
   const serverDispatchFinishedAtMs=Number(meta.serverDispatchFinishedAtMs||0);
   const metrics={
-    rpcStartToFetchStartMs: clientRpcStartedAtMs>0 && clientFetchStartedAtMs>0
-      ? Math.max(0, clientFetchStartedAtMs-clientRpcStartedAtMs)
-      : 0,
-    fetchToHeadersMs: clientFetchStartedAtMs>0 && clientResponseHeadersReceivedAtMs>0
-      ? Math.max(0, clientResponseHeadersReceivedAtMs-clientFetchStartedAtMs)
-      : 0,
-    headersToBodyMs: clientResponseHeadersReceivedAtMs>0 && clientResponseTextReceivedAtMs>0
-      ? Math.max(0, clientResponseTextReceivedAtMs-clientResponseHeadersReceivedAtMs)
-      : 0,
-    responseBodyToJsonParseMs: clientResponseTextReceivedAtMs>0 && clientJsonParseFinishedAtMs>0
-      ? Math.max(0, clientJsonParseFinishedAtMs-clientResponseTextReceivedAtMs)
-      : 0,
-    jsonParseToSuccessHandlerMs: clientJsonParseFinishedAtMs>0 && clientSuccessHandlerAtMs>0
-      ? Math.max(0, clientSuccessHandlerAtMs-clientJsonParseFinishedAtMs)
-      : 0,
-    responseBodyToSuccessHandlerMs: clientResponseTextReceivedAtMs>0 && clientSuccessHandlerAtMs>0
-      ? Math.max(0, clientSuccessHandlerAtMs-clientResponseTextReceivedAtMs)
-      : 0,
+    rpcStartToFetchStartMs: pickElapsedMs(clientRpcStartedMonotonicMs, clientFetchStartedMonotonicMs, clientRpcStartedAtMs, clientFetchStartedAtMs),
+    fetchToHeadersMs: pickElapsedMs(clientFetchStartedMonotonicMs, clientResponseHeadersReceivedMonotonicMs, clientFetchStartedAtMs, clientResponseHeadersReceivedAtMs),
+    headersToBodyMs: pickElapsedMs(clientResponseHeadersReceivedMonotonicMs, clientResponseTextReceivedMonotonicMs, clientResponseHeadersReceivedAtMs, clientResponseTextReceivedAtMs),
+    responseBodyToJsonParseMs: pickElapsedMs(clientResponseTextReceivedMonotonicMs, clientJsonParseFinishedMonotonicMs, clientResponseTextReceivedAtMs, clientJsonParseFinishedAtMs),
+    jsonParseToSuccessHandlerMs: pickElapsedMs(clientJsonParseFinishedMonotonicMs, clientSuccessHandlerMonotonicMs, clientJsonParseFinishedAtMs, clientSuccessHandlerAtMs),
+    responseBodyToSuccessHandlerMs: pickElapsedMs(clientResponseTextReceivedMonotonicMs, clientSuccessHandlerMonotonicMs, clientResponseTextReceivedAtMs, clientSuccessHandlerAtMs),
   };
   if(clientFetchStartedAtMs>0 && clientResponseTextReceivedAtMs>0 && serverDispatchStartedAtMs>0 && serverDispatchFinishedAtMs>0){
     const estimatedClockOffsetMs=((serverDispatchStartedAtMs-clientFetchStartedAtMs)+(serverDispatchFinishedAtMs-clientResponseTextReceivedAtMs))/2;
@@ -1089,8 +1094,20 @@ function buildTimelineTransportMetrics_(timing){
   return metrics;
 }
 
+function ensureStudentDebugFooter_(){
+  if(!studentDiagnosticsEnabled) return null;
+  let el=document.getElementById('studentApiDebug');
+  if(el) return el;
+  el=document.createElement('div');
+  el.id='studentApiDebug';
+  el.className='student-api-debug';
+  el.textContent=`Pages ${STUDENT_CLIENT_BUILD}\n${studentDebugFooterState.apiText}\n${studentDebugFooterState.clientText}`;
+  document.body.appendChild(el);
+  return el;
+}
+
 function updateStudentDebugFooter_(){
-  const el=document.getElementById('studentApiDebug');
+  const el=ensureStudentDebugFooter_();
   if(!el) return;
   el.textContent=`Pages ${STUDENT_CLIENT_BUILD}\n${studentDebugFooterState.apiText}\n${studentDebugFooterState.clientText}`;
   el.classList.toggle('error', Boolean(studentDebugFooterState.isError));
@@ -1121,6 +1138,8 @@ function logStudentApiFailure_(label, err){
     console.warn('[student-api]', label, message || 'failed');
   }
 }
+
+updateStudentDebugFooter_();
 
 function isStudentSessionError_(error){
   const message=String(error && error.message ? error.message : (error || '')).trim();
