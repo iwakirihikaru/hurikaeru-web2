@@ -185,6 +185,7 @@ function testTimelineDtoVisibility() {
   const payload = context.getTimelineSnapshot('lesson-1-1', 3, '1', init.studentSessionToken);
   assert.equal(Array.isArray(payload.rows), true);
   assert.equal(payload.rows.length, 2);
+  assert.equal(payload.activeRevision, 3);
   for (const row of payload.rows) {
     assert.equal(Object.prototype.hasOwnProperty.call(row, 'comment'), false);
     assert.equal(Object.prototype.hasOwnProperty.call(row, 'rank'), false);

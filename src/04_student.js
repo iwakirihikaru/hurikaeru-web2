@@ -448,12 +448,12 @@ function getTimelineSnapshot(lessonId, activeRevision, studentNumber, studentSes
     };
   timing.snapshotMs = Date.now() - t0;
   t0 = Date.now();
-  const payload = buildTimelineSnapshotPayload_(
-    snapshot,
-    active,
-    String(active?.timelineFieldKey || ''),
-    shell,
-    normalizedStudentNumber
+    const payload = buildTimelineSnapshotPayload_(
+      snapshot,
+      Object.assign({}, active, { lesson: activeLesson }),
+      String(active?.timelineFieldKey || ''),
+      shell,
+      normalizedStudentNumber
   );
   timing.rowCount = Array.isArray(payload.rows) ? payload.rows.length : 0;
   timing.payloadBuildMs = Date.now() - t0;
