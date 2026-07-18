@@ -771,7 +771,7 @@ button:not([disabled]):active,button.is-pressed{transform:translateY(1px);filter
           <div class="start-row status-start-row">
             <select id="startUnit" onchange="onStartUnitChange()"><option value="">単元を選択…</option></select>
             <select id="startPeriod" onchange="onStartPeriodManualChange()"><option value="">時間目を選択…</option></select>
-            <button class="btn-start" onclick="startLesson()">▶️ 授業開始</button>
+            <button class="btn-start" id="startLessonBtn" type="button" onclick="startLesson()">▶️ 授業開始</button>
             <button class="btn-update" type="button" onclick="openUnitSettingsTab()">🧩 単元設定へ</button>
             <button class="btn-medal" id="awardMedalsBtn" onclick="awardMedals()">🏅 メダル発表</button>
           </div>
@@ -3260,11 +3260,91 @@ function startLesson() {
         alert('単元と時間目を選択してください');
         return;
     }
+    var btn = document.getElementById('startLessonBtn');
+    var defaultLabel = btn ? (btn.dataset.defaultLabel || btn.textContent || '▶️ 授業開始') : '';
+    if (btn) {
+        btn.dataset.defaultLabel = defaultLabel;
+        btn.disabled = true;
+        btn.textContent = '⏳ 授業開始中…';
+    }
+    var selectedUnit = allUnits.find(function (unit) { return String(unit && unit.id || '') === String(unitId); }) || null;
+    var requestKey = "start:".concat(String(unitId), ":").concat(String(period), ":").concat(Date.now());
+    startLesson._pendingRequestKey = requestKey;
+    startLesson._statusCheckTimer1 = setTimeout(function () {
+        if (startLesson._pendingRequestKey !== requestKey)
+            return;
+        showToast('授業の開始を確認しています…', { tone: 'warn', duration: 3200 });
+    }, 5000);
+    startLesson._statusCheckTimer2 = setTimeout(function () {
+        if (startLesson._pendingRequestKey !== requestKey)
+            return;
+        google.script.run
+            .withSuccessHandler(function (snapshot) {
+            if (startLesson._pendingRequestKey !== requestKey)
+                return;
+            var active = snapshot && snapshot.active || null;
+            if (String(active && active.unitId || '') !== String(unitId) || Number(active && active.period || 0) !== Number(period)) {
+                return;
+            }
+            startLesson._pendingRequestKey = '';
+            if (startLesson._statusCheckTimer1)
+                clearTimeout(startLesson._statusCheckTimer1);
+            if (startLesson._statusCheckTimer2)
+                clearTimeout(startLesson._statusCheckTimer2);
+            if (btn) {
+                btn.textContent = '✅ 開始されています';
+                setTimeout(function () {
+                    btn.disabled = false;
+                    btn.textContent = btn.dataset.defaultLabel || defaultLabel;
+                }, 1800);
+            }
+            invalidateTeacherDataRequests_();
+            lastTeacherStartAtMs = Date.now();
+            teacherEndingLesson = false;
+            activeUnitId = String(unitId);
+            activePeriod = Number(period);
+            clearTeacherStatusPreloadCache_();
+            if (selectedUnit) {
+                renderActiveBanner({
+                    unitId: unitId,
+                    period: Number(period),
+                    unit: selectedUnit,
+                });
+            }
+            loadStatusInit({ lightweight: false, startPolling: true });
+            showToast('授業は開始されています。状態を更新します。', { tone: 'success', duration: 4200 });
+        })
+            .withFailureHandler(function () { })
+            .teacherStatusSnapshot();
+    }, 10000);
+    showToast('授業を開始しています…');
     google.script.run
         .withSuccessHandler(function (res) {
+        if (startLesson._statusCheckTimer1)
+            clearTimeout(startLesson._statusCheckTimer1);
+        if (startLesson._statusCheckTimer2)
+            clearTimeout(startLesson._statusCheckTimer2);
+        startLesson._pendingRequestKey = '';
+        if (btn) {
+            btn.textContent = '✅ 開始しました';
+            setTimeout(function () {
+                btn.disabled = false;
+                btn.textContent = btn.dataset.defaultLabel || defaultLabel;
+            }, 1800);
+        }
         invalidateTeacherDataRequests_();
         lastTeacherStartAtMs = Date.now();
         teacherEndingLesson = false;
+        activeUnitId = String(unitId);
+        activePeriod = Number(period);
+        clearTeacherStatusPreloadCache_();
+        if (selectedUnit) {
+            renderActiveBanner({
+                unitId: unitId,
+                period: Number(period),
+                unit: selectedUnit,
+            });
+        }
         if (res && res.active) {
             applyTeacherInitData({
                 active: res.active,
@@ -3276,6 +3356,18 @@ function startLesson() {
         }
         loadStatusInit({ lightweight: false, startPolling: true });
         showToast('授業を開始しました！', { tone: 'success' });
+    })
+        .withFailureHandler(function (err) {
+        if (startLesson._statusCheckTimer1)
+            clearTimeout(startLesson._statusCheckTimer1);
+        if (startLesson._statusCheckTimer2)
+            clearTimeout(startLesson._statusCheckTimer2);
+        startLesson._pendingRequestKey = '';
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = btn.dataset.defaultLabel || defaultLabel;
+        }
+        showToast(formatTeacherRpcError_(err, '授業開始に失敗しました', '授業開始'), { tone: 'error', duration: 5200 });
     })
         .teacherStartLesson(unitId, parseInt(period));
 }

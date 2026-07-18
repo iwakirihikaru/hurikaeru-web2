@@ -487,18 +487,24 @@ let currentStudentStateKey = '';
 let studentActiveReloading = false;
 let myLessonId = '';
 let myActiveRevision = 0;
+let studentSessionToken = '';
 let currentStudentInitRequestId = 0;
 let currentTimelineRequestId = 0;
 let autoSaveInFlight = false;
 let studentDraftSaveTimer = null;
 let studentDraftDirty = false;
 let lastServerSavedSignature = '';
+let lastTimelinePayloadSignature = '';
+let timelineAiWaitCycleCount = 0;
 const AUTO_SAVE_BASE_MS = 28000;
 const AUTO_SAVE_JITTER_MS = 8000;
 const LOCAL_DRAFT_SAVE_MS = 1000;
 const POLL_IDLE_MS = 4000;
 const POLL_WAITING_AI_MS = 2500;
+const POLL_WAITING_AI_LONG_MS = 4000;
+const POLL_WAITING_AI_MAX_MS = 6000;
 const POLL_DONE_MS = 6000;
+const POLL_JITTER_MS = 700;
 const STUDENT_CACHE_TTL_MS = 5 * 60 * 1000;
 const STUDENT_ENTRY_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const STUDENT_CLASS_SNAPSHOT_CACHE_TTL_MS = 60 * 1000;
@@ -561,6 +567,35 @@ function afterNextPaint_(callback){
     return;
   }
   setTimeout(()=>{ try{ callback(); }catch(_err){} },0);
+}
+
+function afterNextAnimationFrame_(callback){
+  if(typeof window.requestAnimationFrame==='function'){
+    window.requestAnimationFrame(()=>{ try{ callback(); }catch(_err){} });
+    return;
+  }
+  setTimeout(()=>{ try{ callback(); }catch(_err){} },0);
+}
+
+function getTimelinePayloadSignature_(payload){
+  const rows=Array.isArray(payload?.rows)?payload.rows:[];
+  const myState=payload&&typeof payload==='object'&&payload.myState&&typeof payload.myState==='object'
+    ? payload.myState
+    : null;
+  return JSON.stringify({
+    lessonId:String(payload?.lessonId||'').trim(),
+    activeRevision:Number(payload?.activeRevision||0),
+    teacherTimelineFieldKey:String(payload?.teacherTimelineFieldKey||'').trim(),
+    studentAiEnabled:Boolean(payload?.studentAiEnabled),
+    studentAiAutoSubmitEnabled:Boolean(payload?.studentAiAutoSubmitEnabled),
+    fields:Array.isArray(payload?.fields)?payload.fields:[],
+    rows,
+    myState,
+  });
+}
+
+function shouldPersistTimelinePayload_(payload){
+  return getTimelinePayloadSignature_(payload)!==lastTimelinePayloadSignature;
 }
 
 function startStudentInitPerfSession_(studentNumber){
@@ -742,6 +777,7 @@ function buildCurrentStudentDraftCache_(){
     medal:'',
     medalColor:'',
     aiStatus:lastKnownAiStatus||'',
+    studentSessionToken:studentSessionToken||'',
     teacherTimelineFieldKey:teacherTimelineFieldKey||'',
     studentAiEnabled:studentAiEnabled,
     studentAiAutoSubmitEnabled:studentAiAutoSubmitEnabled,
@@ -1427,6 +1463,7 @@ function loadMain(d){
   timelineRefreshPending=false;
   const identity=normalizeStudentIdentity_(d);
   rememberStudentNumber_(identity.num);
+  studentSessionToken=String(d && d.studentSessionToken || studentSessionToken || '').trim();
   myLessonId = String(d && d.lessonId || '').trim();
   myActiveRevision = Number(d && d.activeRevision || 0);
   myUnitId  = d.unit?.id   || null;
@@ -1474,6 +1511,8 @@ function loadMain(d){
   studentHistoryIndex=0;
   studentHistoryLoaded=false;
   studentHistoryLoading=false;
+  lastTimelinePayloadSignature='';
+  timelineAiWaitCycleCount=0;
   if(studentHistoryPreloadTimer){
     clearTimeout(studentHistoryPreloadTimer);
     studentHistoryPreloadTimer=null;
@@ -1551,7 +1590,7 @@ function loadStudentState(options){
         document.getElementById('submitNote').textContent='';
       }
     })
-    .studentLoadState(myUnitId,myPeriod,myNum);
+    .studentLoadState(myUnitId,myPeriod,myNum,studentSessionToken);
 }
 
 function loadStudentSupplemental(options){
@@ -1612,7 +1651,7 @@ function loadPreviousReview(){
         || !isCurrentStudentContext_(expectedStudentNumber, expectedLessonId, expectedActiveRevision)) return;
       logStudentApiFailure_('getStudentPreviousReview', err);
     })
-    .getStudentPreviousReview(myUnitId,myPeriod,myNum);
+    .getStudentPreviousReview(myUnitId,myPeriod,myNum,studentSessionToken);
 }
 
 function renderPreviousNextGoal_(text){
@@ -2072,7 +2111,7 @@ function doSave(silent){
     .withFailureHandler(()=>{
       autoSaveInFlight=false;
     })
-    .autoSave(myUnitId,myPeriod,myNum,values);
+    .autoSave(myUnitId,myPeriod,myNum,values,studentSessionToken);
 }
 
 // =====================================
@@ -2128,7 +2167,7 @@ function runStudentSubmit_(values, submitOptions, attempt){
       }
       handleSubmitUnknownFailure_(e);
     })
-    .submitReview(myUnitId,myPeriod,myNum,values,submitOptions||{});
+    .submitReview(myUnitId,myPeriod,myNum,values,submitOptions||{},studentSessionToken);
 }
 
 function isRetriableSubmitError_(error){
@@ -2248,6 +2287,17 @@ function refreshTimeline(options){
     .withSuccessHandler(payload=>{
       if(!isTimelineResponseCurrent_(requestId, requestContext, payload)) return;
       logStudentApiTiming_('getTimelineSnapshot', payload);
+      const responseReceivedAt=studentNowMs_();
+      const payloadSignature=getTimelinePayloadSignature_(payload);
+      const shouldPersist=payloadSignature!==lastTimelinePayloadSignature;
+      const storageStartedAt=studentNowMs_();
+      if(shouldPersist){
+        writeStudentCache_('timeline',cacheKey,Object.assign({}, payload||{}, {
+          lessonId:requestContext.lessonId,
+          activeRevision:requestContext.activeRevision,
+        }));
+      }
+      const storageFinishedAt=studentNowMs_();
       logStudentClientPerf_('timeline_response', {
         totalMs:Math.max(0, studentNowMs_()-startedAt),
         sincePageLoadMs:Math.max(0, studentNowMs_()-studentClientPerfState.pageStartedAt),
@@ -2255,13 +2305,20 @@ function refreshTimeline(options){
         rowCount:Array.isArray(payload&&payload.rows)?payload.rows.length:0,
         lessonId:String(payload&&payload.lessonId||''),
         activeRevision:Number(payload&&payload.activeRevision||0),
+        rpcToSuccessMs:Math.max(0, responseReceivedAt-startedAt),
+        localStorageWriteMs:Math.max(0, storageFinishedAt-storageStartedAt),
+        persisted:Boolean(shouldPersist),
         timing:payload&&payload.timing||null,
       });
-      writeStudentCache_('timeline',cacheKey,Object.assign({}, payload||{}, {
-        lessonId:requestContext.lessonId,
-        activeRevision:requestContext.activeRevision,
-      }));
-      const me=applyTimelinePayload(payload);
+      const applyStartedAt=studentNowMs_();
+      const applyResult=applyTimelinePayload(payload, { signature:payloadSignature });
+      const applyFinishedAt=studentNowMs_();
+      const me=applyResult && typeof applyResult==='object' ? applyResult.me : null;
+      const renderMetrics=applyResult && typeof applyResult==='object' ? (applyResult.renderMetrics||{}) : {};
+      let raf1At=0;
+      afterNextAnimationFrame_(()=>{
+        raf1At=studentNowMs_();
+      });
       afterNextPaint_(()=>{
         if(perfSession.loggedRender || !isCurrentStudentContext_(requestContext.studentNumber, requestContext.lessonId, requestContext.activeRevision)) return;
         perfSession.loggedRender=true;
@@ -2271,6 +2328,15 @@ function refreshTimeline(options){
           lessonId:requestContext.lessonId,
           activeRevision:requestContext.activeRevision,
           rowCount:Array.isArray(payload&&payload.rows)?payload.rows.length:0,
+          rpcToSuccessMs:Math.max(0, responseReceivedAt-startedAt),
+          localStorageWriteMs:Math.max(0, storageFinishedAt-storageStartedAt),
+          applyTimelinePayloadMs:Math.max(0, applyFinishedAt-applyStartedAt),
+          applyStartedAfterRpcMs:Math.max(0, applyStartedAt-responseReceivedAt),
+          renderTlMs:Number(renderMetrics.totalMs||0),
+          innerHTMLMs:Number(renderMetrics.innerHTMLMs||0),
+          skippedRender:Boolean(renderMetrics.skipped),
+          firstRafMs:raf1At ? Math.max(0, raf1At-responseReceivedAt) : 0,
+          secondRafMs:Math.max(0, studentNowMs_()-responseReceivedAt),
         });
       });
       pollBusy=false;
@@ -2298,10 +2364,11 @@ function refreshTimeline(options){
       }
       scheduleNextPoll(POLL_IDLE_MS);
     })
-    .getTimelineSnapshot(myLessonId,myActiveRevision,myNum);
+    .getTimelineSnapshot(myLessonId,myActiveRevision,myNum,studentSessionToken);
 }
 
-function applyTimelinePayload(payload){
+function applyTimelinePayload(payload, options){
+  const opts=options||{};
   if(handleStudentActiveLessonChange_(payload)) return null;
   const rows=Array.isArray(payload)?payload:(payload?.rows||[]);
   const myState=payload && typeof payload==='object' ? (payload.myState || null) : null;
@@ -2310,8 +2377,13 @@ function applyTimelinePayload(payload){
   if(typeof payload?.studentAiEnabled!=='undefined') studentAiEnabled=Boolean(payload.studentAiEnabled);
   if(typeof payload?.studentAiAutoSubmitEnabled!=='undefined') studentAiAutoSubmitEnabled=Boolean(payload.studentAiAutoSubmitEnabled);
   applyStudentShellState_(payload?.shell||{});
-  window._lastTl=rows;
-  renderTl(rows);
+  const signature=String(opts.signature||getTimelinePayloadSignature_(payload));
+  let renderMetrics={ skipped:true, totalMs:0, innerHTMLMs:0, rowCount:Array.isArray(rows)?rows.length:0 };
+  if(signature!==lastTimelinePayloadSignature){
+    window._lastTl=rows;
+    renderMetrics=renderTl(rows, { signature });
+    lastTimelinePayloadSignature=signature;
+  }
   const me=myState && typeof myState==='object'
     ? Object.assign({}, myState)
     : (rows.find(r=>String(r.num)===String(myNum)) || null);
@@ -2346,7 +2418,7 @@ function applyTimelinePayload(payload){
     document.getElementById('aiBox').style.display='none';
   }
   syncStudentTabState_();
-  return me;
+  return { me, renderMetrics };
 }
 
 function handleStudentActiveLessonChange_(payload){
@@ -2462,7 +2534,7 @@ function loadStudentPastRecords_(options){
         renderStudentPastRecords_({groups:[]});
       }
     })
-    .getStudentPastRecords(myNum,myUnitId,6);
+    .getStudentPastRecords(myNum,myUnitId,6,studentSessionToken);
 }
 
 function renderStudentPastRecords_(payload){
@@ -2568,7 +2640,13 @@ function resolvePollDelay(me){
   const aiStatus=String(me.aiStatus||'');
   const aiDone=aiStatus==='done';
   const aiError=aiStatus==='error';
-  if(me.submitted && (aiStatus==='pending' || aiStatus==='processing')) return POLL_WAITING_AI_MS;
+  if(me.submitted && (aiStatus==='pending' || aiStatus==='processing')){
+    timelineAiWaitCycleCount += 1;
+    if(timelineAiWaitCycleCount>=5) return POLL_WAITING_AI_MAX_MS;
+    if(timelineAiWaitCycleCount>=3) return POLL_WAITING_AI_LONG_MS;
+    return POLL_WAITING_AI_MS;
+  }
+  timelineAiWaitCycleCount=0;
   if(me.submitted && aiDone && me.comment) return POLL_DONE_MS;
   if(me.submitted && aiError) return POLL_DONE_MS;
   return POLL_IDLE_MS;
@@ -2576,7 +2654,9 @@ function resolvePollDelay(me){
 
 function scheduleNextPoll(ms){
   stopPolling();
-  pollTimer=setTimeout(refreshTimeline, ms);
+  const baseDelay=Math.max(300, Number(ms||0));
+  const jitter=Math.floor(Math.random()*POLL_JITTER_MS);
+  pollTimer=setTimeout(refreshTimeline, baseDelay + jitter);
 }
 
 function stopPolling(){
@@ -2600,6 +2680,9 @@ function changeStudentNumber_(){
   currentStudentStateKey='';
   myUnitId=null;
   myPeriod=null;
+  studentSessionToken='';
+  lastTimelinePayloadSignature='';
+  timelineAiWaitCycleCount=0;
   submitted=false;
   document.querySelectorAll('.num-btn').forEach(btn=>btn.disabled=false);
   forgetRememberedStudent_();
@@ -2607,7 +2690,9 @@ function changeStudentNumber_(){
   showScreen('screen-select');
 }
 
-function renderTl(rows){
+function renderTl(rows, options){
+  const opts=options||{};
+  const startedAt=studentNowMs_();
   const list=document.getElementById('tlList');
   const reviewField=getReviewFieldDef_();
   const reviewIdx=myFields.findIndex(field=>field&&field.type==='review');
@@ -2621,11 +2706,18 @@ function renderTl(rows){
     .sort(compareTimelineRows_);
 
   if(!posted.length){
+    const innerHtmlStartedAt=studentNowMs_();
     list.innerHTML='<div class="tl-empty">まだだれもかいていないよ✨</div>';
-    return;
+    return {
+      skipped:false,
+      signature:String(opts.signature||''),
+      rowCount:0,
+      totalMs:Math.max(0, studentNowMs_()-startedAt),
+      innerHTMLMs:Math.max(0, studentNowMs_()-innerHtmlStartedAt),
+    };
   }
 
-  list.innerHTML=posted.map(r=>{
+  const html=posted.map(r=>{
     const fieldEntries=myFields
       .map((f,i)=>({
         idx:i,
@@ -2657,6 +2749,15 @@ function renderTl(rows){
       `).join('')}</div>
     </div>`;
   }).join('');
+  const innerHtmlStartedAt=studentNowMs_();
+  list.innerHTML=html;
+  return {
+    skipped:false,
+    signature:String(opts.signature||''),
+    rowCount:posted.length,
+    totalMs:Math.max(0, studentNowMs_()-startedAt),
+    innerHTMLMs:Math.max(0, studentNowMs_()-innerHtmlStartedAt),
+  };
 }
 
 function getRowReviewLength_(row, reviewField, reviewIdx){

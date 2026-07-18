@@ -448,12 +448,21 @@ function buildLessonRecord_(row, unit) {
 }
 
 function listLessonRecords_() {
+  const cacheKey = `lesson_records_v1:${readDomainCacheVersion_('lessons')}:${readDomainCacheVersion_('units')}`;
+  const cached = getCachedJson_(cacheKey);
+  if (Array.isArray(cached)) return cached;
   const sheet = getLessonsDbSheet_();
   const lastRow = sheet.getLastRow();
   if (lastRow <= 1) return [];
   const width = Math.max(Number(sheet.getLastColumn() || 0), LESSON_HEADERS.length);
   const rows = sheet.getRange(2, 1, lastRow - 1, width).getValues();
-  return rows.map(row => buildLessonRecord_(row, getUnitById_(row[1]))).filter(Boolean);
+  const unitMap = {};
+  getAllUnits().forEach(unit => {
+    const unitId = String(unit?.id || '').trim();
+    if (unitId) unitMap[unitId] = unit;
+  });
+  const lessons = rows.map(row => buildLessonRecord_(row, unitMap[String(row[1] || '').trim()] || null)).filter(Boolean);
+  return putCachedJson_(cacheKey, lessons, 20);
 }
 
 function getLessonRecordByUnitPeriod_(unitId, period) {
@@ -826,14 +835,22 @@ function safeUpsertLessonLiveStateFromResponseRowValues_(responseRow, lesson) {
   }
 }
 
-function ensureLessonLiveStateBackfilled_(lesson) {
+function ensureLessonLiveStateBackfilled_(lesson, metrics) {
   const lessonId = String(lesson?.lessonId || '').trim();
   if (!lessonId) return [];
   const propKey = getLessonLiveStateBackfillPropKey_(lessonId);
   if (String(getScriptProperties_().getProperty(propKey) || '') === 'done') {
-    return listLessonLiveStateRows_(lessonId);
+    if (metrics) metrics.backfillPath = 'already_done';
+    return listLessonLiveStateRows_(lessonId, metrics);
   }
+  if (metrics) metrics.backfillPath = 'responses_to_live_state';
+  const responseStartedAt = metrics ? Date.now() : 0;
   const responses = listResponsesForLesson_(lessonId);
+  if (metrics) {
+    metrics.responseReadMs = Date.now() - responseStartedAt;
+    metrics.responseCount = Array.isArray(responses) ? responses.length : 0;
+    metrics.responseSource = 'lesson_responses';
+  }
   responses.forEach(response => {
     safeUpsertLessonLiveStateFromResponseRowValues_(response, lesson);
   });
@@ -843,21 +860,43 @@ function ensureLessonLiveStateBackfilled_(lesson) {
   return rows;
 }
 
-function listLessonLiveStateRows_(lessonId) {
+function listLessonLiveStateRows_(lessonId, metrics) {
   const normalizedLessonId = String(lessonId || '').trim();
   if (!normalizedLessonId) return [];
   const cached = getCachedJson_(getLessonLiveStateListCacheKey_(normalizedLessonId));
-  if (Array.isArray(cached)) return cached;
+  if (Array.isArray(cached)) {
+    if (metrics) {
+      metrics.liveStateCacheHit = true;
+      metrics.liveStateReadPath = 'cache';
+    }
+    return cached;
+  }
+  if (metrics) {
+    metrics.liveStateCacheHit = false;
+    metrics.liveStateReadPath = 'sheet';
+  }
   const sheet = getLessonLiveStateDbSheet_();
+  const indexedReadStartedAt = metrics ? Date.now() : 0;
   const indexedRows = readSheetRowsByRowNumbers_(sheet, readLessonLiveStateRowIndex_(normalizedLessonId), LESSON_LIVE_STATE_HEADERS.length)
     .filter(row => String(row[1] || '') === normalizedLessonId);
+  if (metrics) {
+    metrics.sheetGetValuesCount = Number(metrics.sheetGetValuesCount || 0) + 1;
+    metrics.liveStateSheetMs = Date.now() - indexedReadStartedAt;
+  }
   if (indexedRows.length) {
     const rows = indexedRows.map(mapLessonLiveStateRow_);
+    if (metrics) metrics.liveStateReadPath = 'row_index';
     return putCachedJson_(getLessonLiveStateListCacheKey_(normalizedLessonId), rows, 20);
   }
   const lastRow = sheet.getLastRow();
   if (lastRow <= 1) return [];
+  const fullScanStartedAt = metrics ? Date.now() : 0;
   const rawRows = sheet.getRange(2, 1, lastRow - 1, LESSON_LIVE_STATE_HEADERS.length).getValues();
+  if (metrics) {
+    metrics.sheetGetValuesCount = Number(metrics.sheetGetValuesCount || 0) + 1;
+    metrics.liveStateSheetMs = Number(metrics.liveStateSheetMs || 0) + (Date.now() - fullScanStartedAt);
+    metrics.liveStateReadPath = 'full_scan';
+  }
   const rowNumbers = [];
   const rows = rawRows
     .map((row, idx) => ({ row, rowNumber: idx + 2 }))
@@ -929,18 +968,48 @@ function getLessonLiveStateSnapshot_(unitId, period, options) {
   const normalizedUnitId = String(unitId || '').trim();
   const normalizedPeriod = Number(period || 0);
   if (!normalizedUnitId || normalizedPeriod <= 0) return null;
+  const metrics = {
+    cacheHit: false,
+    cacheMiss: false,
+    fallbackPath: 'none',
+    liveStateReadPath: 'none',
+    backfillPath: 'none',
+    responseSource: 'none',
+    responseCount: 0,
+    sheetGetValuesCount: 0,
+    masterApiCalls: 0,
+    masterApiMs: 0,
+    lockWaitMs: 0,
+  };
+  let t0 = Date.now();
   const units = Array.isArray(opts.units) ? opts.units : getAllUnits();
+  metrics.unitsMs = Date.now() - t0;
   const unit = units.find(item => String(item.id || '') === normalizedUnitId) || null;
+  t0 = Date.now();
   const lesson = opts.createLesson === true
     ? getOrCreateLesson_(normalizedUnitId, normalizedPeriod)
     : getLessonRecordByUnitPeriod_(normalizedUnitId, normalizedPeriod);
+  metrics.lessonMs = Date.now() - t0;
   if (!lesson) return null;
-  const rows = listLessonLiveStateRows_(lesson.lessonId);
-  const liveRows = opts.backfill === false ? rows : ensureLessonLiveStateBackfilled_(lesson);
+  t0 = Date.now();
+  const rows = listLessonLiveStateRows_(lesson.lessonId, metrics);
+  metrics.liveStateReadTotalMs = Date.now() - t0;
+  metrics.cacheHit = metrics.liveStateCacheHit === true;
+  metrics.cacheMiss = metrics.cacheHit !== true;
+  t0 = Date.now();
+  const liveRows = opts.backfill === false ? rows : ensureLessonLiveStateBackfilled_(lesson, metrics);
+  metrics.backfillMs = Date.now() - t0;
   if (!liveRows.length && opts.requireRows !== false) return null;
+  t0 = Date.now();
   const lessonConfig = { fields: getLessonFields_(lesson, unit) };
   const fields = getEnabledFields_(lessonConfig);
+  metrics.fieldsMs = Date.now() - t0;
+  t0 = Date.now();
   const roster = Array.isArray(opts.roster) ? opts.roster : getRosterEntries_();
+  metrics.rosterMs = Date.now() - t0;
+  t0 = Date.now();
+  const responseMapByStudentNumber = buildResponseMapByStudentNumber_(liveRows);
+  metrics.responseMapMs = Date.now() - t0;
   return {
     unit,
     lesson,
@@ -950,7 +1019,7 @@ function getLessonLiveStateSnapshot_(unitId, period, options) {
     understandingField: getUnderstandingField_(lessonConfig),
     roster,
     responses: liveRows,
-    responseMapByStudentNumber: buildResponseMapByStudentNumber_(liveRows),
+    responseMapByStudentNumber,
     responseReadMeta: {
       scope: 'lesson_live_state',
       lessonId: String(lesson.lessonId || ''),
@@ -958,6 +1027,9 @@ function getLessonLiveStateSnapshot_(unitId, period, options) {
       masterCount: 0,
       mergedCount: liveRows.length,
       mode: 'live_state',
+    },
+    performanceMeta: {
+      liveStateSnapshot: metrics,
     },
     serverNow: nowIso_(),
   };

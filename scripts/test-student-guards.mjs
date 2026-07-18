@@ -17,6 +17,7 @@ function createServerContext(overrides = {}) {
     runtimeSnapshotCalls: 0,
     stringifyCalls: 0,
   };
+  const tokenStore = new Map();
   const context = {
     console,
     counters,
@@ -29,6 +30,22 @@ function createServerContext(overrides = {}) {
       parse: JSON.parse,
     },
     Date,
+    readGlobalConfig: () => ({
+      active_unit: '1',
+      active_period: '1',
+      active_timeline_field: 'review',
+      active_revision: '3',
+    }),
+    CacheService: {
+      getScriptCache() {
+        return {
+          put(key, value) { tokenStore.set(String(key), String(value)); },
+          get(key) { return tokenStore.has(String(key)) ? tokenStore.get(String(key)) : null; },
+          remove(key) { tokenStore.delete(String(key)); },
+        };
+      },
+    },
+    makeId_: prefix => `${prefix}-token`,
     MEDALS: ['🥇', '🥈', '🥉'],
     MEDAL_COLORS: ['#d4af37', '#c0c0c0', '#cd7f32'],
     nowIso_: () => '2026-07-17T09:00:00.000Z',
@@ -49,6 +66,10 @@ function createServerContext(overrides = {}) {
         { number: '2', name: 'B' },
       ];
     },
+    getStudentSelectableEntries_: () => [
+      { number: '1', name: 'A' },
+      { number: '2', name: 'B' },
+    ],
     getOrCreateLesson_: (unitId, period) => {
       counters.lessonCalls += 1;
       return {
@@ -69,10 +90,10 @@ function createServerContext(overrides = {}) {
     getActiveSetting: () => {
       counters.activeCalls += 1;
       return {
-        unitId: 'u1',
+        unitId: '1',
         period: 1,
         unit: {
-          id: 'u1',
+          id: '1',
           subject: '算数',
           name: 'たし算',
           maxPeriod: 6,
@@ -81,24 +102,29 @@ function createServerContext(overrides = {}) {
             { key: 'goal', label: 'めあて', enabled: true },
           ],
         },
-        lesson: { lessonId: 'lesson-u1-1' },
+        lesson: { lessonId: 'lesson-1-1' },
         timelineFieldKey: 'review',
         activeRevision: 3,
       };
     },
     getAllUnits: () => [
-      { id: 'u1', subject: '算数', name: 'たし算', maxPeriod: 6, fields: [{ key: 'review', label: 'ふりかえり', enabled: true }, { key: 'goal', label: 'めあて', enabled: true }] },
-      { id: 'u2', subject: '国語', name: '説明文', maxPeriod: 4, fields: [{ key: 'review', label: 'ふりかえり', enabled: true }] },
+      { id: '1', subject: '算数', name: 'たし算', maxPeriod: 6, fields: [{ key: 'review', label: 'ふりかえり', enabled: true }, { key: 'goal', label: 'めあて', enabled: true }] },
+      { id: '2', subject: '国語', name: '説明文', maxPeriod: 4, fields: [{ key: 'review', label: 'ふりかえり', enabled: true }] },
     ],
     getLessonRecordById_: lessonId => {
-      if (lessonId === 'lesson-u1-1') return { lessonId: 'lesson-u1-1', unitId: 'u1', period: 1, fields: [{ key: 'review', label: 'ふりかえり', enabled: true }, { key: 'goal', label: 'めあて', enabled: true }] };
-      if (lessonId === 'lesson-u2-1') return { lessonId: 'lesson-u2-1', unitId: 'u2', period: 1, fields: [{ key: 'review', label: 'ふりかえり', enabled: true }] };
+      if (lessonId === 'lesson-1-1') return { lessonId: 'lesson-1-1', unitId: '1', period: 1, fields: [{ key: 'review', label: 'ふりかえり', enabled: true }, { key: 'goal', label: 'めあて', enabled: true }] };
+      if (lessonId === 'lesson-2-1') return { lessonId: 'lesson-2-1', unitId: '2', period: 1, fields: [{ key: 'review', label: 'ふりかえり', enabled: true }] };
+      return null;
+    },
+    getLessonRecordByUnitPeriod_: (unitId, period) => {
+      if (String(unitId) === '1' && Number(period) === 1) return { lessonId: 'lesson-1-1', unitId: '1', period: 1, fields: [{ key: 'review', label: 'ふりかえり', enabled: true }, { key: 'goal', label: 'めあて', enabled: true }] };
+      if (String(unitId) === '2' && Number(period) === 1) return { lessonId: 'lesson-2-1', unitId: '2', period: 1, fields: [{ key: 'review', label: 'ふりかえり', enabled: true }] };
       return null;
     },
     getLessonLiveStateSnapshot_: () => {
       counters.lessonSnapshotCalls += 1;
       return {
-        lesson: { lessonId: 'lesson-u1-1' },
+        lesson: { lessonId: 'lesson-1-1' },
         fields: [
           { key: 'review', label: 'ふりかえり', enabled: true },
           { key: 'goal', label: 'めあて', enabled: true },
@@ -155,7 +181,8 @@ function createServerContext(overrides = {}) {
 
 function testTimelineDtoVisibility() {
   const context = createServerContext();
-  const payload = context.getTimelineSnapshot('lesson-u1-1', 3, '1');
+  const init = context.studentInit('1', 0);
+  const payload = context.getTimelineSnapshot('lesson-1-1', 3, '1', init.studentSessionToken);
   assert.equal(Array.isArray(payload.rows), true);
   assert.equal(payload.rows.length, 2);
   for (const row of payload.rows) {
@@ -171,14 +198,26 @@ function testTimelineDtoVisibility() {
 
 function testLessonAndRevisionGuards() {
   const context = createServerContext();
-  const wrongLessonPayload = context.getTimelineSnapshot('lesson-u2-1', 3, '1');
+  const init = context.studentInit('1', 0);
+  const wrongLessonPayload = context.getTimelineSnapshot('lesson-2-1', 3, '1', init.studentSessionToken);
   assert.equal(Array.isArray(wrongLessonPayload.rows), true);
   assert.equal(wrongLessonPayload.rows.length, 0);
   assert.equal(wrongLessonPayload.myState, null);
-  const staleRevisionPayload = context.getTimelineSnapshot('lesson-u1-1', 2, '1');
+  const staleRevisionPayload = context.getTimelineSnapshot('lesson-1-1', 2, '1', init.studentSessionToken);
   assert.equal(Array.isArray(staleRevisionPayload.rows), true);
   assert.equal(staleRevisionPayload.rows.length, 0);
   assert.equal(staleRevisionPayload.myState, null);
+}
+
+function testStudentSessionGuards() {
+  const context = createServerContext();
+  const init = context.studentInit('1', 0);
+  assert.equal(typeof init.studentSessionToken, 'string');
+  assert.notEqual(init.studentSessionToken, '');
+  assert.throws(() => context.studentLoadState('1', 1, '1', ''), /student_session_required/);
+  assert.throws(() => context.getTimelineSnapshot('lesson-1-1', 3, '2', init.studentSessionToken), /student_session_mismatch/);
+  const loadState = context.studentLoadState('1', 1, '1', init.studentSessionToken);
+  assert.equal(loadState.num, '1');
 }
 
 function testStudentInitDoesNotFetchWholeClassState() {
@@ -192,9 +231,9 @@ function testStudentInitDoesNotFetchWholeClassState() {
   });
   const result = context.studentInit('1', 0);
   assert.equal(result.needPeriodSelect, false);
-  assert.equal(result.lessonId, 'lesson-u1-1');
+  assert.equal(result.lessonId, 'lesson-1-1');
   assert.equal(result.activeRevision, 3);
-  assert.equal(context.counters.rosterCalls, 1);
+  assert.equal(context.counters.rosterCalls, 0);
   assert.equal(context.counters.lessonCalls >= 1, true);
   assert.equal(context.counters.stateCalls >= 1, true);
   assert.equal(context.counters.stringifyCalls >= 1, true);
@@ -207,11 +246,12 @@ function testClientGuardsPresence() {
   assert.match(studentClientSource, /student_input_ready/);
   assert.match(studentClientSource, /timeline_rendered/);
   assert.match(studentClientSource, /id="timelineRetryBtn"/);
-  assert.match(studentClientSource, /\.getTimelineSnapshot\(myLessonId,myActiveRevision,myNum\)/);
+  assert.match(studentClientSource, /\.getTimelineSnapshot\(myLessonId,myActiveRevision,myNum,studentSessionToken\)/);
 }
 
 testTimelineDtoVisibility();
 testLessonAndRevisionGuards();
+testStudentSessionGuards();
 testStudentInitDoesNotFetchWholeClassState();
 testClientGuardsPresence();
 

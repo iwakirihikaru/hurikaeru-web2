@@ -1,6 +1,73 @@
 // ============================================================
 //  児童向け API
 // ============================================================
+const STUDENT_SESSION_TOKEN_TTL_SEC = 6 * 60 * 60;
+const STUDENT_SESSION_TOKEN_CACHE_PREFIX = 'student_session_v1:';
+
+function getStudentSessionTokenCache_() {
+  return CacheService.getScriptCache();
+}
+
+function buildStudentSessionTokenCacheKey_(token) {
+  return `${STUDENT_SESSION_TOKEN_CACHE_PREFIX}${String(token || '').trim()}`;
+}
+
+function issueStudentSessionToken_(studentNumber) {
+  const normalizedStudentNumber = String(studentNumber || '').trim();
+  if (!normalizedStudentNumber) return '';
+  const token = makeId_('student_session');
+  try {
+    getStudentSessionTokenCache_().put(buildStudentSessionTokenCacheKey_(token), JSON.stringify({
+      studentNumber: normalizedStudentNumber,
+      issuedAt: nowIso_(),
+    }), STUDENT_SESSION_TOKEN_TTL_SEC);
+  } catch (_err) {
+    return '';
+  }
+  return token;
+}
+
+function readStudentSessionToken_(token) {
+  const normalizedToken = String(token || '').trim();
+  if (!normalizedToken) return null;
+  try {
+    const raw = getStudentSessionTokenCache_().get(buildStudentSessionTokenCacheKey_(normalizedToken));
+    const parsed = raw ? JSON.parse(raw) : null;
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch (_err) {
+    return null;
+  }
+}
+
+function assertStudentSessionTokenMatches_(token, studentNumber, options) {
+  const normalizedStudentNumber = String(studentNumber || '').trim();
+  const opts = options && typeof options === 'object' ? options : {};
+  const session = readStudentSessionToken_(token);
+  if (!session) {
+    if (opts.allowMissing === true) return null;
+    throw new Error('student_session_required');
+  }
+  if (String(session.studentNumber || '').trim() !== normalizedStudentNumber) {
+    throw new Error('student_session_mismatch');
+  }
+  return session;
+}
+
+function buildLightweightActiveContext_(units) {
+  const cfg = readGlobalConfig();
+  const normalizedUnitId = String(parseInt(cfg.active_unit, 10) || 0);
+  const normalizedPeriod = parseInt(cfg.active_period, 10) || 0;
+  const providedUnits = Array.isArray(units) ? units : [];
+  const unit = providedUnits.find(item => String(item?.id || '') === normalizedUnitId) || null;
+  return {
+    unitId: normalizedUnitId,
+    period: normalizedPeriod,
+    unit,
+    timelineFieldKey: String(cfg.active_timeline_field || '').trim(),
+    activeRevision: parseInt(cfg.active_revision, 10) || 0,
+  };
+}
+
 // studentInit:
 // 入口選択後の最初の1画面を成立させる最小データを返す。
 // 背景取得専用データや履歴系はここに寄せない。
@@ -54,6 +121,7 @@ function studentInit(num, periodOverride) {
     needPeriodSelect: false,
     lessonId: String(lesson.lessonId || ''),
     activeRevision,
+    studentSessionToken: issueStudentSessionToken_(num),
     unit: active.unit,
     period,
     teacherSetPeriod: active.period > 0,
@@ -169,9 +237,10 @@ function buildStudentSnapshotState_(row, fields, featureFlags, shell, lessonId, 
 // studentLoadState:
 // current lesson に対する児童本人の最新 state 再取得専用。
 // 入口情報や名簿一覧は返さない前提で保つ。
-function studentLoadState(unitId, period, num) {
+function studentLoadState(unitId, period, num, studentSessionToken) {
   const startedAt = Date.now();
   const timing = {};
+  assertStudentSessionTokenMatches_(studentSessionToken, num);
   const normalizedPeriod = parseInt(period, 10) || 0;
   let t0 = Date.now();
   const units = getAllUnits();
@@ -187,8 +256,9 @@ function studentLoadState(unitId, period, num) {
   const studentName = rosterStudent?.name || '';
   timing.rosterMs = Date.now() - t0;
   t0 = Date.now();
-  const active = getActiveSetting({ units });
-  const activeRevision = String(active?.lesson?.lessonId || '') === String(lesson.lessonId || '')
+  const active = buildLightweightActiveContext_(units);
+  const activeRevision = String(active?.unitId || '') === String(lesson.unitId || '')
+    && Number(active?.period || 0) === Number(lesson.period || 0)
     ? Number(active.activeRevision || 0)
     : 0;
   const payload = buildStudentState_(unit, normalizedPeriod, num, studentName, enabledFields, {
@@ -267,6 +337,7 @@ function buildTimelineSnapshotPayload_(snapshot, active, teacherTimelineFieldKey
       lessonId: activeLessonId,
       activeRevision: Number(active?.activeRevision || 0),
     },
+    performanceMeta: safeSnapshot.performanceMeta || null,
     shell: shell || getLiveTenantMaintenanceState(),
   };
 }
@@ -295,19 +366,23 @@ function getTimeline(unitId, period) {
   return attachStudentApiTiming_(payload, 'getTimeline', startedAt, timing);
 }
 
-function getTimelineSnapshot(lessonId, activeRevision, studentNumber) {
+function getTimelineSnapshot(lessonId, activeRevision, studentNumber, studentSessionToken) {
   const startedAt = Date.now();
   const timing = {};
   const normalizedLessonId = String(lessonId || '').trim();
   const normalizedRevision = Number(activeRevision || 0);
   const normalizedStudentNumber = String(studentNumber || '').trim();
+  assertStudentSessionTokenMatches_(studentSessionToken, normalizedStudentNumber, { allowMissing: !normalizedStudentNumber });
   let t0 = Date.now();
   const units = getAllUnits();
   timing.unitsMs = Date.now() - t0;
   t0 = Date.now();
-  const active = getActiveSetting({ units });
+  const active = buildLightweightActiveContext_(units);
   timing.activeMs = Date.now() - t0;
-  const activeLessonId = String(active?.lesson?.lessonId || '').trim();
+  const activeLesson = active?.unitId && Number(active?.period || 0) > 0
+    ? getLessonRecordByUnitPeriod_(active.unitId, active.period)
+    : null;
+  const activeLessonId = String(activeLesson?.lessonId || '').trim();
   const activeRevisionNumber = Number(active?.activeRevision || 0);
   const shell = getLiveTenantMaintenanceState();
   if (!normalizedLessonId || !activeLessonId || normalizedLessonId !== activeLessonId || normalizedRevision !== activeRevisionNumber) {
@@ -385,12 +460,13 @@ function getTimelineSnapshot(lessonId, activeRevision, studentNumber) {
   return attachStudentApiTiming_(payload, 'getTimelineSnapshot', startedAt, timing);
 }
 
-function getStudentPreviousReview(unitId, period, num) {
+function getStudentPreviousReview(unitId, period, num, studentSessionToken) {
   const startedAt = Date.now();
   const timing = {};
   const normalizedUnitId = String(unitId || '').trim();
   const normalizedPeriod = parseInt(period, 10) || 0;
   const normalizedNum = String(num || '').trim();
+  assertStudentSessionTokenMatches_(studentSessionToken, normalizedNum);
   if (!normalizedUnitId || normalizedPeriod <= 1 || !normalizedNum) {
     return attachStudentApiTiming_({ prevReview: '', previousNextGoal: '' }, 'getStudentPreviousReview', startedAt, timing);
   }
@@ -422,8 +498,9 @@ function attachStudentApiTiming_(payload, apiName, startedAt, timing) {
   return result;
 }
 
-function getStudentPastRecords(num, unitId, limit) {
+function getStudentPastRecords(num, unitId, limit, studentSessionToken) {
   const normalizedNum = String(num || '').trim();
+  assertStudentSessionTokenMatches_(studentSessionToken, normalizedNum);
   if (!normalizedNum) {
     return { ok: false, groups: [], error: '番号がありません。' };
   }
@@ -749,8 +826,9 @@ function runResponsePostPersistTasks_(saved, options) {
   }
 }
 
-function autoSave(unitId, period, num, customs) {
+function autoSave(unitId, period, num, customs, studentSessionToken) {
   const startedAt = Date.now();
+  assertStudentSessionTokenMatches_(studentSessionToken, num);
   const units  = getAllUnits();
   const unit   = units.find(u => u.id == unitId);
   const lesson = getOrCreateLesson_(unitId, period);
@@ -821,8 +899,9 @@ function autoSave(unitId, period, num, customs) {
   }
 }
 
-function submitReview(unitId, period, num, customs, submitOptions) {
+function submitReview(unitId, period, num, customs, submitOptions, studentSessionToken) {
   const startedAt = Date.now();
+  assertStudentSessionTokenMatches_(studentSessionToken, num);
   const units  = getAllUnits();
   const unit   = units.find(u => u.id == unitId);
   const lesson = getOrCreateLesson_(unitId, period);
