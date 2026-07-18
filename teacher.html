@@ -343,6 +343,16 @@ body{font-family:var(--font);background:var(--bg);color:#212121;}
 .status-card-sidebadges{
   display:flex;align-items:center;justify-content:flex-end;gap:6px;flex:0 0 auto;white-space:nowrap;
 }
+.status-favorite-btn{
+  display:inline-flex;align-items:center;justify-content:center;min-width:38px;min-height:38px;
+  padding:0 8px;border:1.5px solid #D8E6D9;border-radius:999px;background:#fff;color:#607D66;
+  font-family:var(--font);font-size:18px;font-weight:bold;line-height:1;cursor:pointer;flex:0 0 auto;
+}
+.status-favorite-btn:hover{background:#F5FAF5;}
+.status-favorite-btn:focus-visible{outline:3px solid rgba(67,160,71,.24);outline-offset:2px;}
+.status-favorite-btn[disabled]{cursor:default;opacity:.6;}
+.status-favorite-btn.status-favorite-active{border-color:#F6C342;background:#FFF7D6;color:#C88700;}
+.status-favorite-btn.status-favorite-busy{color:#9AA6AC;}
 .status-rank-chip{
   display:inline-flex;align-items:center;justify-content:center;min-height:20px;padding:2px 8px;border-radius:999px;
   font-size:11px;font-weight:bold;line-height:1;color:#fff;
@@ -657,6 +667,7 @@ body{font-family:var(--font);background:var(--bg);color:#212121;}
     width:94vw;height:min(calc(var(--status-modal-vh, 1vh) * 92),94vh);
     max-height:min(calc(var(--status-modal-vh, 1vh) * 92),94vh);padding:16px;
   }
+  .status-favorite-btn{min-width:34px;min-height:34px;font-size:16px;}
   .status-card-modal-head{flex-direction:column;}
   .status-card-modal-toolbar{width:100%;flex-direction:column;align-items:stretch;}
   .status-feedback-jump-btn,
@@ -1113,6 +1124,7 @@ button:not([disabled]):active,button.is-pressed{transform:translateY(1px);filter
           <div class="status-card-modal-meta" id="statusCardModalMeta"></div>
         </div>
         <div class="status-card-modal-toolbar">
+          <button class="status-favorite-btn" id="statusCardModalFavoriteBtn" type="button" hidden onclick="toggleStatusFavorite(event,this.getAttribute('data-response-id')||'')" onkeydown="handleStatusFavoriteButtonKeydown(event,this.getAttribute('data-response-id')||'')">☆</button>
           <button class="btn-subtle status-feedback-jump-btn" id="statusFeedbackJumpBtn" type="button" onclick="openStatusFeedbackFromModal()">個別フィードバックへ</button>
           <button class="btn-cancel status-card-modal-close" type="button" onclick="closeStatusCardModal()">閉じる</button>
         </div>
@@ -3749,6 +3761,7 @@ var selectedStatusViewTab = 'responses';
 var statusCardColumnCount = 3;
 var statusViewScrollByTab = { responses: 0, feedback: 0 };
 var statusModalBodyLockY = 0;
+var statusFavoriteBusyMap = {};
 function formatStatusTimingLine_(label, timing, keys) {
     if (!timing || typeof timing !== 'object' || !Array.isArray(keys) || !keys.length)
         return '';
@@ -4274,8 +4287,18 @@ function renderStatusCard_(row, fields) {
     var variantClass = getStatusCardVariantClass_(content.textLength, fields.length);
     var studentName = safeStudentName(student);
     var studentClass = studentName.length >= 13 ? 'status-card-student tight' : studentName.length >= 9 ? 'status-card-student compact' : 'status-card-student';
-    var badgesHtml = renderStatusHeaderBadgesHtml_(student);
+    var badgesHtml = renderStatusHeaderBadgesHtml_(student) + renderStatusFavoriteButton_(student);
     return "\n    <div class=\"status-card ".concat(variantClass, "\" role=\"button\" tabindex=\"0\" data-student-key=\"").concat(escAttr(row.key), "\" onclick=\"openStatusCardModal('").concat(escAttr(row.key), "')\" onkeydown=\"handleStatusCardKeydown(event,'").concat(escAttr(row.key), "')\">\n      <div class=\"status-card-head\">\n        <div class=\"status-card-name\">\n          <div class=\"status-card-studentline\">\n            <span class=\"status-card-number\">").concat(esc(getStatusStudentNumberLabel_(student)), "</span>\n            <span class=\"").concat(studentClass, "\">").concat(esc(studentName), "</span>\n          </div>\n        </div>\n        ").concat(badgesHtml ? "<div class=\"status-card-side\">".concat(badgesHtml, "</div>") : '', "\n      </div>\n      ").concat(content.html, "\n    </div>");
+}
+function renderStatusFavoriteButton_(student) {
+    var responseId = String(student && student.responseId || '').trim();
+    if (!responseId)
+        return '';
+    var isFavorite = student && student.isFavorite === true;
+    var isBusy = isStatusFavoriteBusy_(responseId);
+    var label = isFavorite ? 'お気に入りを解除' : 'お気に入りに追加';
+    var classes = 'status-favorite-btn' + (isFavorite ? ' status-favorite-active' : '') + (isBusy ? ' status-favorite-busy' : '');
+    return "<button class=\"".concat(classes, "\" type=\"button\" data-response-id=\"").concat(escAttr(responseId), "\" aria-pressed=\"").concat(isFavorite ? 'true' : 'false', "\" aria-label=\"").concat(escAttr(label), "\" title=\"").concat(escAttr(label), "\"").concat(isBusy ? ' disabled' : '', " onclick=\"toggleStatusFavorite(event,'").concat(escAttr(responseId), "')\" onkeydown=\"handleStatusFavoriteButtonKeydown(event,'").concat(escAttr(responseId), "')\">").concat(isBusy ? '…' : (isFavorite ? '★' : '☆'), "</button>");
 }
 function handleStatusCardKeydown(event, studentKey) {
     var key = String(event && event.key || '');
@@ -4524,6 +4547,103 @@ function findStatusViewRowIndexByKey_(studentKey) {
     }
     return -1;
 }
+function findStatusStudentByResponseId_(responseId) {
+    var normalized = String(responseId || '').trim();
+    if (!normalized)
+        return null;
+    for (var i = 0; i < latestStatusRows.length; i++) {
+        var student = latestStatusRows[i];
+        if (String(student && student.responseId || '').trim() === normalized)
+            return student;
+    }
+    return null;
+}
+function isStatusFavoriteBusy_(responseId) {
+    return Boolean(statusFavoriteBusyMap[String(responseId || '').trim()]);
+}
+function refreshStatusFavoriteButtons_(responseId) {
+    var normalized = String(responseId || '').trim();
+    if (!normalized || typeof document === 'undefined')
+        return;
+    var student = findStatusStudentByResponseId_(normalized);
+    var isFavorite = Boolean(student && student.isFavorite === true);
+    var isBusy = isStatusFavoriteBusy_(normalized);
+    var label = isFavorite ? 'お気に入りを解除' : 'お気に入りに追加';
+    Array.prototype.forEach.call(document.querySelectorAll('.status-favorite-btn'), function (button) {
+        if (String(button.getAttribute('data-response-id') || '').trim() !== normalized)
+            return;
+        button.classList.toggle('status-favorite-active', isFavorite);
+        button.classList.toggle('status-favorite-busy', isBusy);
+        button.setAttribute('aria-pressed', isFavorite ? 'true' : 'false');
+        button.setAttribute('aria-label', label);
+        button.setAttribute('title', label);
+        button.disabled = isBusy;
+        button.textContent = isBusy ? '…' : (isFavorite ? '★' : '☆');
+    });
+}
+function setStatusFavoriteBusy_(responseId, isBusy) {
+    var normalized = String(responseId || '').trim();
+    if (!normalized)
+        return;
+    if (isBusy) {
+        statusFavoriteBusyMap[normalized] = true;
+    }
+    else {
+        delete statusFavoriteBusyMap[normalized];
+    }
+    refreshStatusFavoriteButtons_(normalized);
+}
+function patchStatusFavoriteState_(responseId, isFavorite) {
+    var student = findStatusStudentByResponseId_(responseId);
+    if (!student)
+        return;
+    student.isFavorite = isFavorite === true;
+    refreshStatusFavoriteButtons_(responseId);
+    if (statusModalStudentKey) {
+        var row = findStatusViewRowByKey_(statusModalStudentKey);
+        var modalStudent = row && row.student || null;
+        if (String(modalStudent && modalStudent.responseId || '').trim() === String(responseId || '').trim()) {
+            syncStatusCardModal_();
+        }
+    }
+}
+function handleStatusFavoriteButtonKeydown(event, responseId) {
+    var key = String(event && event.key || '');
+    if (key !== 'Enter' && key !== ' ')
+        return;
+    if (event && typeof event.preventDefault === 'function')
+        event.preventDefault();
+    toggleStatusFavorite(event, responseId);
+}
+function toggleStatusFavorite(event, responseId) {
+    if (event && typeof event.preventDefault === 'function')
+        event.preventDefault();
+    if (event && typeof event.stopPropagation === 'function')
+        event.stopPropagation();
+    var normalized = String(responseId || '').trim();
+    var student = findStatusStudentByResponseId_(normalized);
+    if (!normalized || !student || isStatusFavoriteBusy_(normalized))
+        return;
+    setStatusFavoriteBusy_(normalized, true);
+    google.script.run
+        .withSuccessHandler(function (res) {
+        setStatusFavoriteBusy_(normalized, false);
+        if (!(res && res.ok)) {
+            showToast(res && res.error || 'お気に入り更新に失敗しました');
+            return;
+        }
+        patchStatusFavoriteState_(normalized, Boolean(res.isFavorite));
+    })
+        .withFailureHandler(function (err) {
+        setStatusFavoriteBusy_(normalized, false);
+        showToast(formatTeacherRpcError_(err, 'お気に入り更新に失敗しました', 'お気に入り'), { tone: 'error', duration: 5200 });
+    })
+        .setTeacherResponseFavorite(normalized, !(student.isFavorite === true), {
+        lessonId: String(latestStatusMeta && latestStatusMeta.lessonId || '').trim(),
+        unitId: String(activeUnitId || latestStatusMeta && latestStatusMeta.unitId || '').trim(),
+        period: Number(activePeriod || latestStatusMeta && latestStatusMeta.period || 0) || 0,
+    });
+}
 function openStatusCardModal(studentKey) {
     var key = String(studentKey || '').trim();
     if (!key)
@@ -4614,6 +4734,7 @@ function syncStatusCardModal_() {
     var numberEl = document.getElementById('statusCardModalNumber');
     var metaEl = document.getElementById('statusCardModalMeta');
     var bodyEl = document.getElementById('statusCardModalBody');
+    var favoriteBtn = document.getElementById('statusCardModalFavoriteBtn');
     var feedbackBtn = document.getElementById('statusFeedbackJumpBtn');
     var prevBtn = document.getElementById('statusCardModalPrevBtn');
     var nextBtn = document.getElementById('statusCardModalNextBtn');
@@ -4625,6 +4746,17 @@ function syncStatusCardModal_() {
     }
     if (metaEl) {
         metaEl.innerHTML = renderStatusHeaderBadgesHtml_(student, { labelPrefix: 'AIランク' });
+    }
+    if (favoriteBtn) {
+        var responseId = String(student && student.responseId || '').trim();
+        favoriteBtn.hidden = !responseId;
+        if (responseId) {
+            favoriteBtn.setAttribute('data-response-id', responseId);
+        }
+        else {
+            favoriteBtn.removeAttribute('data-response-id');
+        }
+        refreshStatusFavoriteButtons_(responseId);
     }
     if (bodyEl) {
         bodyEl.innerHTML = buildStatusContentHtml_(row, fields, { mode: 'modal' }).html;
@@ -4731,6 +4863,7 @@ function clearRenderedStatus_() {
     statusModalStudentKey = '';
     statusModalScrollY = 0;
     statusModalBodyLockY = 0;
+    statusFavoriteBusyMap = {};
     var totalEl = document.getElementById('statTotal');
     var writtenEl = document.getElementById('statWritten');
     var submittedEl = document.getElementById('statSubmitted');
@@ -4761,6 +4894,11 @@ function clearRenderedStatus_() {
     var body = document.getElementById('statusBody');
     if (body) {
         body.innerHTML = '<tr><td colspan="2" style="text-align:center;padding:18px;color:#78909C;">授業を開始すると、ここに児童の記録とフィードバックが表示されます。</td></tr>';
+    }
+    var modalFavoriteBtn = document.getElementById('statusCardModalFavoriteBtn');
+    if (modalFavoriteBtn) {
+        modalFavoriteBtn.hidden = true;
+        modalFavoriteBtn.removeAttribute('data-response-id');
     }
     closeStatusCardModal();
 }
