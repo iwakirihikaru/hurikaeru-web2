@@ -559,7 +559,8 @@ function renderStatusCard_(row, fields) {
     var variantClass = getStatusCardVariantClass_(content.textLength, fields.length);
     var studentName = safeStudentName(student);
     var studentClass = studentName.length >= 13 ? 'status-card-student tight' : studentName.length >= 9 ? 'status-card-student compact' : 'status-card-student';
-    return "\n    <div class=\"status-card ".concat(variantClass, "\" role=\"button\" tabindex=\"0\" data-student-key=\"").concat(escAttr(row.key), "\" onclick=\"openStatusCardModal('").concat(escAttr(row.key), "')\" onkeydown=\"handleStatusCardKeydown(event,'").concat(escAttr(row.key), "')\">\n      <div class=\"status-card-head\">\n        <div class=\"status-card-name\">\n          <div class=\"status-card-studentline\">\n            <span class=\"status-card-number\">").concat(esc(getStatusStudentNumberLabel_(student)), "</span>\n            <span class=\"").concat(studentClass, "\">").concat(esc(studentName), "</span>\n          </div>\n        </div>\n      </div>\n      ").concat(content.html, "\n    </div>");
+    var badgesHtml = renderStatusHeaderBadgesHtml_(student);
+    return "\n    <div class=\"status-card ".concat(variantClass, "\" role=\"button\" tabindex=\"0\" data-student-key=\"").concat(escAttr(row.key), "\" onclick=\"openStatusCardModal('").concat(escAttr(row.key), "')\" onkeydown=\"handleStatusCardKeydown(event,'").concat(escAttr(row.key), "')\">\n      <div class=\"status-card-head\">\n        <div class=\"status-card-name\">\n          <div class=\"status-card-studentline\">\n            <span class=\"status-card-number\">").concat(esc(getStatusStudentNumberLabel_(student)), "</span>\n            <span class=\"").concat(studentClass, "\">").concat(esc(studentName), "</span>\n          </div>\n        </div>\n        ").concat(badgesHtml ? "<div class=\"status-card-side\">".concat(badgesHtml, "</div>") : '', "\n      </div>\n      ").concat(content.html, "\n    </div>");
 }
 function handleStatusCardKeydown(event, studentKey) {
     var key = String(event && event.key || '');
@@ -577,7 +578,7 @@ function renderStatusFeedbackTable_() {
         body.innerHTML = '<tr><td colspan="2" style="text-align:center;padding:18px;color:#78909C;">授業を開始すると、ここに児童の記録とフィードバックが表示されます。</td></tr>';
         return;
     }
-    body.innerHTML = latestStatusRows.map(function (s) { return "\n    <tr>\n      <td data-label=\"\u5150\u7AE5 / \u63D0\u51FA\u5185\u5BB9\" class=\"status-student-cell\">".concat(renderStatusStudentCell(s), "</td>\n      <td data-label=\"\u30D5\u30A3\u30FC\u30C9\u30D0\u30C3\u30AF\" class=\"status-comment-cell\">").concat(renderStatusComment(s), "</td>\n    </tr>"); }).join('');
+    body.innerHTML = latestStatusRows.map(function (s) { return "\n    <tr class=\"status-feedback-row\" data-response-id=\"".concat(escAttr(String(s && s.responseId || '')), "\">\n      <td data-label=\"\u5150\u7AE5 / \u63D0\u51FA\u5185\u5BB9\" class=\"status-student-cell\">").concat(renderStatusStudentCell(s), "</td>\n      <td data-label=\"\u30D5\u30A3\u30FC\u30C9\u30D0\u30C3\u30AF\" class=\"status-comment-cell\">").concat(renderStatusComment(s), "</td>\n    </tr>"); }).join('');
 }
 function getStatusStudentKey_(student) {
     var responseId = String(student && student.responseId || '').trim();
@@ -588,6 +589,30 @@ function getStatusStudentKey_(student) {
 function getStatusStudentNumberLabel_(student) {
     var num = String(student && student.num || '').trim();
     return num ? "".concat(num, "\u756A") : '番号なし';
+}
+function renderStatusRankChip_(rank, options) {
+    var value = String(rank || '').trim();
+    if (!value)
+        return '';
+    var label = String(options && options.labelPrefix || 'AIランク');
+    return "<span class=\"status-rank-chip rank-chip r-".concat(escAttr(value.replace('+', 'p')), "\" title=\"").concat(escAttr("".concat(label, " ").concat(value)), "\" aria-label=\"").concat(escAttr("".concat(label, " ").concat(value)), "\">").concat(esc(value), "</span>");
+}
+function renderStatusMedalChip_(medal) {
+    var value = String(medal || '').trim();
+    if (!value)
+        return '';
+    if (/^\d+th$/i.test(value)) {
+        var num = value.replace(/th$/i, '');
+        return "<span class=\"status-medal-chip\" aria-label=\"\u30E1\u30C0\u30EB ".concat(escAttr(num), "\">\uD83C\uDFC5").concat(esc(num), "</span>");
+    }
+    return "<span class=\"status-medal-chip\" aria-label=\"\u30E1\u30C0\u30EB ".concat(escAttr(value), "\">").concat(esc(value), "</span>");
+}
+function renderStatusHeaderBadgesHtml_(student, options) {
+    var parts = [
+        renderStatusRankChip_(student && student.rank || '', options),
+        renderStatusMedalChip_(student && student.medal || ''),
+    ].filter(Boolean);
+    return parts.length ? "<div class=\"status-card-sidebadges\">".concat(parts.join(''), "</div>") : '';
 }
 function getSelectedStatusField_() {
     return getSelectedStatusFields_()[0] || null;
@@ -637,23 +662,50 @@ function stripStatusReviewHintLines_(text, entry) {
     });
     return value.replace(/\n{3,}/g, '\n\n').trim();
 }
+function findStatusReviewLabelMatch_(text, label, fromIndex) {
+    var source = String(text || '');
+    var target = String(label || '').trim();
+    var startIndex = Math.max(0, Number(fromIndex) || 0);
+    if (!source || !target)
+        return null;
+    var patterns = [
+        new RegExp("[\\[［【「『]\\s*".concat(teacherEscapeRegex_(target), "\\s*[\\]］】」』]"), 'g'),
+        new RegExp("(^|\\n)\\s*(?:[\\[［【「『]\\s*)?".concat(teacherEscapeRegex_(target), "(?:\\s*[\\]］】」』])?\\s*(?:[:：])?"), 'gm'),
+    ];
+    var best = null;
+    patterns.forEach(function (pattern, priority) {
+        pattern.lastIndex = startIndex;
+        var match = pattern.exec(source);
+        if (!match)
+            return;
+        var candidate = {
+            label: target,
+            start: match.index,
+            end: pattern.lastIndex,
+            priority: priority,
+        };
+        if (!best || candidate.start < best.start || (candidate.start === best.start && candidate.priority < best.priority)) {
+            best = candidate;
+        }
+    });
+    return best;
+}
 function splitStatusReviewSections_(entry) {
     var text = String(entry && entry.value || '').trim();
     var labels = getStatusReviewHintLabels_(entry);
     if (!text || !labels.length) {
         return [];
     }
-    var pattern = new RegExp('(?:^|\\n)\\s*(' + labels.map(teacherEscapeRegex_).join('|') + ')\\s*(?=\\n|$)', 'g');
     var matches = [];
-    var match = null;
-    while ((match = pattern.exec(text))) {
-        matches.push({
-            label: String(match[1] || '').trim(),
-            start: match.index,
-            end: pattern.lastIndex,
-        });
-    }
-    if (!matches.length) {
+    var cursor = 0;
+    labels.forEach(function (label) {
+        var match = findStatusReviewLabelMatch_(text, label, cursor);
+        if (!match)
+            return;
+        matches.push(match);
+        cursor = Math.max(cursor, match.end);
+    });
+    if (!matches.length || (labels.length > 1 && matches.length < 2)) {
         return [];
     }
     return matches.map(function (item, index) {
@@ -681,9 +733,9 @@ function renderStatusReviewSectionHtml_(entry, mode) {
     return {
         html: "<div class=\"status-card-review-list\">".concat(sections.map(function (section) {
             var body = String(section && section.body || '').trim();
-            return "<div class=\"status-card-review-item\"><span class=\"status-card-review-chip\">".concat(esc(section.label || '項目'), "</span><div class=\"status-card-text").concat(body ? '' : ' status-card-empty', "\">").concat(body ? esc(body).replace(/\n/g, '<br>') : 'まだ入力がありません', "</div></div>");
+            return "<div class=\"status-card-review-item status-review-block\"><span class=\"status-card-review-chip\">".concat(esc(section.label || '項目'), "</span><div class=\"status-card-text").concat(body ? '' : ' status-card-empty', "\">").concat(body ? esc(body).replace(/\n/g, '<br>') : 'まだ入力がありません', "</div></div>");
         }).join(''), "</div>"),
-        textLength: countText.length,
+        textLength: sections.reduce(function (sum, section) { return sum + String(section && section.body || '').trim().length; }, 0),
     };
 }
 function buildStatusContentHtml_(row, fields, options) {
@@ -789,6 +841,44 @@ function moveStatusCardModal(delta) {
     statusModalStudentKey = latestStatusViewRows[nextIndex].key;
     syncStatusCardModal_();
 }
+function findStatusFeedbackRow_(responseId) {
+    var normalized = String(responseId || '').trim();
+    if (!normalized)
+        return null;
+    return document.querySelector(".status-feedback-row[data-response-id=\"".concat(escAttr(normalized), "\"]"));
+}
+function focusStatusFeedbackRow_(responseId) {
+    var normalized = String(responseId || '').trim();
+    if (!normalized)
+        return;
+    document.querySelectorAll('.status-feedback-row.is-target').forEach(function (row) { return row.classList.remove('is-target'); });
+    var row = findStatusFeedbackRow_(normalized);
+    if (!row)
+        return;
+    row.classList.add('is-target');
+    if (typeof row.scrollIntoView === 'function') {
+        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    window.setTimeout(function () {
+        var field = row.querySelector('.status-draft-textarea, .status-draft-rank');
+        if (field && typeof field.focus === 'function') {
+            field.focus({ preventScroll: true });
+        }
+    }, 120);
+}
+function openStatusFeedbackFromModal() {
+    var row = findStatusViewRowByKey_(statusModalStudentKey);
+    var responseId = String(row && row.responseId || row && row.student && row.student.responseId || '').trim();
+    closeStatusCardModal();
+    var tabBtn = document.querySelector(".tab[onclick*=\"'status'\"]");
+    if (typeof switchTab === 'function') {
+        switchTab('status', tabBtn || null);
+    }
+    switchStatusViewTab('feedback');
+    if (!responseId)
+        return;
+    window.setTimeout(function () { return focusStatusFeedbackRow_(responseId); }, 80);
+}
 function syncStatusCardModal_() {
     var bg = document.getElementById('statusCardModalBg');
     if (!bg)
@@ -807,8 +897,9 @@ function syncStatusCardModal_() {
     var index = findStatusViewRowIndexByKey_(statusModalStudentKey);
     var studentEl = document.getElementById('statusCardModalTitle');
     var numberEl = document.getElementById('statusCardModalNumber');
+    var metaEl = document.getElementById('statusCardModalMeta');
     var bodyEl = document.getElementById('statusCardModalBody');
-    var feedbackEl = document.getElementById('statusCardModalFeedback');
+    var feedbackBtn = document.getElementById('statusFeedbackJumpBtn');
     var prevBtn = document.getElementById('statusCardModalPrevBtn');
     var nextBtn = document.getElementById('statusCardModalNextBtn');
     if (studentEl) {
@@ -817,13 +908,15 @@ function syncStatusCardModal_() {
     if (numberEl) {
         numberEl.textContent = getStatusStudentNumberLabel_(student);
     }
+    if (metaEl) {
+        metaEl.innerHTML = renderStatusHeaderBadgesHtml_(student, { labelPrefix: 'AIランク' });
+    }
     if (bodyEl) {
         bodyEl.innerHTML = buildStatusContentHtml_(row, fields, { mode: 'modal' }).html;
         bodyEl.scrollTop = 0;
     }
-    if (feedbackEl) {
-        feedbackEl.innerHTML = renderTeacherDraftEditor(student, String(student.draftComment || '').trim(), String(student.draftRank || '').trim());
-        feedbackEl.scrollTop = 0;
+    if (feedbackBtn) {
+        feedbackBtn.disabled = !String(student && student.responseId || '').trim();
     }
     if (prevBtn)
         prevBtn.disabled = index <= 0;
@@ -1060,11 +1153,8 @@ function findTeacherDraftRow_(responseId) {
     var normalized = String(responseId || '').trim();
     if (!normalized)
         return null;
-    var field = document.querySelector(".status-card-modal-feedback .status-draft-textarea[data-response-id=\"".concat(escAttr(normalized), "\"]"))
-        || document.querySelector(".status-card-modal-feedback .status-draft-rank[data-response-id=\"".concat(escAttr(normalized), "\"]"))
-        || document.querySelector(".status-draft-textarea[data-response-id=\"".concat(escAttr(normalized), "\"]"))
-        || document.querySelector(".status-draft-rank[data-response-id=\"".concat(escAttr(normalized), "\"]"));
-    return field ? field.closest('.status-draft-box') : null;
+    var row = findStatusFeedbackRow_(normalized);
+    return row ? row.querySelector('.status-draft-box') : null;
 }
 function getTeacherDraftState_(responseId) {
     var normalized = String(responseId || '').trim();

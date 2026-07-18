@@ -84,19 +84,20 @@
     <div class="modal status-card-modal" role="dialog" aria-modal="true" aria-labelledby="statusCardModalTitle" onclick="event.stopPropagation()">
       <div class="status-card-modal-head">
         <div class="status-card-modal-titlegroup">
-          <div class="status-card-modal-student" id="statusCardModalTitle"></div>
-          <div class="status-card-modal-number" id="statusCardModalNumber"></div>
+          <div class="status-card-modal-studentline">
+            <div class="status-card-modal-number" id="statusCardModalNumber"></div>
+            <div class="status-card-modal-student" id="statusCardModalTitle"></div>
+          </div>
+          <div class="status-card-modal-meta" id="statusCardModalMeta"></div>
         </div>
-        <button class="btn-cancel status-card-modal-close" type="button" onclick="closeStatusCardModal()">閉じる</button>
+        <div class="status-card-modal-toolbar">
+          <button class="btn-subtle status-feedback-jump-btn" id="statusFeedbackJumpBtn" type="button" onclick="openStatusFeedbackFromModal()">個別フィードバックへ</button>
+          <button class="btn-cancel status-card-modal-close" type="button" onclick="closeStatusCardModal()">閉じる</button>
+        </div>
       </div>
-      <div class="status-card-modal-main">
+      <div class="status-card-modal-main status-card-modal-readonly">
         <div class="status-card-modal-pane status-card-modal-answer">
-          <div class="status-card-modal-pane-title">回答内容</div>
           <div class="status-card-modal-body" id="statusCardModalBody"></div>
-        </div>
-        <div class="status-card-modal-pane status-card-modal-feedback">
-          <div class="status-card-modal-pane-title">フィードバック</div>
-          <div class="status-card-modal-feedback-body" id="statusCardModalFeedback"></div>
         </div>
       </div>
       <div class="status-card-modal-actions">
