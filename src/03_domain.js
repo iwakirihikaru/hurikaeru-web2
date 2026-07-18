@@ -1424,57 +1424,58 @@ function getRosterEntries_(includeInactive) {
 
 function readRosterSheetEntries_() {
   const roster = getTenantSpreadsheet_().getSheetByName('名簿');
-  if (!roster) return buildDefaultRosterEntries_();
+  if (!roster) return [];
   const lastRow = Math.max(roster.getLastRow(), 1);
   const values = roster.getRange(1, 1, lastRow, 2).getValues();
   const entries = values
-    .map((row, idx) => ({
-      number: Number(row[0]) || idx + 1,
-      name: row[1] || '',
+    .map(row => ({
+      number: Number(row[0]) || 0,
+      name: String(row[1] || '').trim(),
       active: true,
     }))
-    .filter(entry => entry.number || entry.name);
+    .filter(entry => entry.number > 0 && entry.name);
   if (entries.length) {
     return entries.sort((a, b) => a.number - b.number);
   }
-  return buildDefaultRosterEntries_();
+  return [];
 }
 
 function getStudentNumberList_() {
   const cached = getCachedJson_('student_number_list_v1');
   if (Array.isArray(cached) && cached.length) return cached;
-  const roster = getTenantSpreadsheet_().getSheetByName('名簿');
-  if (roster) {
-    const lastRow = Math.max(roster.getLastRow(), 1);
-    const values = roster.getRange(1, 1, lastRow, 1).getValues();
-    const numbers = Array.from(new Set(values
-      .map(row => Number(row[0]) || 0)
-      .filter(number => number > 0)))
-      .sort((a, b) => a - b);
-    if (numbers.length) return putCachedJson_('student_number_list_v1', numbers, 20);
-  }
+  const rosterNumbers = getStudentSelectableEntries_()
+    .map(entry => Number(entry && entry.number) || 0)
+    .filter(number => number > 0);
+  const numbers = Array.from(new Set(rosterNumbers)).sort((a, b) => a - b);
+  if (numbers.length) return putCachedJson_('student_number_list_v1', numbers, 20);
   const studentsSheet = getStudentsDbSheet_();
   const lastRow = studentsSheet.getLastRow();
   const studentRows = lastRow > 1 ? studentsSheet.getRange(2, 2, lastRow - 1, 2).getValues() : [];
-  const numbers = Array.from(new Set(studentRows
+  const fallbackNumbers = Array.from(new Set(studentRows
     .filter(row => row[1] !== false)
     .map(row => Number(row[0]) || 0)
     .filter(number => number > 0)))
     .sort((a, b) => a - b);
-  if (numbers.length) return putCachedJson_('student_number_list_v1', numbers, 20);
-  return buildDefaultRosterEntries_().map(entry => entry.number);
+  if (fallbackNumbers.length) return putCachedJson_('student_number_list_v1', fallbackNumbers, 20);
+  return [];
+}
+
+function getStudentSelectableEntries_() {
+  const seen = {};
+  return getRosterEntries_()
+    .filter(entry => entry && Number(entry.number) > 0)
+    .filter(entry => String(entry.name || '').trim())
+    .sort((a, b) => Number(a.number || 0) - Number(b.number || 0))
+    .filter(entry => {
+      const key = String(entry.number);
+      if (seen[key]) return false;
+      seen[key] = true;
+      return true;
+    });
 }
 
 function buildDefaultRosterEntries_() {
-  const entries = [];
-  for (let i = 1; i <= MAX_STUDENTS; i++) {
-    entries.push({
-      number: i,
-      name: '',
-      active: true,
-    });
-  }
-  return entries;
+  return [];
 }
 
 function saveRosterEntries(entries) {
@@ -1564,7 +1565,7 @@ function getStudentEntryOptions(options) {
   }
   timing.cacheHit = false;
   const rosterStartedAt = Date.now();
-  const students = getRosterEntries_();
+  const students = getStudentSelectableEntries_();
   timing.rosterMs = Date.now() - rosterStartedAt;
   const flagsStartedAt = Date.now();
   const featureFlags = getAiFeatureFlags_();

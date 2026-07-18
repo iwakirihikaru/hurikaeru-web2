@@ -14,7 +14,7 @@ function studentInit(num, periodOverride) {
   const period = active.period > 0 ? active.period
                : (parseInt(periodOverride) > 0 ? parseInt(periodOverride) : 0);
   t0 = Date.now();
-  const students = getRosterEntries_();
+  const students = getStudentSelectableEntries_();
   timing.rosterMs = Date.now() - t0;
   timing.rosterCount = Array.isArray(students) ? students.length : 0;
   t0 = Date.now();
