@@ -271,7 +271,7 @@ body{font-family:var(--font);background:var(--bg);color:#212121;}
 .status-field-tab.active{background:linear-gradient(135deg,#43A047,#2E7D32);border-color:#2E7D32;color:#fff;}
 .status-field-tab.single{cursor:default;}
 .status-card-grid{
-  display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;
+  display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:start;
 }
 .status-card{
   display:flex;flex-direction:column;gap:10px;min-width:0;min-height:220px;
@@ -300,10 +300,6 @@ body{font-family:var(--font);background:var(--bg);color:#212121;}
   display:flex;align-items:center;justify-content:center;min-height:180px;padding:18px;
   border-radius:14px;background:#F8FBFF;border:1px dashed #D6E3F3;color:#78909C;text-align:center;
 }
-.status-pager{
-  display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;margin-top:14px;
-}
-.status-pager-label{font-size:12px;color:var(--muted);}
 .status-feedback-details summary{
   cursor:pointer;list-style:none;font-size:14px;font-weight:bold;color:var(--navy);
 }

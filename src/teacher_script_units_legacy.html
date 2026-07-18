@@ -22,13 +22,12 @@ var lastUnitListSignature = '';
 var UNIT_LIST_PAGE_SIZE = 10;
 var TEACHER_FEEDBACK_PREFS_KEY = 'teacher_feedback_prefs_v1';
 var teacherFeedbackPrefsLoaded = false;
-var STATUS_CARD_PAGE_SIZE = 12;
 var selectedStatusFieldKey = '';
-var statusCardPage = 1;
 var latestStatusLessonKey = '';
 var latestStatusFieldOptions = [];
 var latestStatusViewRows = [];
 var statusModalStudentKey = '';
+var statusModalScrollY = 0;
 var statusCardEventsBound = false;
 function formatStatusTimingLine_(label, timing, keys) {
     if (!timing || typeof timing !== 'object' || !Array.isArray(keys) || !keys.length)
@@ -264,7 +263,6 @@ function ensureStatusSelection_(lessonChanged) {
     latestStatusFieldOptions = buildStatusFieldOptions_(latestStatusMeta, latestStatusRows);
     latestStatusViewRows = buildStatusViewRows_(latestStatusRows, latestStatusFieldOptions);
     if (lessonChanged) {
-        statusCardPage = 1;
         statusModalStudentKey = '';
     }
     if (!latestStatusFieldOptions.length) {
@@ -278,6 +276,7 @@ function ensureStatusSelection_(lessonChanged) {
 }
 function renderStatus(d) {
     var previousLessonKey = latestStatusLessonKey;
+    var scrollYBefore = getStatusViewportScrollY_();
     latestStatusRows = Array.isArray(d && d.students) ? d.students : [];
     latestStatusMeta = d && d.meta || {};
     latestStatusLessonKey = getStatusLessonKey_(latestStatusMeta);
@@ -307,6 +306,12 @@ function renderStatus(d) {
     renderStatusCardGrid_();
     renderStatusFeedbackTable_();
     syncStatusCardModal_();
+    if (lessonChanged) {
+        scrollStatusGridToTop_();
+    }
+    else {
+        restoreStatusViewportScroll_(scrollYBefore);
+    }
 }
 function renderStatusLessonSummary_() {
     var el = document.getElementById('statusLessonSummary');
@@ -349,29 +354,11 @@ function renderStatusCardGrid_() {
     if (!latestStatusRows.length) {
         el.className = 'status-card-grid';
         el.innerHTML = '<div class="status-grid-empty">授業を開始すると、ここに児童の回答が表示されます。</div>';
-        renderStatusPager_(0, 0, 0);
         return;
     }
     var currentField = getSelectedStatusField_();
-    var totalCount = latestStatusViewRows.length;
-    var pageCount = Math.max(1, Math.ceil(totalCount / STATUS_CARD_PAGE_SIZE));
-    statusCardPage = Math.min(pageCount, Math.max(1, statusCardPage));
-    var pageStart = (statusCardPage - 1) * STATUS_CARD_PAGE_SIZE;
-    var pageRows = latestStatusViewRows.slice(pageStart, pageStart + STATUS_CARD_PAGE_SIZE);
     el.className = 'status-card-grid';
-    el.innerHTML = pageRows.map(function (row) { return renderStatusCard_(row, currentField); }).join('');
-    renderStatusPager_(pageCount, pageStart, pageRows.length);
-}
-function renderStatusPager_(pageCount, pageStart, visibleCount) {
-    var el = document.getElementById('statusPager');
-    if (!el)
-        return;
-    el.className = 'status-pager';
-    if (pageCount <= 1) {
-        el.innerHTML = '';
-        return;
-    }
-    el.innerHTML = "\n    <button class=\"btn-sm btn-edit\" type=\"button\" onclick=\"changeStatusCardPage(-1)\" ".concat(statusCardPage <= 1 ? 'disabled' : '', ">\u2190 \u524D\u3078</button>\n    <span class=\"status-pager-label\">").concat(pageStart + 1, "\u301C").concat(pageStart + visibleCount, " / ").concat(latestStatusViewRows.length, "\u4EBA\u3000").concat(statusCardPage, " / ").concat(pageCount, " \u30DA\u30FC\u30B8</span>\n    <button class=\"btn-sm btn-edit\" type=\"button\" onclick=\"changeStatusCardPage(1)\" ").concat(statusCardPage >= pageCount ? 'disabled' : '', ">\u6B21\u3078 \u2192</button>");
+    el.innerHTML = latestStatusViewRows.map(function (row) { return renderStatusCard_(row, currentField); }).join('');
 }
 function renderStatusCard_(row, field) {
     var student = row.student || {};
@@ -421,15 +408,12 @@ function selectStatusField(fieldKey) {
     var nextKey = String(fieldKey || '').trim();
     if (!nextKey || nextKey === String(selectedStatusFieldKey || ''))
         return;
+    var scrollYBefore = getStatusViewportScrollY_();
     selectedStatusFieldKey = nextKey;
     renderStatusFieldTabs_();
     renderStatusCardGrid_();
     syncStatusCardModal_();
-}
-function changeStatusCardPage(delta) {
-    var pageCount = Math.max(1, Math.ceil(latestStatusViewRows.length / STATUS_CARD_PAGE_SIZE));
-    statusCardPage = Math.min(pageCount, Math.max(1, statusCardPage + (Number(delta) || 0)));
-    renderStatusCardGrid_();
+    restoreStatusViewportScroll_(scrollYBefore);
 }
 function findStatusViewRowByKey_(studentKey) {
     var targetKey = String(studentKey || '').trim();
@@ -455,6 +439,7 @@ function openStatusCardModal(studentKey) {
     var key = String(studentKey || '').trim();
     if (!key)
         return;
+    statusModalScrollY = getStatusViewportScrollY_();
     statusModalStudentKey = key;
     syncStatusCardModal_();
 }
@@ -463,6 +448,7 @@ function closeStatusCardModal() {
     var bg = document.getElementById('statusCardModalBg');
     if (bg)
         bg.classList.remove('show');
+    restoreStatusViewportScroll_(statusModalScrollY);
 }
 function handleStatusCardModalBackdrop(event) {
     if (event && event.target && event.target.id === 'statusCardModalBg') {
@@ -516,6 +502,26 @@ function syncStatusCardModal_() {
     if (nextBtn)
         nextBtn.disabled = index < 0 || index >= latestStatusViewRows.length - 1;
     bg.classList.add('show');
+}
+function getStatusViewportScrollY_() {
+    if (typeof window === 'undefined')
+        return 0;
+    return Number(window.pageYOffset || window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0);
+}
+function restoreStatusViewportScroll_(scrollY) {
+    if (typeof window === 'undefined')
+        return;
+    var nextY = Math.max(0, Number(scrollY) || 0);
+    window.setTimeout(function () { return window.scrollTo(0, nextY); }, 0);
+}
+function scrollStatusGridToTop_() {
+    if (typeof window === 'undefined')
+        return;
+    var grid = document.getElementById('statusCardGrid');
+    if (!grid || typeof grid.getBoundingClientRect !== 'function')
+        return;
+    var top = grid.getBoundingClientRect().top + getStatusViewportScrollY_() - 12;
+    window.setTimeout(function () { return window.scrollTo(0, Math.max(0, top)); }, 0);
 }
 function bindStatusCardEvents_() {
     if (statusCardEventsBound)
@@ -599,8 +605,8 @@ function clearRenderedStatus_() {
     latestStatusFieldOptions = [];
     latestStatusViewRows = [];
     selectedStatusFieldKey = '';
-    statusCardPage = 1;
     statusModalStudentKey = '';
+    statusModalScrollY = 0;
     var totalEl = document.getElementById('statTotal');
     var writtenEl = document.getElementById('statWritten');
     var submittedEl = document.getElementById('statSubmitted');
@@ -624,9 +630,6 @@ function clearRenderedStatus_() {
     var cardGrid = document.getElementById('statusCardGrid');
     if (cardGrid)
         cardGrid.innerHTML = '<div class="status-grid-empty">授業を開始すると、ここに児童の回答が表示されます。</div>';
-    var pager = document.getElementById('statusPager');
-    if (pager)
-        pager.innerHTML = '';
     var body = document.getElementById('statusBody');
     if (body) {
         body.innerHTML = '<tr><td colspan="2" style="text-align:center;padding:18px;color:#78909C;">授業を開始すると、ここに児童の記録とフィードバックが表示されます。</td></tr>';
