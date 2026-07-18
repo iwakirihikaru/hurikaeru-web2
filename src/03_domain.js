@@ -1205,7 +1205,7 @@ function readCachedStudentRow_(studentNumber) {
 }
 
 function invalidateStudentCaches_() {
-  removeDomainCacheKeys_(['roster_entries_active_v1', 'roster_entries_all_v1', 'student_entry_options_v1', 'student_entry_options_v2', 'student_number_list_v1']);
+  removeDomainCacheKeys_(['roster_entries_active_v1', 'roster_entries_all_v1', 'student_entry_options_v1', 'student_entry_options_v2', 'student_entry_options_v3', 'student_number_list_v1']);
   removeStudentEntryOptionsScriptCache_();
   return bumpDomainCacheVersion_('students');
 }
@@ -1213,7 +1213,9 @@ function invalidateStudentCaches_() {
 function removeStudentEntryOptionsScriptCache_() {
   try {
     CacheService.getScriptCache().remove('student_entry_options_v2');
+    CacheService.getScriptCache().remove('student_entry_options_v3');
     CacheService.getScriptCache().remove('student_entry_summary_v1');
+    CacheService.getScriptCache().remove('student_entry_summary_v2');
   } catch (_err) {}
 }
 
@@ -1462,8 +1464,9 @@ function getStudentNumberList_() {
 
 function getStudentSelectableEntries_() {
   const seen = {};
-  return getRosterEntries_()
+  return getRosterEntries_(true)
     .filter(entry => entry && Number(entry.number) > 0)
+    .filter(entry => entry.active !== false)
     .filter(entry => String(entry.name || '').trim())
     .sort((a, b) => Number(a.number || 0) - Number(b.number || 0))
     .filter(entry => {
@@ -1531,7 +1534,7 @@ function getStudentEntryOptions(options) {
   const includeShell = opts.shell !== false && opts.includeShell !== false;
   const cache = CacheService.getScriptCache();
   const cacheStartedAt = Date.now();
-  const cached = cache.get('student_entry_options_v2');
+  const cached = cache.get('student_entry_options_v3');
   timing.cacheMs = Date.now() - cacheStartedAt;
   if (cached) {
     try {
@@ -1582,7 +1585,7 @@ function getStudentEntryOptions(options) {
     payload.classSnapshot = buildStudentEntryClassSnapshot_(students, featureFlags, shell);
     timing.classSnapshotMs = Date.now() - snapshotStartedAt;
   }
-  cache.put('student_entry_options_v2', JSON.stringify(payload), 5);
+  cache.put('student_entry_options_v3', JSON.stringify(payload), 5);
   return attachStudentApiTiming_(payload, 'getStudentEntryOptions', startedAt, timing);
 }
 
@@ -1593,7 +1596,7 @@ function getStudentEntrySummary(options) {
   const includeShell = opts.shell !== false && opts.includeShell !== false;
   const cache = CacheService.getScriptCache();
   const cacheStartedAt = Date.now();
-  const cached = cache.get('student_entry_summary_v1');
+  const cached = cache.get('student_entry_summary_v2');
   timing.cacheMs = Date.now() - cacheStartedAt;
   if (cached) {
     try {
@@ -1622,7 +1625,7 @@ function getStudentEntrySummary(options) {
     shell: includeShell ? getLiveTenantMaintenanceState() : {},
   };
   timing.shellMs = Date.now() - shellStartedAt;
-  cache.put('student_entry_summary_v1', JSON.stringify({
+  cache.put('student_entry_summary_v2', JSON.stringify({
     numberList: payload.numberList,
     maxNumber: payload.maxNumber,
   }), 5);
