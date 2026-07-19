@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta name="x-source-commit" content="390ded2133efed38b9030eb0c3bd61f1b4ed012a">
-<script>window.__SOURCE_COMMIT__ = "390ded2133efed38b9030eb0c3bd61f1b4ed012a";</script>
+<meta name="x-source-commit" content="5176e23f9e5264cff4e92b3fdd4ae56183dec777">
+<script>window.__SOURCE_COMMIT__ = "5176e23f9e5264cff4e92b3fdd4ae56183dec777";</script>
 <script src="./runtime-shim.js?v=c8f329c57c"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -335,7 +335,7 @@ body{font-family:var(--font);background:var(--bg);color:#212121;}
 .status-card-head{display:flex;flex-direction:column;gap:4px;min-width:0;}
 .status-card-numberrow{display:none;min-width:0;}
 .status-card-mainrow{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;min-width:0;}
-.status-card-name{min-width:0;flex:1 1 auto;}
+.status-card-name{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1 1 auto;}
 .status-card-studentline{display:flex;align-items:baseline;gap:8px;min-width:0;white-space:nowrap;}
 .status-card-number{
   flex:0 0 auto;font-size:var(--status-card-meta-size);font-weight:bold;color:#5D7A67;line-height:1.35;
@@ -346,10 +346,8 @@ body{font-family:var(--font);background:var(--bg);color:#212121;}
 }
 .status-card-student.compact{font-size:calc(var(--status-card-student-size) - 1px);}
 .status-card-student.tight{font-size:calc(var(--status-card-student-size) - 2px);}
-.status-card-side,
-.status-card-sidebadges{
-  display:flex;align-items:center;justify-content:flex-end;gap:6px;flex:0 0 auto;white-space:nowrap;
-}
+.status-card-side{display:flex;align-items:flex-start;justify-content:flex-end;gap:6px;flex:0 0 auto;white-space:nowrap;}
+.status-card-sidebadges{display:flex;align-items:center;justify-content:flex-end;gap:6px;flex:0 0 auto;white-space:nowrap;}
 .status-favorite-btn{
   display:inline-flex;align-items:center;justify-content:center;min-width:38px;min-height:38px;
   padding:0 8px;border:1.5px solid #D8E6D9;border-radius:999px;background:#fff;color:#607D66;
@@ -359,7 +357,7 @@ body{font-family:var(--font);background:var(--bg);color:#212121;}
 .status-favorite-btn:focus-visible{outline:3px solid rgba(67,160,71,.24);outline-offset:2px;}
 .status-favorite-btn[disabled]{cursor:default;opacity:.6;}
 .status-favorite-btn.status-favorite-active{border-color:#F6C342;background:#FFF7D6;color:#C88700;}
-.status-favorite-btn.status-favorite-busy{color:#9AA6AC;}
+.status-favorite-btn.status-favorite-busy{color:inherit;opacity:.52;}
 .status-rank-chip{
   display:inline-flex;align-items:center;justify-content:center;min-height:20px;padding:2px 8px;border-radius:999px;
   font-size:11px;font-weight:bold;line-height:1;color:#fff;
@@ -426,21 +424,35 @@ body{font-family:var(--font);background:var(--bg);color:#212121;}
   --status-card-section-gap:7px;
   --status-card-block-gap:6px;
 }
+.status-card-grid.cols-3 .status-card-numberrow,
 .status-card-grid.cols-4 .status-card-numberrow,
 .status-card-grid.cols-5 .status-card-numberrow{display:block;}
+.status-card-grid.cols-3 .status-card-number-inline,
 .status-card-grid.cols-4 .status-card-number-inline,
 .status-card-grid.cols-5 .status-card-number-inline{display:none;}
+.status-card-grid.cols-3 .status-card-mainrow,
 .status-card-grid.cols-4 .status-card-mainrow,
-.status-card-grid.cols-5 .status-card-mainrow{gap:6px;}
+.status-card-grid.cols-5 .status-card-mainrow{
+  display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:6px;
+}
+.status-card-grid.cols-3 .status-card-studentline,
 .status-card-grid.cols-4 .status-card-studentline,
 .status-card-grid.cols-5 .status-card-studentline{display:block;min-width:0;white-space:normal;}
+.status-card-grid.cols-3 .status-card-student,
 .status-card-grid.cols-4 .status-card-student,
 .status-card-grid.cols-5 .status-card-student{
   display:block;overflow:hidden;text-overflow:ellipsis;white-space:normal;word-break:break-word;
   line-height:1.28;
 }
+.status-card-grid.cols-3 .status-card-side,
 .status-card-grid.cols-4 .status-card-side,
-.status-card-grid.cols-5 .status-card-side{align-self:flex-start;max-width:100%;overflow:hidden;}
+.status-card-grid.cols-5 .status-card-side{
+  display:grid;grid-template-columns:auto;grid-auto-rows:min-content;justify-items:end;align-items:start;
+  align-self:flex-start;justify-self:end;max-width:100%;overflow:visible;
+}
+.status-card-grid.cols-3 .status-card-sidebadges,
+.status-card-grid.cols-4 .status-card-sidebadges,
+.status-card-grid.cols-5 .status-card-sidebadges{flex-wrap:wrap;}
 .status-card-grid.cols-5 .status-card{
   --status-card-padding:11px;
   --status-card-text-size:12px;
@@ -4486,8 +4498,11 @@ function renderStatusCard_(row, fields) {
     var studentName = safeStudentName(student);
     var studentClass = studentName.length >= 13 ? 'status-card-student tight' : studentName.length >= 9 ? 'status-card-student compact' : 'status-card-student';
     var numberLabel = getStatusStudentNumberLabel_(student);
-    var badgesHtml = renderStatusHeaderBadgesHtml_(student) + renderStatusFavoriteButton_(student);
-    return "\n    <div class=\"status-card ".concat(variantClass, "\" role=\"button\" tabindex=\"0\" data-student-key=\"").concat(escAttr(row.key), "\" onclick=\"openStatusCardModal('").concat(escAttr(row.key), "')\" onkeydown=\"handleStatusCardKeydown(event,'").concat(escAttr(row.key), "')\">\n      <div class=\"status-card-head\">\n        <div class=\"status-card-numberrow\"><span class=\"status-card-number\">").concat(esc(numberLabel), "</span></div>\n        <div class=\"status-card-mainrow\">\n          <div class=\"status-card-name\">\n            <div class=\"status-card-studentline\">\n              <span class=\"status-card-number status-card-number-inline\">").concat(esc(numberLabel), "</span>\n              <span class=\"").concat(studentClass, "\">").concat(esc(studentName), "</span>\n            </div>\n          </div>\n          ").concat(badgesHtml ? "<div class=\"status-card-side\">".concat(badgesHtml, "</div>") : '', "\n        </div>\n      </div>\n      ").concat(content.html, "\n    </div>");
+    var sideParts = [
+        renderStatusFavoriteButton_(student),
+        renderStatusHeaderBadgesHtml_(student),
+    ].filter(Boolean);
+    return "\n    <div class=\"status-card ".concat(variantClass, "\" role=\"button\" tabindex=\"0\" data-student-key=\"").concat(escAttr(row.key), "\" onclick=\"openStatusCardModal('").concat(escAttr(row.key), "')\" onkeydown=\"handleStatusCardKeydown(event,'").concat(escAttr(row.key), "')\">\n      <div class=\"status-card-head\">\n        <div class=\"status-card-mainrow\">\n          <div class=\"status-card-name\">\n            <div class=\"status-card-numberrow\"><span class=\"status-card-number\">").concat(esc(numberLabel), "</span></div>\n            <div class=\"status-card-studentline\">\n              <span class=\"status-card-number status-card-number-inline\">").concat(esc(numberLabel), "</span>\n              <span class=\"").concat(studentClass, "\">").concat(esc(studentName), "</span>\n            </div>\n          </div>\n          ").concat(sideParts.length ? "<div class=\"status-card-side\">".concat(sideParts.join(''), "</div>") : '', "\n        </div>\n      </div>\n      ").concat(content.html, "\n    </div>");
 }
 function renderStatusFavoriteButton_(student) {
     var responseId = String(student && student.responseId || '').trim();
@@ -4497,7 +4512,7 @@ function renderStatusFavoriteButton_(student) {
     var isBusy = isStatusFavoriteBusy_(responseId);
     var label = isFavorite ? 'お気に入りを解除' : 'お気に入りに追加';
     var classes = 'status-favorite-btn' + (isFavorite ? ' status-favorite-active' : '') + (isBusy ? ' status-favorite-busy' : '');
-    return "<button class=\"".concat(classes, "\" type=\"button\" data-response-id=\"").concat(escAttr(responseId), "\" aria-pressed=\"").concat(isFavorite ? 'true' : 'false', "\" aria-label=\"").concat(escAttr(label), "\" title=\"").concat(escAttr(label), "\"").concat(isBusy ? ' disabled' : '', " onclick=\"toggleStatusFavorite(event,'").concat(escAttr(responseId), "')\" onkeydown=\"handleStatusFavoriteButtonKeydown(event,'").concat(escAttr(responseId), "')\">").concat(isBusy ? '…' : (isFavorite ? '★' : '☆'), "</button>");
+    return "<button class=\"".concat(classes, "\" type=\"button\" data-response-id=\"").concat(escAttr(responseId), "\" aria-pressed=\"").concat(isFavorite ? 'true' : 'false', "\" aria-busy=\"").concat(isBusy ? 'true' : 'false', "\" aria-label=\"").concat(escAttr(label), "\" title=\"").concat(escAttr(label), "\"").concat(isBusy ? ' disabled' : '', " onclick=\"toggleStatusFavorite(event,'").concat(escAttr(responseId), "')\" onkeydown=\"handleStatusFavoriteButtonKeydown(event,'").concat(escAttr(responseId), "')\">").concat(isFavorite ? '★' : '☆', "</button>");
 }
 function handleStatusCardKeydown(event, studentKey) {
     var key = String(event && event.key || '');
@@ -4773,10 +4788,11 @@ function refreshStatusFavoriteButtons_(responseId) {
         button.classList.toggle('status-favorite-active', isFavorite);
         button.classList.toggle('status-favorite-busy', isBusy);
         button.setAttribute('aria-pressed', isFavorite ? 'true' : 'false');
+        button.setAttribute('aria-busy', isBusy ? 'true' : 'false');
         button.setAttribute('aria-label', label);
         button.setAttribute('title', label);
         button.disabled = isBusy;
-        button.textContent = isBusy ? '…' : (isFavorite ? '★' : '☆');
+        button.textContent = isFavorite ? '★' : '☆';
     });
 }
 function setStatusFavoriteBusy_(responseId, isBusy) {
@@ -4826,21 +4842,27 @@ function toggleStatusFavorite(event, responseId) {
     var student = findStatusStudentByResponseId_(normalized);
     if (!normalized || !student || isStatusFavoriteBusy_(normalized))
         return;
+    var previousFavorite = student.isFavorite === true;
+    var nextFavorite = !previousFavorite;
+    patchStatusFavoriteState_(normalized, nextFavorite);
     setStatusFavoriteBusy_(normalized, true);
     google.script.run
         .withSuccessHandler(function (res) {
-        setStatusFavoriteBusy_(normalized, false);
         if (!(res && res.ok)) {
+            patchStatusFavoriteState_(normalized, previousFavorite);
+            setStatusFavoriteBusy_(normalized, false);
             showToast(res && res.error || 'お気に入り更新に失敗しました');
             return;
         }
         patchStatusFavoriteState_(normalized, Boolean(res.isFavorite));
+        setStatusFavoriteBusy_(normalized, false);
     })
         .withFailureHandler(function (err) {
+        patchStatusFavoriteState_(normalized, previousFavorite);
         setStatusFavoriteBusy_(normalized, false);
         showToast(formatTeacherRpcError_(err, 'お気に入り更新に失敗しました', 'お気に入り'), { tone: 'error', duration: 5200 });
     })
-        .setTeacherResponseFavorite(normalized, !(student.isFavorite === true), {
+        .setTeacherResponseFavorite(normalized, nextFavorite, {
         lessonId: String(latestStatusMeta && latestStatusMeta.lessonId || '').trim(),
         unitId: String(activeUnitId || latestStatusMeta && latestStatusMeta.unitId || '').trim(),
         period: Number(activePeriod || latestStatusMeta && latestStatusMeta.period || 0) || 0,

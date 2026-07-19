@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta name="x-source-commit" content="390ded2133efed38b9030eb0c3bd61f1b4ed012a">
-<script>window.__SOURCE_COMMIT__ = "390ded2133efed38b9030eb0c3bd61f1b4ed012a";</script>
+<meta name="x-source-commit" content="5176e23f9e5264cff4e92b3fdd4ae56183dec777">
+<script>window.__SOURCE_COMMIT__ = "5176e23f9e5264cff4e92b3fdd4ae56183dec777";</script>
 <script src="./runtime-shim.js?v=c8f329c57c"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
@@ -29,7 +29,31 @@ html,body{height:100%;font-family:var(--font);background:var(--bg);color:var(--i
 .system-banner.stop{background:#FFEBEE;color:#B71C1C;border-bottom:2px solid #EF9A9A;}
 
 /* 番号選択 */
-#screen-select{align-items:center;justify-content:center;min-height:100vh;padding:24px 16px;}
+#screen-select{
+  align-items:center;justify-content:center;
+  min-height:var(--student-select-vh,100dvh);
+  padding:calc(12px + env(safe-area-inset-top)) 12px calc(12px + env(safe-area-inset-bottom));
+  overflow:hidden;
+}
+.student-select-panel{
+  width:min(96vw,980px);
+  max-height:calc(var(--student-select-vh,100dvh) - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 24px);
+  padding:20px min(3.2vw,28px);
+  border-radius:26px;
+  background:rgba(255,255,255,.96);
+  box-shadow:0 18px 38px rgba(26,35,126,.14);
+  border:1px solid rgba(215,227,248,.9);
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+}
+.student-select-scroll{
+  display:flex;
+  flex-direction:column;
+  min-height:0;
+  overflow:auto;
+  padding-right:2px;
+}
 .brand-lockup{display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:8px;}
 .brand-mascot{
   display:inline-block;background-image:var(--mascot);background-size:cover;background-position:center;background-repeat:no-repeat;border-radius:50%;
@@ -38,9 +62,9 @@ html,body{height:100%;font-family:var(--font);background:var(--bg);color:var(--i
 .brand-mascot-lg{width:96px;height:96px;}
 .brand-mascot-sm{width:34px;height:34px;flex:0 0 34px;}
 .sel-title{font-size:26px;font-weight:bold;margin-bottom:4px;text-align:center;}
-.sel-sub{font-size:14px;color:var(--muted);margin-bottom:20px;text-align:center;}
+.sel-sub{font-size:14px;color:var(--muted);margin-bottom:16px;text-align:center;line-height:1.7;}
 .resume-box{
-  width:100%;max-width:560px;margin:0 auto 14px;padding:12px 14px;border-radius:14px;
+  width:100%;max-width:none;margin:0 auto 14px;padding:12px 14px;border-radius:14px;
   background:#FFF8E1;border:2px solid #FFE082;box-shadow:var(--sh);display:none;
 }
 .resume-title{font-size:13px;font-weight:bold;color:#8D6E63;}
@@ -50,8 +74,12 @@ html,body{height:100%;font-family:var(--font);background:var(--bg);color:var(--i
 }
 .resume-btn.primary{background:linear-gradient(135deg,var(--green),#388E3C);color:#fff;}
 .resume-btn.secondary{background:#E3F2FD;color:#4E6F8B;}
-.num-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:8px;width:100%;max-width:560px;}
-@media(max-width:480px){.num-grid{grid-template-columns:repeat(5,1fr);}}
+.num-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(72px,1fr));gap:8px;width:100%;max-width:none;}
+@media(min-width:768px) and (orientation:landscape){
+  .student-select-panel{width:min(96vw,1120px);padding:24px 28px;}
+  .num-grid{grid-template-columns:repeat(auto-fit,minmax(82px,1fr));gap:10px;}
+}
+@media(max-width:480px){.num-grid{grid-template-columns:repeat(auto-fit,minmax(60px,1fr));}}
 .num-btn{
   background:#fff;border:2.5px solid var(--sky);border-radius:12px;
   font-size:18px;font-weight:bold;color:var(--sky);aspect-ratio:1;cursor:pointer;
@@ -330,19 +358,23 @@ textarea.f{min-height:70px;}
 
 <!-- ① 出席番号 -->
 <div id="screen-select" class="screen active">
-  <div class="brand-lockup">
-    <div class="brand-mascot brand-mascot-lg" aria-hidden="true"></div>
-    <div class="sel-title" id="studentSelectTitle">ふりカエル</div>
-  </div>
-  <div class="sel-sub" id="studentSelectSubtitle">きみのばんごうをタップしてね</div>
-  <div id="resumeBox" class="resume-box">
-    <div class="resume-title" id="resumeLabel"></div>
-    <div class="resume-row">
-      <button type="button" class="resume-btn primary" id="resumeContinueBtn">この番号ではじめる</button>
-      <button type="button" class="resume-btn secondary" id="resumeChangeBtn" onclick="forgetRememberedStudent_()">えらびなおす</button>
+  <div class="student-select-panel">
+    <div class="student-select-scroll">
+      <div class="brand-lockup">
+        <div class="brand-mascot brand-mascot-lg" aria-hidden="true"></div>
+        <div class="sel-title" id="studentSelectTitle">ふりカエル</div>
+      </div>
+      <div class="sel-sub" id="studentSelectSubtitle">きみのばんごうをタップしてね</div>
+      <div id="resumeBox" class="resume-box">
+        <div class="resume-title" id="resumeLabel"></div>
+        <div class="resume-row">
+          <button type="button" class="resume-btn primary" id="resumeContinueBtn">この番号ではじめる</button>
+          <button type="button" class="resume-btn secondary" id="resumeChangeBtn" onclick="forgetRememberedStudent_()">えらびなおす</button>
+        </div>
+      </div>
+      <div class="num-grid" id="numGrid"></div>
     </div>
   </div>
-  <div class="num-grid" id="numGrid"></div>
 </div>
 
 <!-- ② 時間目選択 -->
@@ -870,6 +902,13 @@ function normalizeStudentIdentity_(state){
 
 function getCurrentStudentStateKey_(){
   return [myLessonId||myUnitId,myActiveRevision,myPeriod,myNum].join('_');
+}
+
+function syncStudentSelectViewportVar_(){
+  if(typeof document==='undefined') return;
+  const viewportHeight=(window.visualViewport && window.visualViewport.height) || window.innerHeight || 0;
+  if(!viewportHeight) return;
+  document.documentElement.style.setProperty('--student-select-vh', `${Math.round(viewportHeight)}px`);
 }
 
 function hasMeaningfulCustoms_(values){
@@ -2819,6 +2858,7 @@ function showScreen(id){
   document.querySelectorAll('.screen').forEach(s=>{s.classList.remove('active');s.style.display='none';});
   const el=document.getElementById(id);
   el.style.display='flex';el.classList.add('active');
+  if(id==='screen-select') syncStudentSelectViewportVar_();
 }
 function showToast(msg){
   const t=document.getElementById('toast');
@@ -2837,6 +2877,13 @@ function truncateText_(text, maxLen){
 
 function normalizeDisplayText_(text){
   return String(text||'').replace(/^[・\-●]\s*/gm,'').trim();
+}
+syncStudentSelectViewportVar_();
+window.addEventListener('resize', syncStudentSelectViewportVar_);
+window.addEventListener('orientationchange', syncStudentSelectViewportVar_);
+if(window.visualViewport && typeof window.visualViewport.addEventListener==='function'){
+  window.visualViewport.addEventListener('resize', syncStudentSelectViewportVar_);
+  window.visualViewport.addEventListener('scroll', syncStudentSelectViewportVar_);
 }
 </script>
 </body>
