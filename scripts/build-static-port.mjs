@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -22,6 +23,21 @@ function writeOutFile(name, value) {
   fs.writeFileSync(path.join(outDir, name), value, 'utf8');
 }
 
+function resolveSourceCommit() {
+  const envCommit = String(process.env.SOURCE_COMMIT || process.env.GITHUB_SHA || '').trim();
+  if (envCommit) {
+    return envCommit;
+  }
+  const result = spawnSync('git', ['rev-parse', 'HEAD'], {
+    cwd: rootDir,
+    encoding: 'utf8',
+  });
+  if (result.status === 0) {
+    return String(result.stdout || '').trim();
+  }
+  return 'unknown';
+}
+
 function resolveIncludes(html) {
   return html.replace(/<\?!=\s*include\('([^']+)'\);\s*\?>/g, (_match, includeName) => {
     return readSrcFile(`${includeName}.html`);
@@ -32,20 +48,24 @@ function buildRuntimeShimVersion(runtimeShim) {
   return crypto.createHash('sha1').update(String(runtimeShim || ''), 'utf8').digest('hex').slice(0, 10);
 }
 
-function injectSharedRuntime(html, runtimeShimVersion) {
-  return html.replace('<head>', `<head>\n<script src="./runtime-shim.js?v=${runtimeShimVersion}"></script>`);
+function injectSharedRuntime(html, runtimeShimVersion, sourceCommit) {
+  const safeSourceCommit = JSON.stringify(String(sourceCommit || '').trim());
+  return html.replace(
+    '<head>',
+    `<head>\n<meta name="x-source-commit" content=${safeSourceCommit}>\n<script>window.__SOURCE_COMMIT__ = ${safeSourceCommit};</script>\n<script src="./runtime-shim.js?v=${runtimeShimVersion}"></script>`
+  );
 }
 
-function buildTeacherHtml(runtimeShimVersion) {
-  const html = injectSharedRuntime(resolveIncludes(readSrcFile('teacher.html')), runtimeShimVersion);
+function buildTeacherHtml(runtimeShimVersion, sourceCommit) {
+  const html = injectSharedRuntime(resolveIncludes(readSrcFile('teacher.html')), runtimeShimVersion, sourceCommit);
   return html.replace(
     /window\.__TEACHER_BOOTSTRAP__ = <\?!= bootstrapTeacherJson \|\| 'null' \?>;/,
     "window.__TEACHER_BOOTSTRAP__ = window.__TEACHER_BOOTSTRAP__ || window.__portableGas.bootstrapTeacher();"
   );
 }
 
-function buildStudentHtml(runtimeShimVersion) {
-  const html = injectSharedRuntime(readSrcFile('index.html'), runtimeShimVersion);
+function buildStudentHtml(runtimeShimVersion, sourceCommit) {
+  const html = injectSharedRuntime(readSrcFile('index.html'), runtimeShimVersion, sourceCommit);
   return html.replace(
     /const bootstrapStudentOptions = <\?!= JSON\.stringify\(typeof bootstrapStudentOptions !== 'undefined' \? bootstrapStudentOptions : \{students:\[\]\}\) \?>;/,
     "const bootstrapStudentOptions = window.__STUDENT_BOOTSTRAP__ || { students: [], shell: {} };\nlet bootstrapStudentReadyPromise = Promise.resolve(bootstrapStudentOptions);\nif (!window.__STUDENT_BOOTSTRAP__) {\n  bootstrapStudentReadyPromise = window.__portableGas.bootstrapStudentAsync()\n    .then(data => { if (data && typeof data === 'object') Object.assign(bootstrapStudentOptions, data); return bootstrapStudentOptions; })\n    .catch(error => { console.error(error); return bootstrapStudentOptions; });\n}"
@@ -376,14 +396,15 @@ body{margin:0;font-family:var(--font);background:var(--bg);color:#212121}
 
 const runtimeShim = buildRuntimeShim();
 const runtimeShimVersion = buildRuntimeShimVersion(runtimeShim);
+const sourceCommit = resolveSourceCommit();
 
-writeOutFile('teacher.html', buildTeacherHtml(runtimeShimVersion));
-writeOutFile('student.html', buildStudentHtml(runtimeShimVersion));
+writeOutFile('teacher.html', buildTeacherHtml(runtimeShimVersion, sourceCommit));
+writeOutFile('student.html', buildStudentHtml(runtimeShimVersion, sourceCommit));
 writeOutFile('index.html', buildIndexHtml());
 writeOutFile('setup.html', buildSetupHtml(runtimeShimVersion));
 writeOutFile('runtime-shim.js', runtimeShim);
 writeOutFile('README.md', buildReadme());
 
-console.log('Built portable teacher.html, student.html, setup.html, and runtime-shim.js');
+console.log(`Built portable teacher.html, student.html, setup.html, and runtime-shim.js from ${sourceCommit}`);
 
 
