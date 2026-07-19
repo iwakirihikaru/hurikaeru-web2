@@ -277,6 +277,9 @@ body{font-family:var(--font);background:var(--bg);color:#212121;}
 }
 .status-field-tab.active{background:linear-gradient(135deg,#43A047,#2E7D32);border-color:#2E7D32;color:#fff;}
 .status-field-tab.single{cursor:default;}
+.status-sort-row{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px;}
+.status-sort-row .status-top-label{margin-bottom:0;}
+.status-sort-select{min-width:220px;max-width:320px;flex:0 1 320px;}
 .status-view-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;}
 .status-view-tab{
   display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:10px 18px;border-radius:999px;
@@ -660,6 +663,7 @@ body{font-family:var(--font);background:var(--bg);color:#212121;}
   .status-lesson-box.primary{grid-column:span 1;}
   .status-density-head{flex-direction:column;}
   .status-density-buttons{grid-template-columns:repeat(3,minmax(0,1fr));}
+  .status-sort-select{min-width:0;max-width:none;width:100%;flex:1 1 auto;}
   .status-card-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
   .status-card{min-height:200px;}
   .status-card-text{font-size:14px;}
@@ -1066,6 +1070,10 @@ button:not([disabled]):active,button.is-pressed{transform:translateY(1px);filter
       <div class="status-view-pane active" id="statusResponsesPane" role="tabpanel" aria-labelledby="statusViewTabResponses">
         <div id="statusLessonSummary"></div>
         <div id="statusFieldTabs"></div>
+        <div class="status-sort-row">
+          <div class="status-top-label">並び替え</div>
+          <select class="inp status-sort-select" id="statusSortSelect" onchange="changeStatusSortMode(this.value)" aria-label="回答一覧の並び替え"></select>
+        </div>
         <div class="status-density-card">
           <div class="status-density-head">
             <div>
@@ -3754,6 +3762,7 @@ var selectedStatusFieldKeys = [];
 var latestStatusLessonKey = '';
 var latestStatusFieldOptions = [];
 var latestStatusViewRows = [];
+var statusSortMode = 'recommended';
 var statusModalStudentKey = '';
 var statusModalScrollY = 0;
 var statusCardEventsBound = false;
@@ -4115,7 +4124,7 @@ function buildStatusFieldOptions_(meta, rows) {
     return options;
 }
 function buildStatusViewRows_(rows, fieldOptions) {
-    return (Array.isArray(rows) ? rows : []).map(function (student) {
+    return (Array.isArray(rows) ? rows : []).map(function (student, index) {
         var entryMap = {};
         (Array.isArray(student && student.entries) ? student.entries : []).forEach(function (entry) {
             var key = String(entry && entry.key || '').trim();
@@ -4127,8 +4136,176 @@ function buildStatusViewRows_(rows, fieldOptions) {
             key: getStatusStudentKey_(student),
             entryMap: entryMap,
             previewMap: buildStatusPreviewMap_(entryMap, fieldOptions),
+            stableIndex: index,
         };
     });
+}
+function normalizeStatusSortMode_(value) {
+    var normalized = String(value || '').trim();
+    return getStatusSortOptions_().some(function (option) { return option.value === normalized; }) ? normalized : 'recommended';
+}
+function hasStatusUpdatedSort_() {
+    return latestStatusRows.some(function (student) { return Number.isFinite(parseStatusSortTimestamp_(student && student.responseUpdatedAt || student && student.submittedAt || '')); });
+}
+function getStatusSortOptions_() {
+    var options = [
+        { value: 'recommended', label: 'おすすめ順' },
+        { value: 'student_number', label: '出席番号順' },
+        { value: 'text_length_asc', label: '文字数が少ない順' },
+        { value: 'text_length_desc', label: '文字数が多い順' },
+        { value: 'rank_desc', label: 'ランク順' },
+    ];
+    if (hasStatusUpdatedSort_()) {
+        options.push({ value: 'updated_desc', label: '更新が新しい順' });
+    }
+    return options;
+}
+function renderStatusSortControls_() {
+    var el = document.getElementById('statusSortSelect');
+    if (!el)
+        return;
+    var options = getStatusSortOptions_();
+    statusSortMode = normalizeStatusSortMode_(statusSortMode);
+    el.innerHTML = options.map(function (option) { return "<option value=\"".concat(escAttr(option.value), "\"").concat(option.value === statusSortMode ? ' selected' : '', ">").concat(esc(option.label), "</option>"); }).join('');
+    el.value = statusSortMode;
+}
+function changeStatusSortMode(value) {
+    var nextMode = normalizeStatusSortMode_(value);
+    if (nextMode === statusSortMode)
+        return;
+    statusSortMode = nextMode;
+    refreshStatusSortedUi_(true);
+}
+function getStatusStudentNumberSortValue_(student) {
+    var normalized = String(student && student.num || '').trim();
+    if (!normalized)
+        return Number.POSITIVE_INFINITY;
+    var raw = Number(normalized);
+    return Number.isFinite(raw) ? raw : Number.POSITIVE_INFINITY;
+}
+function getStatusRankSortValue_(rank) {
+    var orderMap = {
+        'S+': 8,
+        'S': 7,
+        'A+': 6,
+        'A': 5,
+        'B+': 4,
+        'B': 3,
+        'C+': 2,
+        'C': 1,
+    };
+    var normalized = String(rank || '').trim().toUpperCase();
+    return Object.prototype.hasOwnProperty.call(orderMap, normalized) ? orderMap[normalized] : -1;
+}
+function parseStatusSortTimestamp_(value) {
+    var parsed = Date.parse(String(value || '').trim());
+    return Number.isFinite(parsed) ? parsed : NaN;
+}
+function getStatusEntryDisplayTextLength_(entry) {
+    var sections = splitStatusReviewSections_(entry);
+    if (!sections.length) {
+        return stripStatusReviewHintLines_(String(entry && entry.value || ''), entry).length;
+    }
+    return sections.reduce(function (total, section) {
+        return total + stripStatusReviewHintLines_(String(section && section.body || ''), entry).length;
+    }, 0);
+}
+function measureStatusRowDisplayTextLength_(row, fields) {
+    return (Array.isArray(fields) ? fields : []).reduce(function (total, field) {
+        var key = String(field && field.key || '').trim();
+        if (!key)
+            return total;
+        return total + getStatusEntryDisplayTextLength_(row && row.entryMap ? row.entryMap[key] : null);
+    }, 0);
+}
+function compareStatusNumericAsc_(left, right) {
+    var leftValid = Number.isFinite(left);
+    var rightValid = Number.isFinite(right);
+    if (!leftValid && !rightValid)
+        return 0;
+    if (!leftValid)
+        return 1;
+    if (!rightValid)
+        return -1;
+    if (left < right)
+        return -1;
+    if (left > right)
+        return 1;
+    return 0;
+}
+function compareStatusNumericDesc_(left, right) {
+    var leftValid = Number.isFinite(left);
+    var rightValid = Number.isFinite(right);
+    if (!leftValid && !rightValid)
+        return 0;
+    if (!leftValid)
+        return 1;
+    if (!rightValid)
+        return -1;
+    if (left > right)
+        return -1;
+    if (left < right)
+        return 1;
+    return 0;
+}
+function sortStatusViewRows_(rows, fields, mode) {
+    var decorated = (Array.isArray(rows) ? rows : []).map(function (row) {
+        return {
+            row: row,
+            favoriteScore: row && row.student && row.student.isFavorite === true ? 1 : 0,
+            rankScore: getStatusRankSortValue_(row && row.student && row.student.rank || ''),
+            numberScore: getStatusStudentNumberSortValue_(row && row.student || null),
+            textLength: measureStatusRowDisplayTextLength_(row, fields),
+            updatedAtScore: parseStatusSortTimestamp_(row && row.student && (row.student.responseUpdatedAt || row.student.submittedAt) || ''),
+            stableIndex: Number(row && row.stableIndex) || 0,
+        };
+    });
+    decorated.sort(function (left, right) {
+        if (mode === 'student_number') {
+            return compareStatusNumericAsc_(left.numberScore, right.numberScore) || (left.stableIndex - right.stableIndex);
+        }
+        if (mode === 'text_length_asc') {
+            return compareStatusNumericAsc_(left.textLength, right.textLength)
+                || compareStatusNumericAsc_(left.numberScore, right.numberScore)
+                || (left.stableIndex - right.stableIndex);
+        }
+        if (mode === 'text_length_desc') {
+            return compareStatusNumericDesc_(left.textLength, right.textLength)
+                || compareStatusNumericAsc_(left.numberScore, right.numberScore)
+                || (left.stableIndex - right.stableIndex);
+        }
+        if (mode === 'rank_desc') {
+            return compareStatusNumericDesc_(left.rankScore, right.rankScore)
+                || compareStatusNumericAsc_(left.numberScore, right.numberScore)
+                || (left.stableIndex - right.stableIndex);
+        }
+        if (mode === 'updated_desc') {
+            return compareStatusNumericDesc_(left.updatedAtScore, right.updatedAtScore)
+                || compareStatusNumericAsc_(left.numberScore, right.numberScore)
+                || (left.stableIndex - right.stableIndex);
+        }
+        return compareStatusNumericDesc_(left.favoriteScore, right.favoriteScore)
+            || compareStatusNumericDesc_(left.rankScore, right.rankScore)
+            || compareStatusNumericAsc_(left.numberScore, right.numberScore)
+            || (left.stableIndex - right.stableIndex);
+    });
+    return decorated.map(function (item) { return item.row; });
+}
+function rebuildStatusViewRows_() {
+    statusSortMode = normalizeStatusSortMode_(statusSortMode);
+    latestStatusViewRows = sortStatusViewRows_(buildStatusViewRows_(latestStatusRows, latestStatusFieldOptions), getSelectedStatusFields_(), statusSortMode);
+}
+function refreshStatusSortedUi_(preserveScroll) {
+    var scrollYBefore = preserveScroll ? getStatusViewportScrollY_() : 0;
+    rebuildStatusViewRows_();
+    renderStatusSortControls_();
+    renderStatusFieldTabs_();
+    renderStatusCardGrid_();
+    renderStatusFeedbackTable_();
+    syncStatusCardModal_();
+    if (preserveScroll) {
+        restoreStatusViewportScroll_(scrollYBefore);
+    }
 }
 function buildStatusPreviewMap_(entryMap, fieldOptions) {
     var previewMap = {};
@@ -4170,9 +4347,9 @@ function areAllStatusFieldsSelected_() {
 }
 function ensureStatusSelection_(lessonChanged) {
     latestStatusFieldOptions = buildStatusFieldOptions_(latestStatusMeta, latestStatusRows);
-    latestStatusViewRows = buildStatusViewRows_(latestStatusRows, latestStatusFieldOptions);
     if (lessonChanged) {
         statusModalStudentKey = '';
+        statusSortMode = 'recommended';
     }
     if (!latestStatusFieldOptions.length) {
         selectedStatusFieldKeys = [];
@@ -4203,6 +4380,7 @@ function renderStatus(d) {
     });
     bindStatusCardEvents_();
     ensureStatusSelection_(lessonChanged);
+    rebuildStatusViewRows_();
     renderStatusPerfDebug_();
     var st = latestStatusRows;
     var aiReturnedCount = st.filter(function (s) { return String(s.comment || '').trim(); }).length;
@@ -4213,6 +4391,7 @@ function renderStatus(d) {
     document.getElementById('statAI').textContent = aiReturnedCount;
     syncTeacherFeedbackControls(st, draftCount);
     renderStatusLessonSummary_();
+    renderStatusSortControls_();
     renderStatusFieldTabs_();
     renderStatusCardGrid_();
     renderStatusFeedbackTable_();
@@ -4312,11 +4491,14 @@ function renderStatusFeedbackTable_() {
     var body = document.getElementById('statusBody');
     if (!body)
         return;
-    if (!latestStatusRows.length) {
+    if (!latestStatusViewRows.length) {
         body.innerHTML = '<tr><td colspan="2" style="text-align:center;padding:18px;color:#78909C;">授業を開始すると、ここに児童の記録とフィードバックが表示されます。</td></tr>';
         return;
     }
-    body.innerHTML = latestStatusRows.map(function (s) { return "\n    <tr class=\"status-feedback-row\" data-response-id=\"".concat(escAttr(String(s && s.responseId || '')), "\">\n      <td data-label=\"\u5150\u7AE5 / \u63D0\u51FA\u5185\u5BB9\" class=\"status-student-cell\">").concat(renderStatusStudentCell(s), "</td>\n      <td data-label=\"\u30D5\u30A3\u30FC\u30C9\u30D0\u30C3\u30AF\" class=\"status-comment-cell\">").concat(renderStatusComment(s), "</td>\n    </tr>"); }).join('');
+    body.innerHTML = latestStatusViewRows.map(function (row) {
+        var s = row && row.student || null;
+        return "\n    <tr class=\"status-feedback-row\" data-response-id=\"".concat(escAttr(String(s && s.responseId || '')), "\">\n      <td data-label=\"\u5150\u7AE5 / \u63D0\u51FA\u5185\u5BB9\" class=\"status-student-cell\">").concat(renderStatusStudentCell(s), "</td>\n      <td data-label=\"\u30D5\u30A3\u30FC\u30C9\u30D0\u30C3\u30AF\" class=\"status-comment-cell\">").concat(renderStatusComment(s), "</td>\n    </tr>");
+    }).join('');
 }
 function getStatusStudentKey_(student) {
     var responseId = String(student && student.responseId || '').trim();
@@ -4367,9 +4549,7 @@ function toggleStatusField(fieldKey) {
     selectedStatusFieldKeys = exists
         ? selectedKeys.filter(function (key) { return key !== nextKey; })
         : selectedKeys.concat([nextKey]);
-    renderStatusFieldTabs_();
-    renderStatusCardGrid_();
-    syncStatusCardModal_();
+    refreshStatusSortedUi_(false);
     restoreStatusViewportScroll_(scrollYBefore);
 }
 function toggleAllStatusFields() {
@@ -4382,9 +4562,7 @@ function toggleAllStatusFields() {
     else {
         selectedStatusFieldKeys = latestStatusFieldOptions.map(function (field) { return String(field && field.key || ''); });
     }
-    renderStatusFieldTabs_();
-    renderStatusCardGrid_();
-    syncStatusCardModal_();
+    refreshStatusSortedUi_(false);
     restoreStatusViewportScroll_(scrollYBefore);
 }
 function getStatusReviewHintLabels_(entry) {
@@ -4598,6 +4776,10 @@ function patchStatusFavoriteState_(responseId, isFavorite) {
     if (!student)
         return;
     student.isFavorite = isFavorite === true;
+    if (statusSortMode === 'recommended') {
+        refreshStatusSortedUi_(true);
+        return;
+    }
     refreshStatusFavoriteButtons_(responseId);
     if (statusModalStudentKey) {
         var row = findStatusViewRowByKey_(statusModalStudentKey);
@@ -4859,6 +5041,7 @@ function clearRenderedStatus_() {
     latestStatusLessonKey = '';
     latestStatusFieldOptions = [];
     latestStatusViewRows = [];
+    statusSortMode = 'recommended';
     selectedStatusFieldKeys = [];
     statusModalStudentKey = '';
     statusModalScrollY = 0;
@@ -4884,6 +5067,9 @@ function clearRenderedStatus_() {
     var fieldTabs = document.getElementById('statusFieldTabs');
     if (fieldTabs)
         fieldTabs.innerHTML = '';
+    var sortSelect = document.getElementById('statusSortSelect');
+    if (sortSelect)
+        sortSelect.innerHTML = '';
     var cardGrid = document.getElementById('statusCardGrid');
     if (cardGrid) {
         cardGrid.className = "status-card-grid cols-".concat(statusCardColumnCount);
