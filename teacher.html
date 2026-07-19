@@ -330,7 +330,9 @@ body{font-family:var(--font);background:var(--bg);color:#212121;}
 }
 .status-card:hover{transform:translateY(-1px);}
 .status-card:focus-visible{outline:3px solid rgba(67,160,71,.28);outline-offset:2px;}
-.status-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;}
+.status-card-head{display:flex;flex-direction:column;gap:4px;min-width:0;}
+.status-card-numberrow{display:none;min-width:0;}
+.status-card-mainrow{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;min-width:0;}
 .status-card-name{min-width:0;flex:1 1 auto;}
 .status-card-studentline{display:flex;align-items:baseline;gap:8px;min-width:0;white-space:nowrap;}
 .status-card-number{
@@ -422,6 +424,21 @@ body{font-family:var(--font);background:var(--bg);color:#212121;}
   --status-card-section-gap:7px;
   --status-card-block-gap:6px;
 }
+.status-card-grid.cols-4 .status-card-numberrow,
+.status-card-grid.cols-5 .status-card-numberrow{display:block;}
+.status-card-grid.cols-4 .status-card-number-inline,
+.status-card-grid.cols-5 .status-card-number-inline{display:none;}
+.status-card-grid.cols-4 .status-card-mainrow,
+.status-card-grid.cols-5 .status-card-mainrow{gap:6px;}
+.status-card-grid.cols-4 .status-card-studentline,
+.status-card-grid.cols-5 .status-card-studentline{display:block;min-width:0;white-space:normal;}
+.status-card-grid.cols-4 .status-card-student,
+.status-card-grid.cols-5 .status-card-student{
+  display:block;overflow:hidden;text-overflow:ellipsis;white-space:normal;word-break:break-word;
+  line-height:1.28;
+}
+.status-card-grid.cols-4 .status-card-side,
+.status-card-grid.cols-5 .status-card-side{align-self:flex-start;max-width:100%;overflow:hidden;}
 .status-card-grid.cols-5 .status-card{
   --status-card-padding:11px;
   --status-card-text-size:12px;
@@ -4466,8 +4483,9 @@ function renderStatusCard_(row, fields) {
     var variantClass = getStatusCardVariantClass_(content.textLength, fields.length);
     var studentName = safeStudentName(student);
     var studentClass = studentName.length >= 13 ? 'status-card-student tight' : studentName.length >= 9 ? 'status-card-student compact' : 'status-card-student';
+    var numberLabel = getStatusStudentNumberLabel_(student);
     var badgesHtml = renderStatusHeaderBadgesHtml_(student) + renderStatusFavoriteButton_(student);
-    return "\n    <div class=\"status-card ".concat(variantClass, "\" role=\"button\" tabindex=\"0\" data-student-key=\"").concat(escAttr(row.key), "\" onclick=\"openStatusCardModal('").concat(escAttr(row.key), "')\" onkeydown=\"handleStatusCardKeydown(event,'").concat(escAttr(row.key), "')\">\n      <div class=\"status-card-head\">\n        <div class=\"status-card-name\">\n          <div class=\"status-card-studentline\">\n            <span class=\"status-card-number\">").concat(esc(getStatusStudentNumberLabel_(student)), "</span>\n            <span class=\"").concat(studentClass, "\">").concat(esc(studentName), "</span>\n          </div>\n        </div>\n        ").concat(badgesHtml ? "<div class=\"status-card-side\">".concat(badgesHtml, "</div>") : '', "\n      </div>\n      ").concat(content.html, "\n    </div>");
+    return "\n    <div class=\"status-card ".concat(variantClass, "\" role=\"button\" tabindex=\"0\" data-student-key=\"").concat(escAttr(row.key), "\" onclick=\"openStatusCardModal('").concat(escAttr(row.key), "')\" onkeydown=\"handleStatusCardKeydown(event,'").concat(escAttr(row.key), "')\">\n      <div class=\"status-card-head\">\n        <div class=\"status-card-numberrow\"><span class=\"status-card-number\">").concat(esc(numberLabel), "</span></div>\n        <div class=\"status-card-mainrow\">\n          <div class=\"status-card-name\">\n            <div class=\"status-card-studentline\">\n              <span class=\"status-card-number status-card-number-inline\">").concat(esc(numberLabel), "</span>\n              <span class=\"").concat(studentClass, "\">").concat(esc(studentName), "</span>\n            </div>\n          </div>\n          ").concat(badgesHtml ? "<div class=\"status-card-side\">".concat(badgesHtml, "</div>") : '', "\n        </div>\n      </div>\n      ").concat(content.html, "\n    </div>");
 }
 function renderStatusFavoriteButton_(student) {
     var responseId = String(student && student.responseId || '').trim();
