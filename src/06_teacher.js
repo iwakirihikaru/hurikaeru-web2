@@ -1814,7 +1814,6 @@ function readTeacherFavoriteMutationActor_() {
   const configuredTeacherEmail = String(setupConfig.teacherEmail || '').trim().toLowerCase();
   const sessionEmail = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
   if (!String(getTenantId_() || '').trim()) throw new Error('tenant が未設定です。');
-  if (!configuredTeacherName && !configuredTeacherEmail) throw new Error('教師設定が未完了です。');
   if (configuredTeacherEmail && sessionEmail && configuredTeacherEmail !== sessionEmail) throw new Error('教師権限がありません。');
   return {
     teacherName: configuredTeacherName,

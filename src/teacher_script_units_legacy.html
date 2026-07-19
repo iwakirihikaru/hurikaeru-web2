@@ -1041,12 +1041,13 @@ function setStatusFavoriteBusy_(responseId, isBusy) {
     }
     refreshStatusFavoriteButtons_(normalized);
 }
-function patchStatusFavoriteState_(responseId, isFavorite) {
+function patchStatusFavoriteState_(responseId, isFavorite, options) {
     var student = findStatusStudentByResponseId_(responseId);
     if (!student)
         return;
+    var opts = options && typeof options === 'object' ? options : {};
     student.isFavorite = isFavorite === true;
-    if (statusSortMode === 'recommended') {
+    if (statusSortMode === 'recommended' && opts.deferResort !== true) {
         refreshStatusSortedUi_(true);
         return;
     }
@@ -1078,12 +1079,12 @@ function toggleStatusFavorite(event, responseId) {
         return;
     var previousFavorite = student.isFavorite === true;
     var nextFavorite = !previousFavorite;
-    patchStatusFavoriteState_(normalized, nextFavorite);
+    patchStatusFavoriteState_(normalized, nextFavorite, { deferResort: true });
     setStatusFavoriteBusy_(normalized, true);
     google.script.run
         .withSuccessHandler(function (res) {
         if (!(res && res.ok)) {
-            patchStatusFavoriteState_(normalized, previousFavorite);
+            patchStatusFavoriteState_(normalized, previousFavorite, { deferResort: true });
             setStatusFavoriteBusy_(normalized, false);
             showToast(res && res.error || 'お気に入り更新に失敗しました');
             return;
@@ -1092,7 +1093,7 @@ function toggleStatusFavorite(event, responseId) {
         setStatusFavoriteBusy_(normalized, false);
     })
         .withFailureHandler(function (err) {
-        patchStatusFavoriteState_(normalized, previousFavorite);
+        patchStatusFavoriteState_(normalized, previousFavorite, { deferResort: true });
         setStatusFavoriteBusy_(normalized, false);
         showToast(formatTeacherRpcError_(err, 'お気に入り更新に失敗しました', 'お気に入り'), { tone: 'error', duration: 5200 });
     })
