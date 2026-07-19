@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta name="x-source-commit" content="0b8a46fcb8f5fc13d35256460fae426d1f41463d">
-<script>window.__SOURCE_COMMIT__ = "0b8a46fcb8f5fc13d35256460fae426d1f41463d";</script>
+<meta name="x-source-commit" content="48025168c288b08a6e5d1da8d3c95d9f3757caa2">
+<script>window.__SOURCE_COMMIT__ = "48025168c288b08a6e5d1da8d3c95d9f3757caa2";</script>
 <script src="./runtime-shim.js?v=c8f329c57c"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -3803,7 +3803,6 @@ var statusViewScrollByTab = { responses: 0, feedback: 0 };
 var statusModalBodyLockY = 0;
 var statusFavoriteBusyMap = {};
 var statusFavoriteOverrideMap = {};
-var teacherStatusRenderPerfSeq = 0;
 function formatStatusTimingLine_(label, timing, keys) {
     if (!timing || typeof timing !== 'object' || !Array.isArray(keys) || !keys.length)
         return '';
@@ -3819,32 +3818,6 @@ function formatStatusTimingLine_(label, timing, keys) {
     if (!parts.length)
         return '';
     return "".concat(label, ": ").concat(parts.join(' / '));
-}
-function formatClientStatusTimingLine_(timing) {
-    if (!timing || typeof timing !== 'object')
-        return '';
-    var parts = [];
-    var pushMs = function (label, value) {
-        var num = Number(value || 0);
-        if (!Number.isFinite(num) || num < 0)
-            return;
-        parts.push("".concat(label, " ").concat(num.toFixed(num >= 100 ? 0 : 1), "ms"));
-    };
-    pushMs('rpc', timing.rpcMs);
-    pushMs('rows', timing.latestStatusRowsMs);
-    pushMs('sort', timing.sortMs);
-    pushMs('html', timing.htmlMs);
-    pushMs('dom', timing.domMs);
-    pushMs('raf', timing.firstRafMs);
-    pushMs('visible', timing.visibleMs);
-    pushMs('total', timing.totalMs);
-    if (Number.isFinite(Number(timing.studentCount)))
-        parts.push("students ".concat(Number(timing.studentCount || 0)));
-    if (Number.isFinite(Number(timing.cardCount)))
-        parts.push("cards ".concat(Number(timing.cardCount || 0)));
-    if (Number.isFinite(Number(timing.fieldCount)))
-        parts.push("fields ".concat(Number(timing.fieldCount || 0)));
-    return parts.length ? "描画: ".concat(parts.join(' / ')) : '';
 }
 function formatResponseReadMetaLine_(meta) {
     if (!meta || typeof meta !== 'object')
@@ -3887,11 +3860,9 @@ function renderStatusPerfDebug_() {
     var unitsReadMeta = (latestStatusMeta && latestStatusMeta.unitsReadMeta)
         || window.__teacherUnitsReadMeta
         || null;
-    var clientTiming = latestStatusMeta && latestStatusMeta.clientRenderTiming || null;
     var lines = [
         formatStatusTimingLine_('表示データ', lessonTiming, ['totalMs', 'snapshotMs', 'responsesMs', 'draftsMs', 'rosterMs', 'studentBuildMs']),
         formatStatusTimingLine_('初回読込', requestTiming, ['totalMs', 'unitsMs', 'activeMs', 'unitProgressMs', 'lessonStatusMs']),
-        formatClientStatusTimingLine_(clientTiming),
         formatUnitsReadMetaLine_(unitsReadMeta),
         formatResponseReadMetaLine_(responseReadMeta),
     ].filter(Boolean);
@@ -4107,7 +4078,6 @@ function loadStatus() {
     var requestSeq = ++teacherStatusRequestSeq;
     var requestUnitId = String(activeUnitId || '');
     var requestPeriod = Number(activePeriod || 0);
-    var requestStartedAt = teacherNowMs_();
     google.script.run
         .withSuccessHandler(function (d) {
         preloadCache.statusLoading = false;
@@ -4120,11 +4090,6 @@ function loadStatus() {
         var responsePeriod = Number(meta.period || requestPeriod);
         if (responseUnitId !== requestUnitId || responsePeriod !== requestPeriod)
             return;
-        meta.__clientRpcPerf = {
-            requestSeq: requestSeq,
-            loadStartedAt: requestStartedAt,
-            rpcSuccessAt: teacherNowMs_(),
-        };
         renderStatus(d);
     })
         .withFailureHandler(function () {
@@ -4430,8 +4395,6 @@ function getStatusFieldKeysFromSelection_(availableKeys) {
     return getSelectedStatusFieldKeys_().filter(function (fieldKey) { return availableKeys.indexOf(fieldKey) >= 0; });
 }
 function renderStatus(d) {
-    var renderStartedAt = teacherNowMs_();
-    var rpcPerf = d && d.meta && d.meta.__clientRpcPerf || null;
     var previousLessonKey = latestStatusLessonKey;
     var scrollYBefore = getStatusViewportScrollY_();
     var incomingRows = Array.isArray(d && d.students) ? d.students : [];
@@ -4445,20 +4408,16 @@ function renderStatus(d) {
         clearRenderedStatus_();
         return;
     }
-    var latestStatusRowsDoneAt = teacherNowMs_();
     writeTeacherStatusPreloadCache_({
         meta: latestStatusMeta,
         students: latestStatusRows,
     });
     bindStatusCardEvents_();
     ensureStatusSelection_(lessonChanged);
-    var sortStartedAt = teacherNowMs_();
     rebuildStatusViewRows_();
-    var sortEndedAt = teacherNowMs_();
     var st = latestStatusRows;
     var aiReturnedCount = st.filter(function (s) { return String(s.comment || '').trim(); }).length;
     var draftCount = st.filter(function (s) { return hasTeacherDraft(s); }).length;
-    var htmlStartedAt = teacherNowMs_();
     document.getElementById('statTotal').textContent = st.length;
     document.getElementById('statWritten').textContent = st.filter(function (s) { return (s.writtenCount || 0) > 0; }).length;
     document.getElementById('statSubmitted').textContent = st.filter(function (s) { return s.submitted; }).length;
@@ -4470,41 +4429,13 @@ function renderStatus(d) {
     renderStatusCardGrid_();
     renderStatusFeedbackTable_();
     syncStatusCardModal_();
-    var domAppliedAt = teacherNowMs_();
     if (lessonChanged) {
         scrollStatusGridToTop_();
     }
     else {
         restoreStatusViewportScroll_(scrollYBefore);
     }
-    latestStatusMeta.clientRenderTiming = {
-        seq: ++teacherStatusRenderPerfSeq,
-        requestSeq: Number(rpcPerf && rpcPerf.requestSeq || 0),
-        rpcMs: Math.max(0, Number((rpcPerf && rpcPerf.rpcSuccessAt || domAppliedAt) - (rpcPerf && rpcPerf.loadStartedAt || domAppliedAt))),
-        latestStatusRowsMs: Math.max(0, latestStatusRowsDoneAt - renderStartedAt),
-        sortMs: Math.max(0, sortEndedAt - sortStartedAt),
-        htmlMs: Math.max(0, domAppliedAt - htmlStartedAt),
-        domMs: Math.max(0, domAppliedAt - sortEndedAt),
-        totalMs: Math.max(0, domAppliedAt - renderStartedAt),
-        studentCount: st.length,
-        cardCount: latestStatusViewRows.length,
-        fieldCount: getSelectedStatusFields_().length,
-    };
     renderStatusPerfDebug_();
-    if (typeof requestAnimationFrame === 'function') {
-        requestAnimationFrame(function () {
-            var frameAt = teacherNowMs_();
-            if (!(latestStatusMeta && latestStatusMeta.clientRenderTiming))
-                return;
-            latestStatusMeta.clientRenderTiming.firstRafMs = Math.max(0, frameAt - renderStartedAt);
-            latestStatusMeta.clientRenderTiming.visibleMs = latestStatusMeta.clientRenderTiming.firstRafMs;
-            renderStatusPerfDebug_();
-            logTeacherClientPerf_('teacherStatusRender', latestStatusMeta.clientRenderTiming);
-        });
-    }
-    else {
-        logTeacherClientPerf_('teacherStatusRender', latestStatusMeta.clientRenderTiming);
-    }
 }
 function renderStatusLessonSummary_() {
     var el = document.getElementById('statusLessonSummary');
