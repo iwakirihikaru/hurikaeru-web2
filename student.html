@@ -1,9 +1,13 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
+<<<<<<< HEAD
 <meta name="x-source-commit" content="9e22f58458217f50749af6b312ba22f60ef414ff">
 <script>window.__SOURCE_COMMIT__ = "9e22f58458217f50749af6b312ba22f60ef414ff";</script>
 <script src="./runtime-shim.js?v=c8f329c57c"></script>
+=======
+<script src="./runtime-shim.js?v=7dd7bdc6fd"></script>
+>>>>>>> c0f07b87 (Publish portable site from e73adf64)
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>ふりカエル</title>
@@ -473,7 +477,6 @@ textarea.f{min-height:70px;}
   </div>
 </div>
 
-<div id="studentApiDebug" class="student-api-debug">Pages client-20260704-1035 / API waiting</div>
 <div id="toast"></div>
 
 <script>
@@ -542,6 +545,13 @@ const STUDENT_CLASS_SNAPSHOT_CACHE_KEY = 'furikaeri:studentClassSnapshot';
 let studentClassSnapshotPreloadBusy = false;
 let studentClassSnapshotPreloadScheduled = false;
 const STUDENT_CLIENT_BUILD = 'client-20260704-1035';
+const studentDiagnosticsEnabled = (() => {
+  try{
+    return new URLSearchParams(window.location.search || '').get('diagnostics') === '1';
+  }catch(_err){
+    return false;
+  }
+})();
 const studentClientPerfState = {
   pageStartedAt:(typeof performance!=='undefined' && performance && typeof performance.now==='function') ? performance.now() : Date.now(),
   initCalls:0,
@@ -1048,8 +1058,65 @@ function logStudentApiTiming_(label,payload){
   console.info('[student-api]', label, timing);
 }
 
+function buildTimelineTransportMetrics_(timing){
+  const meta=timing && typeof timing==='object' ? timing : null;
+  if(!meta) return {};
+  const pickElapsedMs=(monoStart, monoEnd, epochStart, epochEnd)=>(
+    monoStart>0 && monoEnd>0
+      ? Math.max(0, monoEnd-monoStart)
+      : (epochStart>0 && epochEnd>0 ? Math.max(0, epochEnd-epochStart) : 0)
+  );
+  const clientRpcStartedMonotonicMs=Number(meta.clientRpcStartedMonotonicMs||0);
+  const clientFetchStartedMonotonicMs=Number(meta.clientFetchStartedMonotonicMs||0);
+  const clientResponseHeadersReceivedMonotonicMs=Number(meta.clientResponseHeadersReceivedMonotonicMs||0);
+  const clientResponseTextReceivedMonotonicMs=Number(meta.clientResponseTextReceivedMonotonicMs||0);
+  const clientJsonParseFinishedMonotonicMs=Number(meta.clientJsonParseFinishedMonotonicMs||0);
+  const clientSuccessHandlerMonotonicMs=Number(meta.clientSuccessHandlerMonotonicMs||0);
+  const clientRpcStartedAtMs=Number(meta.clientRpcStartedAtMs||0);
+  const clientFetchStartedAtMs=Number(meta.clientFetchStartedAtMs||0);
+  const clientResponseHeadersReceivedAtMs=Number(meta.clientResponseHeadersReceivedAtMs||0);
+  const clientResponseTextReceivedAtMs=Number(meta.clientResponseTextReceivedAtMs||0);
+  const clientJsonParseFinishedAtMs=Number(meta.clientJsonParseFinishedAtMs||0);
+  const clientSuccessHandlerAtMs=Number(meta.clientSuccessHandlerAtMs||0);
+  const serverDispatchStartedAtMs=Number(meta.serverDispatchStartedAtMs||0);
+  const serverDispatchFinishedAtMs=Number(meta.serverDispatchFinishedAtMs||0);
+  const metrics={
+    rpcStartToFetchStartMs: pickElapsedMs(clientRpcStartedMonotonicMs, clientFetchStartedMonotonicMs, clientRpcStartedAtMs, clientFetchStartedAtMs),
+    fetchToHeadersMs: pickElapsedMs(clientFetchStartedMonotonicMs, clientResponseHeadersReceivedMonotonicMs, clientFetchStartedAtMs, clientResponseHeadersReceivedAtMs),
+    headersToBodyMs: pickElapsedMs(clientResponseHeadersReceivedMonotonicMs, clientResponseTextReceivedMonotonicMs, clientResponseHeadersReceivedAtMs, clientResponseTextReceivedAtMs),
+    responseBodyToJsonParseMs: pickElapsedMs(clientResponseTextReceivedMonotonicMs, clientJsonParseFinishedMonotonicMs, clientResponseTextReceivedAtMs, clientJsonParseFinishedAtMs),
+    jsonParseToSuccessHandlerMs: pickElapsedMs(clientJsonParseFinishedMonotonicMs, clientSuccessHandlerMonotonicMs, clientJsonParseFinishedAtMs, clientSuccessHandlerAtMs),
+    responseBodyToSuccessHandlerMs: pickElapsedMs(clientResponseTextReceivedMonotonicMs, clientSuccessHandlerMonotonicMs, clientResponseTextReceivedAtMs, clientSuccessHandlerAtMs),
+  };
+  if(clientFetchStartedAtMs>0 && clientResponseTextReceivedAtMs>0 && serverDispatchStartedAtMs>0 && serverDispatchFinishedAtMs>0){
+    const estimatedClockOffsetMs=((serverDispatchStartedAtMs-clientFetchStartedAtMs)+(serverDispatchFinishedAtMs-clientResponseTextReceivedAtMs))/2;
+    metrics.estimatedClockOffsetMs=estimatedClockOffsetMs;
+    if(clientRpcStartedAtMs>0){
+      metrics.estimatedRpcStartToServerStartMs=Math.max(0, serverDispatchStartedAtMs-(clientRpcStartedAtMs+estimatedClockOffsetMs));
+    }
+    metrics.estimatedFetchStartToServerStartMs=Math.max(0, serverDispatchStartedAtMs-(clientFetchStartedAtMs+estimatedClockOffsetMs));
+    metrics.estimatedServerFinishToResponseBodyMs=Math.max(0, (clientResponseTextReceivedAtMs+estimatedClockOffsetMs)-serverDispatchFinishedAtMs);
+    if(clientSuccessHandlerAtMs>0){
+      metrics.estimatedServerFinishToSuccessHandlerMs=Math.max(0, (clientSuccessHandlerAtMs+estimatedClockOffsetMs)-serverDispatchFinishedAtMs);
+    }
+  }
+  return metrics;
+}
+
+function ensureStudentDebugFooter_(){
+  if(!studentDiagnosticsEnabled) return null;
+  let el=document.getElementById('studentApiDebug');
+  if(el) return el;
+  el=document.createElement('div');
+  el.id='studentApiDebug';
+  el.className='student-api-debug';
+  el.textContent=`Pages ${STUDENT_CLIENT_BUILD}\n${studentDebugFooterState.apiText}\n${studentDebugFooterState.clientText}`;
+  document.body.appendChild(el);
+  return el;
+}
+
 function updateStudentDebugFooter_(){
-  const el=document.getElementById('studentApiDebug');
+  const el=ensureStudentDebugFooter_();
   if(!el) return;
   el.textContent=`Pages ${STUDENT_CLIENT_BUILD}\n${studentDebugFooterState.apiText}\n${studentDebugFooterState.clientText}`;
   el.classList.toggle('error', Boolean(studentDebugFooterState.isError));
@@ -1079,6 +1146,52 @@ function logStudentApiFailure_(label, err){
   if(typeof console!=='undefined' && typeof console.warn==='function'){
     console.warn('[student-api]', label, message || 'failed');
   }
+}
+
+updateStudentDebugFooter_();
+
+function isStudentSessionError_(error){
+  const message=String(error && error.message ? error.message : (error || '')).trim();
+  return /student_session_required|student_session_mismatch|student_session_expired/i.test(message);
+}
+
+function resetStudentSessionForReentry_(message){
+  stopPolling();
+  clearInterval(autoTimer);
+  initBusy=false;
+  pollBusy=false;
+  submitInFlight=false;
+  autoSaveInFlight=false;
+  timelineRefreshPending=false;
+  studentActiveReloading=false;
+  studentStateReady=false;
+  currentStudentInitRequestId+=1;
+  currentTimelineRequestId+=1;
+  myNum=null;
+  myLessonId='';
+  myActiveRevision=0;
+  currentStudentName='';
+  currentStudentCustoms=[];
+  currentStudentStateKey='';
+  myUnitId=null;
+  myPeriod=null;
+  studentSessionToken='';
+  lastTimelinePayloadSignature='';
+  submitted=false;
+  forgetRememberedStudent_();
+  const submitNote=document.getElementById('submitNote');
+  if(submitNote) submitNote.textContent='';
+  document.querySelectorAll('.num-btn').forEach(btn=>btn.disabled=false);
+  document.getElementById('changeStudentBtn').style.display='none';
+  showScreen('screen-select');
+  showToast(message||'もういちど番号をえらんで入りなおしてね。');
+}
+
+function handleStudentSessionFailure_(label, error){
+  if(!isStudentSessionError_(error)) return false;
+  logStudentApiFailure_(label, error);
+  resetStudentSessionForReentry_('授業がかわったので、もういちど番号をえらんで入りなおしてね。');
+  return true;
 }
 
 function getInitialStudentOptions_(){
@@ -1352,7 +1465,6 @@ function selectNumber(num, options){
   setNumberSelectionBusy_(num,true);
   markStudentStartIndicatorShown_(perfSession);
   if(opts.remember!==false) rememberStudentNumber_(num);
-  showCachedStudentLanding_(findRecentStudentStateCache_(num));
   google.script.run
     .withSuccessHandler(d=>{
       if(requestId!==currentStudentInitRequestId) return;
@@ -1468,6 +1580,10 @@ function loadMain(d){
   timelineRefreshPending=false;
   const identity=normalizeStudentIdentity_(d);
   rememberStudentNumber_(identity.num);
+<<<<<<< HEAD
+=======
+  studentSessionToken=String((d && Object.prototype.hasOwnProperty.call(d,'studentSessionToken')) ? (d.studentSessionToken || '') : '').trim();
+>>>>>>> c0f07b87 (Publish portable site from e73adf64)
   myLessonId = String(d && d.lessonId || '').trim();
   myActiveRevision = Number(d && d.activeRevision || 0);
   myUnitId  = d.unit?.id   || null;
@@ -1582,6 +1698,7 @@ function loadStudentState(options){
     .withFailureHandler(err=>{
       if(expectedRequestId!==currentStudentInitRequestId
         || !isCurrentStudentContext_(expectedStudentNumber, expectedLessonId, expectedActiveRevision)) return;
+      if(handleStudentSessionFailure_('studentLoadState', err)) return;
       logStudentApiFailure_('studentLoadState', err);
       studentStateReady=true;
       if(submitted){
@@ -1651,6 +1768,7 @@ function loadPreviousReview(){
     .withFailureHandler(err=>{
       if(expectedRequestId!==currentStudentInitRequestId
         || !isCurrentStudentContext_(expectedStudentNumber, expectedLessonId, expectedActiveRevision)) return;
+      if(handleStudentSessionFailure_('getStudentPreviousReview', err)) return;
       logStudentApiFailure_('getStudentPreviousReview', err);
     })
     .getStudentPreviousReview(myUnitId,myPeriod,myNum);
@@ -2110,8 +2228,9 @@ function doSave(silent){
         if(!silent) showToast('✅ ほぞんしたよ！');
       }
     })
-    .withFailureHandler(()=>{
+    .withFailureHandler(err=>{
       autoSaveInFlight=false;
+      if(handleStudentSessionFailure_('autoSave', err)) return;
     })
     .autoSave(myUnitId,myPeriod,myNum,values);
 }
@@ -2163,6 +2282,7 @@ function runStudentSubmit_(values, submitOptions, attempt){
       refreshTimeline({ force:true });
     })
     .withFailureHandler(e=>{
+      if(handleStudentSessionFailure_('submitReview', e)) return;
       if(attempt<1 && isRetriableSubmitError_(e)){
         setTimeout(()=>runStudentSubmit_(values, submitOptions, attempt+1), 700);
         return;
@@ -2286,15 +2406,34 @@ function refreshTimeline(options){
   setTimelineRetryVisible_(false,'');
   const cacheKey=[myLessonId||myUnitId,myPeriod,myNum].join('_');
   google.script.run
+<<<<<<< HEAD
     .withSuccessHandler(payload=>{
       if(!isTimelineResponseCurrent_(requestId, requestContext, payload)) return;
       logStudentApiTiming_('getTimelineSnapshot', payload);
+=======
+      .withSuccessHandler(payload=>{
+        if(!isTimelineResponseCurrent_(requestId, requestContext, payload)) return;
+        logStudentApiTiming_('getTimelineSnapshot', payload);
+        const responseReceivedAt=studentNowMs_();
+        const transportMetrics=buildTimelineTransportMetrics_(payload&&payload.timing);
+        const payloadSignature=getTimelinePayloadSignature_(payload);
+        const shouldPersist=payloadSignature!==lastTimelinePayloadSignature;
+        const storageStartedAt=studentNowMs_();
+      if(shouldPersist){
+        writeStudentCache_('timeline',cacheKey,Object.assign({}, payload||{}, {
+          lessonId:requestContext.lessonId,
+          activeRevision:requestContext.activeRevision,
+        }));
+      }
+      const storageFinishedAt=studentNowMs_();
+>>>>>>> c0f07b87 (Publish portable site from e73adf64)
       logStudentClientPerf_('timeline_response', {
         totalMs:Math.max(0, studentNowMs_()-startedAt),
         sincePageLoadMs:Math.max(0, studentNowMs_()-studentClientPerfState.pageStartedAt),
         studentNumber:Number(myNum||0),
         rowCount:Array.isArray(payload&&payload.rows)?payload.rows.length:0,
         lessonId:String(payload&&payload.lessonId||''),
+<<<<<<< HEAD
         activeRevision:Number(payload&&payload.activeRevision||0),
         timing:payload&&payload.timing||null,
       });
@@ -2303,6 +2442,24 @@ function refreshTimeline(options){
         activeRevision:requestContext.activeRevision,
       }));
       const me=applyTimelinePayload(payload);
+=======
+          activeRevision:Number(payload&&payload.activeRevision||0),
+          rpcToSuccessMs:Math.max(0, responseReceivedAt-startedAt),
+          localStorageWriteMs:Math.max(0, storageFinishedAt-storageStartedAt),
+          persisted:Boolean(shouldPersist),
+          timing:payload&&payload.timing||null,
+          transport:transportMetrics,
+        });
+        const applyStartedAt=studentNowMs_();
+        const applyResult=applyTimelinePayload(payload, { signature:payloadSignature });
+      const applyFinishedAt=studentNowMs_();
+      const me=applyResult && typeof applyResult==='object' ? applyResult.me : null;
+      const renderMetrics=applyResult && typeof applyResult==='object' ? (applyResult.renderMetrics||{}) : {};
+      let raf1At=0;
+      afterNextAnimationFrame_(()=>{
+        raf1At=studentNowMs_();
+      });
+>>>>>>> c0f07b87 (Publish portable site from e73adf64)
       afterNextPaint_(()=>{
         if(perfSession.loggedRender || !isCurrentStudentContext_(requestContext.studentNumber, requestContext.lessonId, requestContext.activeRevision)) return;
         perfSession.loggedRender=true;
@@ -2312,8 +2469,21 @@ function refreshTimeline(options){
           lessonId:requestContext.lessonId,
           activeRevision:requestContext.activeRevision,
           rowCount:Array.isArray(payload&&payload.rows)?payload.rows.length:0,
+<<<<<<< HEAD
+=======
+          rpcToSuccessMs:Math.max(0, responseReceivedAt-startedAt),
+          localStorageWriteMs:Math.max(0, storageFinishedAt-storageStartedAt),
+          applyTimelinePayloadMs:Math.max(0, applyFinishedAt-applyStartedAt),
+          applyStartedAfterRpcMs:Math.max(0, applyStartedAt-responseReceivedAt),
+          renderTlMs:Number(renderMetrics.totalMs||0),
+          innerHTMLMs:Number(renderMetrics.innerHTMLMs||0),
+            skippedRender:Boolean(renderMetrics.skipped),
+            firstRafMs:raf1At ? Math.max(0, raf1At-responseReceivedAt) : 0,
+            secondRafMs:Math.max(0, studentNowMs_()-responseReceivedAt),
+            transport:transportMetrics,
+          });
+>>>>>>> c0f07b87 (Publish portable site from e73adf64)
         });
-      });
       pollBusy=false;
       if(timelineRefreshPending){
         timelineRefreshPending=false;
@@ -2323,6 +2493,7 @@ function refreshTimeline(options){
     })
     .withFailureHandler(err=>{
       if(requestId!==currentTimelineRequestId || !isCurrentStudentContext_(requestContext.studentNumber, requestContext.lessonId, requestContext.activeRevision)) return;
+      if(handleStudentSessionFailure_('getTimelineSnapshot', err)) return;
       logStudentApiFailure_('getTimelineSnapshot', err);
       logStudentClientPerf_('timeline_error', {
         totalMs:Math.max(0, studentNowMs_()-startedAt),
@@ -2400,6 +2571,7 @@ function handleStudentActiveLessonChange_(payload){
   if(!nextUnitId || nextPeriod<=0){
     studentActiveReloading=true;
     stopPolling();
+    studentSessionToken='';
     const note=document.getElementById('submitNote');
     if(note) note.textContent='先生が授業を終了しました。画面を更新しています…';
     google.script.run
@@ -2420,6 +2592,7 @@ function handleStudentActiveLessonChange_(payload){
   if(!nextLessonId && String(myUnitId||'')===nextUnitId && Number(myPeriod||0)===nextPeriod) return false;
   studentActiveReloading=true;
   stopPolling();
+  studentSessionToken='';
   const note=document.getElementById('submitNote');
   if(note) note.textContent='先生が新しい授業を開始しました。画面を更新しています…';
   google.script.run
@@ -2496,8 +2669,9 @@ function loadStudentPastRecords_(options){
         renderStudentPastRecords_(res||{groups:[]});
       }
     })
-    .withFailureHandler(()=>{
+    .withFailureHandler(err=>{
       studentHistoryLoading=false;
+      if(handleStudentSessionFailure_('getStudentPastRecords', err)) return;
       studentHistoryLoaded=!opts.background || activeStudentTab==='history';
       if(!opts.background || activeStudentTab==='history'){
         renderStudentPastRecords_({groups:[]});
