@@ -33,6 +33,10 @@
       <div class="status-view-pane active" id="statusResponsesPane" role="tabpanel" aria-labelledby="statusViewTabResponses">
         <div id="statusLessonSummary"></div>
         <div id="statusFieldTabs"></div>
+        <div class="status-sort-row">
+          <div class="status-top-label">並び替え</div>
+          <select class="inp status-sort-select" id="statusSortSelect" onchange="changeStatusSortMode(this.value)" aria-label="回答一覧の並び替え"></select>
+        </div>
         <div class="status-density-card">
           <div class="status-density-head">
             <div>

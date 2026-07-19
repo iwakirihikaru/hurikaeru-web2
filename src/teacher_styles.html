@@ -270,6 +270,9 @@ body{font-family:var(--font);background:var(--bg);color:#212121;}
 }
 .status-field-tab.active{background:linear-gradient(135deg,#43A047,#2E7D32);border-color:#2E7D32;color:#fff;}
 .status-field-tab.single{cursor:default;}
+.status-sort-row{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px;}
+.status-sort-row .status-top-label{margin-bottom:0;}
+.status-sort-select{min-width:220px;max-width:320px;flex:0 1 320px;}
 .status-view-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;}
 .status-view-tab{
   display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:10px 18px;border-radius:999px;
@@ -653,6 +656,7 @@ body{font-family:var(--font);background:var(--bg);color:#212121;}
   .status-lesson-box.primary{grid-column:span 1;}
   .status-density-head{flex-direction:column;}
   .status-density-buttons{grid-template-columns:repeat(3,minmax(0,1fr));}
+  .status-sort-select{min-width:0;max-width:none;width:100%;flex:1 1 auto;}
   .status-card-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
   .status-card{min-height:200px;}
   .status-card-text{font-size:14px;}
