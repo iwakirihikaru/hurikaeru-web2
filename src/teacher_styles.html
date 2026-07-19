@@ -326,7 +326,7 @@ body{font-family:var(--font);background:var(--bg);color:#212121;}
 .status-card-head{display:flex;flex-direction:column;gap:4px;min-width:0;}
 .status-card-numberrow{display:none;min-width:0;}
 .status-card-mainrow{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;min-width:0;}
-.status-card-name{min-width:0;flex:1 1 auto;}
+.status-card-name{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1 1 auto;}
 .status-card-studentline{display:flex;align-items:baseline;gap:8px;min-width:0;white-space:nowrap;}
 .status-card-number{
   flex:0 0 auto;font-size:var(--status-card-meta-size);font-weight:bold;color:#5D7A67;line-height:1.35;
@@ -337,10 +337,8 @@ body{font-family:var(--font);background:var(--bg);color:#212121;}
 }
 .status-card-student.compact{font-size:calc(var(--status-card-student-size) - 1px);}
 .status-card-student.tight{font-size:calc(var(--status-card-student-size) - 2px);}
-.status-card-side,
-.status-card-sidebadges{
-  display:flex;align-items:center;justify-content:flex-end;gap:6px;flex:0 0 auto;white-space:nowrap;
-}
+.status-card-side{display:flex;align-items:flex-start;justify-content:flex-end;gap:6px;flex:0 0 auto;white-space:nowrap;}
+.status-card-sidebadges{display:flex;align-items:center;justify-content:flex-end;gap:6px;flex:0 0 auto;white-space:nowrap;}
 .status-favorite-btn{
   display:inline-flex;align-items:center;justify-content:center;min-width:38px;min-height:38px;
   padding:0 8px;border:1.5px solid #D8E6D9;border-radius:999px;background:#fff;color:#607D66;
@@ -350,7 +348,7 @@ body{font-family:var(--font);background:var(--bg);color:#212121;}
 .status-favorite-btn:focus-visible{outline:3px solid rgba(67,160,71,.24);outline-offset:2px;}
 .status-favorite-btn[disabled]{cursor:default;opacity:.6;}
 .status-favorite-btn.status-favorite-active{border-color:#F6C342;background:#FFF7D6;color:#C88700;}
-.status-favorite-btn.status-favorite-busy{color:#9AA6AC;}
+.status-favorite-btn.status-favorite-busy{color:inherit;opacity:.52;}
 .status-rank-chip{
   display:inline-flex;align-items:center;justify-content:center;min-height:20px;padding:2px 8px;border-radius:999px;
   font-size:11px;font-weight:bold;line-height:1;color:#fff;
@@ -417,21 +415,35 @@ body{font-family:var(--font);background:var(--bg);color:#212121;}
   --status-card-section-gap:7px;
   --status-card-block-gap:6px;
 }
+.status-card-grid.cols-3 .status-card-numberrow,
 .status-card-grid.cols-4 .status-card-numberrow,
 .status-card-grid.cols-5 .status-card-numberrow{display:block;}
+.status-card-grid.cols-3 .status-card-number-inline,
 .status-card-grid.cols-4 .status-card-number-inline,
 .status-card-grid.cols-5 .status-card-number-inline{display:none;}
+.status-card-grid.cols-3 .status-card-mainrow,
 .status-card-grid.cols-4 .status-card-mainrow,
-.status-card-grid.cols-5 .status-card-mainrow{gap:6px;}
+.status-card-grid.cols-5 .status-card-mainrow{
+  display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:6px;
+}
+.status-card-grid.cols-3 .status-card-studentline,
 .status-card-grid.cols-4 .status-card-studentline,
 .status-card-grid.cols-5 .status-card-studentline{display:block;min-width:0;white-space:normal;}
+.status-card-grid.cols-3 .status-card-student,
 .status-card-grid.cols-4 .status-card-student,
 .status-card-grid.cols-5 .status-card-student{
   display:block;overflow:hidden;text-overflow:ellipsis;white-space:normal;word-break:break-word;
   line-height:1.28;
 }
+.status-card-grid.cols-3 .status-card-side,
 .status-card-grid.cols-4 .status-card-side,
-.status-card-grid.cols-5 .status-card-side{align-self:flex-start;max-width:100%;overflow:hidden;}
+.status-card-grid.cols-5 .status-card-side{
+  display:grid;grid-template-columns:auto;grid-auto-rows:min-content;justify-items:end;align-items:start;
+  align-self:flex-start;justify-self:end;max-width:100%;overflow:visible;
+}
+.status-card-grid.cols-3 .status-card-sidebadges,
+.status-card-grid.cols-4 .status-card-sidebadges,
+.status-card-grid.cols-5 .status-card-sidebadges{flex-wrap:wrap;}
 .status-card-grid.cols-5 .status-card{
   --status-card-padding:11px;
   --status-card-text-size:12px;

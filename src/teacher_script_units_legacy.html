@@ -732,8 +732,11 @@ function renderStatusCard_(row, fields) {
     var studentName = safeStudentName(student);
     var studentClass = studentName.length >= 13 ? 'status-card-student tight' : studentName.length >= 9 ? 'status-card-student compact' : 'status-card-student';
     var numberLabel = getStatusStudentNumberLabel_(student);
-    var badgesHtml = renderStatusHeaderBadgesHtml_(student) + renderStatusFavoriteButton_(student);
-    return "\n    <div class=\"status-card ".concat(variantClass, "\" role=\"button\" tabindex=\"0\" data-student-key=\"").concat(escAttr(row.key), "\" onclick=\"openStatusCardModal('").concat(escAttr(row.key), "')\" onkeydown=\"handleStatusCardKeydown(event,'").concat(escAttr(row.key), "')\">\n      <div class=\"status-card-head\">\n        <div class=\"status-card-numberrow\"><span class=\"status-card-number\">").concat(esc(numberLabel), "</span></div>\n        <div class=\"status-card-mainrow\">\n          <div class=\"status-card-name\">\n            <div class=\"status-card-studentline\">\n              <span class=\"status-card-number status-card-number-inline\">").concat(esc(numberLabel), "</span>\n              <span class=\"").concat(studentClass, "\">").concat(esc(studentName), "</span>\n            </div>\n          </div>\n          ").concat(badgesHtml ? "<div class=\"status-card-side\">".concat(badgesHtml, "</div>") : '', "\n        </div>\n      </div>\n      ").concat(content.html, "\n    </div>");
+    var sideParts = [
+        renderStatusFavoriteButton_(student),
+        renderStatusHeaderBadgesHtml_(student),
+    ].filter(Boolean);
+    return "\n    <div class=\"status-card ".concat(variantClass, "\" role=\"button\" tabindex=\"0\" data-student-key=\"").concat(escAttr(row.key), "\" onclick=\"openStatusCardModal('").concat(escAttr(row.key), "')\" onkeydown=\"handleStatusCardKeydown(event,'").concat(escAttr(row.key), "')\">\n      <div class=\"status-card-head\">\n        <div class=\"status-card-mainrow\">\n          <div class=\"status-card-name\">\n            <div class=\"status-card-numberrow\"><span class=\"status-card-number\">").concat(esc(numberLabel), "</span></div>\n            <div class=\"status-card-studentline\">\n              <span class=\"status-card-number status-card-number-inline\">").concat(esc(numberLabel), "</span>\n              <span class=\"").concat(studentClass, "\">").concat(esc(studentName), "</span>\n            </div>\n          </div>\n          ").concat(sideParts.length ? "<div class=\"status-card-side\">".concat(sideParts.join(''), "</div>") : '', "\n        </div>\n      </div>\n      ").concat(content.html, "\n    </div>");
 }
 function renderStatusFavoriteButton_(student) {
     var responseId = String(student && student.responseId || '').trim();
@@ -743,7 +746,7 @@ function renderStatusFavoriteButton_(student) {
     var isBusy = isStatusFavoriteBusy_(responseId);
     var label = isFavorite ? 'お気に入りを解除' : 'お気に入りに追加';
     var classes = 'status-favorite-btn' + (isFavorite ? ' status-favorite-active' : '') + (isBusy ? ' status-favorite-busy' : '');
-    return "<button class=\"".concat(classes, "\" type=\"button\" data-response-id=\"").concat(escAttr(responseId), "\" aria-pressed=\"").concat(isFavorite ? 'true' : 'false', "\" aria-label=\"").concat(escAttr(label), "\" title=\"").concat(escAttr(label), "\"").concat(isBusy ? ' disabled' : '', " onclick=\"toggleStatusFavorite(event,'").concat(escAttr(responseId), "')\" onkeydown=\"handleStatusFavoriteButtonKeydown(event,'").concat(escAttr(responseId), "')\">").concat(isBusy ? '…' : (isFavorite ? '★' : '☆'), "</button>");
+    return "<button class=\"".concat(classes, "\" type=\"button\" data-response-id=\"").concat(escAttr(responseId), "\" aria-pressed=\"").concat(isFavorite ? 'true' : 'false', "\" aria-busy=\"").concat(isBusy ? 'true' : 'false', "\" aria-label=\"").concat(escAttr(label), "\" title=\"").concat(escAttr(label), "\"").concat(isBusy ? ' disabled' : '', " onclick=\"toggleStatusFavorite(event,'").concat(escAttr(responseId), "')\" onkeydown=\"handleStatusFavoriteButtonKeydown(event,'").concat(escAttr(responseId), "')\">").concat(isFavorite ? '★' : '☆', "</button>");
 }
 function handleStatusCardKeydown(event, studentKey) {
     var key = String(event && event.key || '');
@@ -1019,10 +1022,11 @@ function refreshStatusFavoriteButtons_(responseId) {
         button.classList.toggle('status-favorite-active', isFavorite);
         button.classList.toggle('status-favorite-busy', isBusy);
         button.setAttribute('aria-pressed', isFavorite ? 'true' : 'false');
+        button.setAttribute('aria-busy', isBusy ? 'true' : 'false');
         button.setAttribute('aria-label', label);
         button.setAttribute('title', label);
         button.disabled = isBusy;
-        button.textContent = isBusy ? '…' : (isFavorite ? '★' : '☆');
+        button.textContent = isFavorite ? '★' : '☆';
     });
 }
 function setStatusFavoriteBusy_(responseId, isBusy) {
@@ -1072,21 +1076,27 @@ function toggleStatusFavorite(event, responseId) {
     var student = findStatusStudentByResponseId_(normalized);
     if (!normalized || !student || isStatusFavoriteBusy_(normalized))
         return;
+    var previousFavorite = student.isFavorite === true;
+    var nextFavorite = !previousFavorite;
+    patchStatusFavoriteState_(normalized, nextFavorite);
     setStatusFavoriteBusy_(normalized, true);
     google.script.run
         .withSuccessHandler(function (res) {
-        setStatusFavoriteBusy_(normalized, false);
         if (!(res && res.ok)) {
+            patchStatusFavoriteState_(normalized, previousFavorite);
+            setStatusFavoriteBusy_(normalized, false);
             showToast(res && res.error || 'お気に入り更新に失敗しました');
             return;
         }
         patchStatusFavoriteState_(normalized, Boolean(res.isFavorite));
+        setStatusFavoriteBusy_(normalized, false);
     })
         .withFailureHandler(function (err) {
+        patchStatusFavoriteState_(normalized, previousFavorite);
         setStatusFavoriteBusy_(normalized, false);
         showToast(formatTeacherRpcError_(err, 'お気に入り更新に失敗しました', 'お気に入り'), { tone: 'error', duration: 5200 });
     })
-        .setTeacherResponseFavorite(normalized, !(student.isFavorite === true), {
+        .setTeacherResponseFavorite(normalized, nextFavorite, {
         lessonId: String(latestStatusMeta && latestStatusMeta.lessonId || '').trim(),
         unitId: String(activeUnitId || latestStatusMeta && latestStatusMeta.unitId || '').trim(),
         period: Number(activePeriod || latestStatusMeta && latestStatusMeta.period || 0) || 0,

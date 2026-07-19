@@ -618,7 +618,19 @@ function getLiveTenantMaintenanceState() {
 }
 
 function getTenantId_() {
-  return String(getScriptProperties_().getProperty('TENANT_ID') || '').trim();
+  const props = getScriptProperties_();
+  const configuredTenantId = String(props.getProperty('TENANT_ID') || '').trim();
+  if (configuredTenantId) return configuredTenantId;
+  try {
+    const spreadsheet = getTenantSpreadsheet_();
+    const setupConfig = loadTemplateSetupConfig_(spreadsheet);
+    const fallbackTenantId = String(setupConfig.registrationId || spreadsheet.getId() || '').trim();
+    if (fallbackTenantId) {
+      props.setProperty('TENANT_ID', fallbackTenantId);
+      return fallbackTenantId;
+    }
+  } catch (_err) {}
+  return '';
 }
 
 function getTeacherName_() {
