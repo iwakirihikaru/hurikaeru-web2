@@ -323,7 +323,9 @@ body{font-family:var(--font);background:var(--bg);color:#212121;}
 }
 .status-card:hover{transform:translateY(-1px);}
 .status-card:focus-visible{outline:3px solid rgba(67,160,71,.28);outline-offset:2px;}
-.status-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;}
+.status-card-head{display:flex;flex-direction:column;gap:4px;min-width:0;}
+.status-card-numberrow{display:none;min-width:0;}
+.status-card-mainrow{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;min-width:0;}
 .status-card-name{min-width:0;flex:1 1 auto;}
 .status-card-studentline{display:flex;align-items:baseline;gap:8px;min-width:0;white-space:nowrap;}
 .status-card-number{
@@ -415,6 +417,21 @@ body{font-family:var(--font);background:var(--bg);color:#212121;}
   --status-card-section-gap:7px;
   --status-card-block-gap:6px;
 }
+.status-card-grid.cols-4 .status-card-numberrow,
+.status-card-grid.cols-5 .status-card-numberrow{display:block;}
+.status-card-grid.cols-4 .status-card-number-inline,
+.status-card-grid.cols-5 .status-card-number-inline{display:none;}
+.status-card-grid.cols-4 .status-card-mainrow,
+.status-card-grid.cols-5 .status-card-mainrow{gap:6px;}
+.status-card-grid.cols-4 .status-card-studentline,
+.status-card-grid.cols-5 .status-card-studentline{display:block;min-width:0;white-space:normal;}
+.status-card-grid.cols-4 .status-card-student,
+.status-card-grid.cols-5 .status-card-student{
+  display:block;overflow:hidden;text-overflow:ellipsis;white-space:normal;word-break:break-word;
+  line-height:1.28;
+}
+.status-card-grid.cols-4 .status-card-side,
+.status-card-grid.cols-5 .status-card-side{align-self:flex-start;max-width:100%;overflow:hidden;}
 .status-card-grid.cols-5 .status-card{
   --status-card-padding:11px;
   --status-card-text-size:12px;

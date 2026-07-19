@@ -1843,11 +1843,10 @@ function resolveTeacherFavoriteTarget_(responseId, options) {
   });
   if (!rosterExists) throw new Error('response の児童が授業データに存在しません。');
   const existingRow = findResponseSheetRowEntryByResponseId_(normalizedResponseId);
-  if (!existingRow || Number(existingRow.rowNumber || 0) < 2) throw new Error('存在しない responseId は更新できません。');
   return {
     response,
     lesson,
-    existingRow,
+    existingRow: existingRow && Number(existingRow.rowNumber || 0) >= 2 ? existingRow : null,
   };
 }
 
@@ -1869,18 +1868,24 @@ function setTeacherResponseFavorite(responseId, isFavorite, options) {
     updatedAt: nowIso_(),
   });
   const row = buildResponseSheetRowValues_(next);
+  if (target.existingRow) {
+    writeResponseSheetRowEntryUpdates_([{
+      rowNumber: target.existingRow.rowNumber,
+      values: row,
+    }], null, null, null, {
+      updateLessonLiveState: true,
+    });
+  } else {
+    upsertResponseSheetRowValues_(row, null, {
+      updateLessonLiveState: true,
+    });
+  }
   mirrorResponseRowsWithAudit_(
     [row],
     'response_teacher_favorite_update',
     'master_mirror_failed_teacher_favorite_update',
     'teacher'
   );
-  writeResponseSheetRowEntryUpdates_([{
-    rowNumber: target.existingRow.rowNumber,
-    values: row,
-  }], null, null, null, {
-    updateLessonLiveState: true,
-  });
   return {
     ok: true,
     responseId: String(existing.responseId || ''),
