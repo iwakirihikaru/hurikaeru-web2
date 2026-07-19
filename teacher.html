@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta name="x-source-commit" content="48025168c288b08a6e5d1da8d3c95d9f3757caa2">
-<script>window.__SOURCE_COMMIT__ = "48025168c288b08a6e5d1da8d3c95d9f3757caa2";</script>
+<meta name="x-source-commit" content="9e22f58458217f50749af6b312ba22f60ef414ff">
+<script>window.__SOURCE_COMMIT__ = "9e22f58458217f50749af6b312ba22f60ef414ff";</script>
 <script src="./runtime-shim.js?v=c8f329c57c"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -3803,6 +3803,7 @@ var statusViewScrollByTab = { responses: 0, feedback: 0 };
 var statusModalBodyLockY = 0;
 var statusFavoriteBusyMap = {};
 var statusFavoriteOverrideMap = {};
+var statusFeedbackRenderedLessonKey = '';
 function formatStatusTimingLine_(label, timing, keys) {
     if (!timing || typeof timing !== 'object' || !Array.isArray(keys) || !keys.length)
         return '';
@@ -3990,7 +3991,8 @@ function updateStatusDensityPreference_(value, save) {
     if (statusCardColumnCount !== nextCount) {
         statusCardColumnCount = nextCount;
         renderStatusCardGrid_();
-        syncStatusCardModal_();
+        if (statusModalStudentKey)
+            syncStatusCardModal_();
         restoreStatusViewportScroll_(scrollYBefore);
     }
     updateStatusDensityControls_();
@@ -4028,8 +4030,31 @@ function switchStatusViewTab(tabName) {
     statusViewScrollByTab[selectedStatusViewTab] = getStatusViewportScrollY_();
     selectedStatusViewTab = nextTab;
     applyStatusViewTabState_();
+    if (nextTab === 'feedback') {
+        ensureStatusFeedbackTableRendered_({ immediate: true });
+    }
     saveStatusViewPrefs_();
     restoreStatusViewportScroll_(statusViewScrollByTab[nextTab] || 0);
+}
+function shouldRenderStatusFeedbackTable_() {
+    return selectedStatusViewTab === 'feedback' || statusFeedbackRenderedLessonKey === latestStatusLessonKey;
+}
+function ensureStatusFeedbackTableRendered_(options) {
+    if (statusFeedbackRenderedLessonKey === latestStatusLessonKey)
+        return;
+    var opts = options && typeof options === 'object' ? options : {};
+    var render = function () {
+        try {
+            renderStatusFeedbackTable_();
+            statusFeedbackRenderedLessonKey = latestStatusLessonKey;
+        }
+        catch (_err) { }
+    };
+    if (opts.immediate === true || typeof requestAnimationFrame !== 'function') {
+        render();
+        return;
+    }
+    requestAnimationFrame(render);
 }
 function syncStatusModalViewportVar_() {
     if (typeof document === 'undefined')
@@ -4281,13 +4306,14 @@ function compareStatusNumericDesc_(left, right) {
     return 0;
 }
 function sortStatusViewRows_(rows, fields, mode) {
+    var needsTextLength = mode === 'text_length_asc' || mode === 'text_length_desc';
     var decorated = (Array.isArray(rows) ? rows : []).map(function (row) {
         return {
             row: row,
             favoriteScore: row && row.student && row.student.isFavorite === true ? 1 : 0,
             rankScore: getStatusRankSortValue_(row && row.student && row.student.rank || ''),
             numberScore: getStatusStudentNumberSortValue_(row && row.student || null),
-            textLength: measureStatusRowDisplayTextLength_(row, fields),
+            textLength: needsTextLength ? measureStatusRowDisplayTextLength_(row, fields) : 0,
             updatedAtScore: parseStatusSortTimestamp_(row && row.student && (row.student.responseUpdatedAt || row.student.submittedAt) || ''),
             stableIndex: Number(row && row.stableIndex) || 0,
         };
@@ -4333,8 +4359,13 @@ function refreshStatusSortedUi_(preserveScroll) {
     renderStatusSortControls_();
     renderStatusFieldTabs_();
     renderStatusCardGrid_();
-    renderStatusFeedbackTable_();
-    syncStatusCardModal_();
+    if (shouldRenderStatusFeedbackTable_()) {
+        renderStatusFeedbackTable_();
+        statusFeedbackRenderedLessonKey = latestStatusLessonKey;
+    }
+    if (statusModalStudentKey) {
+        syncStatusCardModal_();
+    }
     if (preserveScroll) {
         restoreStatusViewportScroll_(scrollYBefore);
     }
@@ -4403,6 +4434,9 @@ function renderStatus(d) {
     latestStatusRows = applyStatusFavoriteOverrides_(incomingRows);
     latestStatusLessonKey = getStatusLessonKey_(latestStatusMeta);
     var lessonChanged = previousLessonKey !== latestStatusLessonKey;
+    if (lessonChanged) {
+        statusFeedbackRenderedLessonKey = '';
+    }
     applyActiveFromStatusMeta_(latestStatusMeta);
     if (!latestStatusRows.length && !(latestStatusMeta && (latestStatusMeta.unitId || latestStatusMeta.lessonId))) {
         clearRenderedStatus_();
@@ -4423,19 +4457,45 @@ function renderStatus(d) {
     document.getElementById('statSubmitted').textContent = st.filter(function (s) { return s.submitted; }).length;
     document.getElementById('statAI').textContent = aiReturnedCount;
     syncTeacherFeedbackControls(st, draftCount);
-    renderStatusLessonSummary_();
-    renderStatusSortControls_();
-    renderStatusFieldTabs_();
     renderStatusCardGrid_();
-    renderStatusFeedbackTable_();
-    syncStatusCardModal_();
+    if (statusModalStudentKey) {
+        syncStatusCardModal_();
+    }
     if (lessonChanged) {
         scrollStatusGridToTop_();
     }
     else {
         restoreStatusViewportScroll_(scrollYBefore);
     }
-    renderStatusPerfDebug_();
+    try {
+        renderStatusLessonSummary_();
+        renderStatusSortControls_();
+    }
+    catch (_err) { }
+    if (selectedStatusViewTab === 'responses') {
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(function () {
+                try {
+                    renderStatusFieldTabs_();
+                    renderStatusPerfDebug_();
+                }
+                catch (_err) { }
+            });
+        }
+        else {
+            try {
+                renderStatusFieldTabs_();
+                renderStatusPerfDebug_();
+            }
+            catch (_err) { }
+        }
+    }
+    else {
+        renderStatusFieldTabs_();
+        renderStatusFeedbackTable_();
+        statusFeedbackRenderedLessonKey = latestStatusLessonKey;
+        renderStatusPerfDebug_();
+    }
 }
 function renderStatusLessonSummary_() {
     var el = document.getElementById('statusLessonSummary');
