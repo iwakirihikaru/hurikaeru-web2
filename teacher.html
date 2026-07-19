@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta name="x-source-commit" content="5176e23f9e5264cff4e92b3fdd4ae56183dec777">
-<script>window.__SOURCE_COMMIT__ = "5176e23f9e5264cff4e92b3fdd4ae56183dec777";</script>
+<meta name="x-source-commit" content="754d1bdce4e78d4568e57b80b6c2489b546d4730">
+<script>window.__SOURCE_COMMIT__ = "754d1bdce4e78d4568e57b80b6c2489b546d4730";</script>
 <script src="./runtime-shim.js?v=c8f329c57c"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -4807,12 +4807,13 @@ function setStatusFavoriteBusy_(responseId, isBusy) {
     }
     refreshStatusFavoriteButtons_(normalized);
 }
-function patchStatusFavoriteState_(responseId, isFavorite) {
+function patchStatusFavoriteState_(responseId, isFavorite, options) {
     var student = findStatusStudentByResponseId_(responseId);
     if (!student)
         return;
+    var opts = options && typeof options === 'object' ? options : {};
     student.isFavorite = isFavorite === true;
-    if (statusSortMode === 'recommended') {
+    if (statusSortMode === 'recommended' && opts.deferResort !== true) {
         refreshStatusSortedUi_(true);
         return;
     }
@@ -4844,12 +4845,12 @@ function toggleStatusFavorite(event, responseId) {
         return;
     var previousFavorite = student.isFavorite === true;
     var nextFavorite = !previousFavorite;
-    patchStatusFavoriteState_(normalized, nextFavorite);
+    patchStatusFavoriteState_(normalized, nextFavorite, { deferResort: true });
     setStatusFavoriteBusy_(normalized, true);
     google.script.run
         .withSuccessHandler(function (res) {
         if (!(res && res.ok)) {
-            patchStatusFavoriteState_(normalized, previousFavorite);
+            patchStatusFavoriteState_(normalized, previousFavorite, { deferResort: true });
             setStatusFavoriteBusy_(normalized, false);
             showToast(res && res.error || 'お気に入り更新に失敗しました');
             return;
@@ -4858,7 +4859,7 @@ function toggleStatusFavorite(event, responseId) {
         setStatusFavoriteBusy_(normalized, false);
     })
         .withFailureHandler(function (err) {
-        patchStatusFavoriteState_(normalized, previousFavorite);
+        patchStatusFavoriteState_(normalized, previousFavorite, { deferResort: true });
         setStatusFavoriteBusy_(normalized, false);
         showToast(formatTeacherRpcError_(err, 'お気に入り更新に失敗しました', 'お気に入り'), { tone: 'error', duration: 5200 });
     })
