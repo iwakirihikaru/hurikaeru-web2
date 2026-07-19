@@ -310,7 +310,9 @@ function teacherStatusInit() {
   if (active?.unitId && Number(active?.period || 0) > 0) {
     try {
       const t0 = Date.now();
-      status = getLessonStatus(active.unitId, active.period);
+      status = getLessonStatus(active.unitId, active.period, {
+        units,
+      });
       timing.lessonStatusMs = Date.now() - t0;
     } catch (err) {
       errors.push(`status: ${err && err.message ? err.message : err}`);
@@ -1392,11 +1394,15 @@ function repairMissingAggregateEntries() {
   };
 }
 
-function buildLessonStatus_(unitId, period) {
+function buildLessonStatus_(unitId, period, options) {
+  const opts = options && typeof options === 'object' ? options : {};
   const startedAt = Date.now();
   const timing = {};
   const snapshotStartedAt = Date.now();
-  const snapshot = getLessonLiveStateSnapshot_(unitId, period, { createLesson: true })
+  const snapshot = getLessonLiveStateSnapshot_(unitId, period, {
+    createLesson: true,
+    units: Array.isArray(opts.units) ? opts.units : undefined,
+  })
     || getLessonRuntimeSnapshot_(unitId, period)
     || {};
   timing.snapshotMs = Date.now() - snapshotStartedAt;
@@ -1507,11 +1513,11 @@ function buildLessonStatus_(unitId, period) {
 
 // getLessonStatus:
 // status タブ専用の授業状況本体。初期 bootstrap と責務を分ける。
-function getLessonStatus(unitId, period) {
+function getLessonStatus(unitId, period, options) {
   const cacheKey = getLessonStatusCacheKey_(unitId, period);
   const cached = getCachedJson_(cacheKey);
   if (cached && typeof cached === 'object') return cached;
-  return putCachedJson_(cacheKey, buildLessonStatus_(unitId, period), 15);
+  return putCachedJson_(cacheKey, buildLessonStatus_(unitId, period, options), 15);
 }
 
 function buildLessonStatusEntries_(fields, answersMap, reviewText, options) {
