@@ -1868,12 +1868,7 @@ function setTeacherResponseFavorite(responseId, isFavorite, options) {
   });
   const row = buildResponseSheetRowValues_(next);
   if (target.existingRow) {
-    writeResponseSheetRowEntryUpdates_([{
-      rowNumber: target.existingRow.rowNumber,
-      values: row,
-    }], null, null, null, {
-      updateLessonLiveState: true,
-    });
+    updateResponseFavoriteColumnsByRowEntry_(target.existingRow, nextFavorite);
   } else {
     upsertResponseSheetRowValues_(row, null, {
       updateLessonLiveState: true,

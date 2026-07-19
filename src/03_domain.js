@@ -995,6 +995,36 @@ function writeResponseRowCaches_(rowValues, rowNumber) {
   return normalizedRowNumber;
 }
 
+function updateResponseFavoriteColumnsByRowEntry_(existingRowEntry, isFavorite) {
+  const rowEntry = existingRowEntry && typeof existingRowEntry === 'object' ? existingRowEntry : null;
+  const rowNumber = Number(rowEntry && rowEntry.rowNumber || 0);
+  const rowValues = Array.isArray(rowEntry && rowEntry.values) ? rowEntry.values.slice() : [];
+  if (rowNumber < 2 || !rowValues.length) return null;
+  const nextFavorite = isFavorite === true;
+  rowValues[25] = nextFavorite;
+  getResponsesDbSheet_().getRange(rowNumber, 26).setValue(nextFavorite);
+  writeResponseRowCaches_(rowValues, rowNumber);
+
+  const lessonId = String(rowValues[1] || '').trim();
+  const studentId = String(rowValues[3] || '').trim();
+  if (lessonId && studentId) {
+    const liveSheet = getLessonLiveStateDbSheet_();
+    const liveRowNumber = readLessonLiveStateRowNumber_(liveSheet, lessonId, studentId);
+    if (liveRowNumber >= 2) {
+      liveSheet.getRange(liveRowNumber, 28).setValue(nextFavorite);
+      putCachedJson_(getLessonLiveStateRowCacheKey_(lessonId, studentId), liveRowNumber, 21600);
+      addLessonLiveStateRowIndex_(lessonId, liveRowNumber);
+    }
+  }
+
+  invalidateLessonResponseCaches_();
+  return {
+    rowNumber,
+    values: rowValues,
+    isFavorite: nextFavorite,
+  };
+}
+
 function updateLessonResponseCacheForDtos_(lessonId, responses) {
   const normalizedLessonId = String(lessonId || '').trim();
   if (!normalizedLessonId) return [];
