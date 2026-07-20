@@ -105,97 +105,11 @@
       ok: parsed && typeof parsed.ok === "boolean" ? parsed.ok : true,
       data: parsed,
       error: parsed && parsed.ok === false ? parsed.error || "Unknown API error." : null
-      };
-    }
+    };
+  }
 
-    function hasPerformanceNow() {
-      return typeof performance === "object" && performance && typeof performance.now === "function";
-    }
-
-    function nowMonotonicMs() {
-      return hasPerformanceNow() ? performance.now() : Date.now();
-    }
-
-    function getPerformanceTimeOriginMs() {
-      if (!hasPerformanceNow()) return 0;
-      if (typeof performance.timeOrigin === "number" && Number.isFinite(performance.timeOrigin) && performance.timeOrigin > 0) {
-        return performance.timeOrigin;
-      }
-      return Date.now() - performance.now();
-    }
-
-    function nowEpochMs() {
-      var originMs = getPerformanceTimeOriginMs();
-      return originMs > 0 ? originMs + nowMonotonicMs() : Date.now();
-    }
-
-    function captureClientTime() {
-      var monotonicMs = nowMonotonicMs();
-      var originMs = getPerformanceTimeOriginMs();
-      var epochMs = originMs > 0 ? originMs + monotonicMs : Date.now();
-      return {
-        monotonicMs: monotonicMs,
-        epochMs: epochMs
-      };
-    }
-
-    function toIsoString(ms) {
-      var value = Number(ms || 0);
-      return value > 0 ? new Date(value).toISOString() : "";
-    }
-
-    function mergeTiming(target, extra) {
-      var base = target && typeof target === "object" && !Array.isArray(target) ? target : {};
-      var patch = extra && typeof extra === "object" ? extra : {};
-      return Object.assign({}, base, patch);
-    }
-
-    function attachEnvelopeTiming(result, timing) {
-      if (!(result && typeof result === "object")) return result;
-      result.__portableClientTiming = mergeTiming(result.__portableClientTiming, timing);
-      return result;
-    }
-
-    function attachDataTiming(data, timing) {
-      if (!(data && typeof data === "object" && !Array.isArray(data))) return data;
-      data.timing = mergeTiming(data.timing, timing);
-      return data;
-    }
-
-    function summarizeClientTiming(timing) {
-      var t = timing && typeof timing === "object" ? timing : {};
-      var rpcStartedMonotonicMs = Number(t.clientRpcStartedMonotonicMs || 0);
-      var fetchStartedMonotonicMs = Number(t.clientFetchStartedMonotonicMs || 0);
-      var responseHeadersReceivedMonotonicMs = Number(t.clientResponseHeadersReceivedMonotonicMs || 0);
-      var responseTextReceivedMonotonicMs = Number(t.clientResponseTextReceivedMonotonicMs || 0);
-      var jsonParseFinishedMonotonicMs = Number(t.clientJsonParseFinishedMonotonicMs || 0);
-      var rpcStartedAtMs = Number(t.clientRpcStartedAtMs || 0);
-      var fetchStartedAtMs = Number(t.clientFetchStartedAtMs || 0);
-      var responseHeadersReceivedAtMs = Number(t.clientResponseHeadersReceivedAtMs || 0);
-      var responseTextReceivedAtMs = Number(t.clientResponseTextReceivedAtMs || 0);
-      var jsonParseFinishedAtMs = Number(t.clientJsonParseFinishedAtMs || 0);
-      var summary = mergeTiming(t, {
-        clientRpcToFetchStartMs: rpcStartedMonotonicMs > 0 && fetchStartedMonotonicMs > 0
-          ? Math.max(0, fetchStartedMonotonicMs - rpcStartedMonotonicMs)
-          : (rpcStartedAtMs > 0 && fetchStartedAtMs > 0 ? Math.max(0, fetchStartedAtMs - rpcStartedAtMs) : 0),
-        clientFetchToHeadersMs: fetchStartedMonotonicMs > 0 && responseHeadersReceivedMonotonicMs > 0
-          ? Math.max(0, responseHeadersReceivedMonotonicMs - fetchStartedMonotonicMs)
-          : (fetchStartedAtMs > 0 && responseHeadersReceivedAtMs > 0 ? Math.max(0, responseHeadersReceivedAtMs - fetchStartedAtMs) : 0),
-        clientHeadersToBodyMs: responseHeadersReceivedMonotonicMs > 0 && responseTextReceivedMonotonicMs > 0
-          ? Math.max(0, responseTextReceivedMonotonicMs - responseHeadersReceivedMonotonicMs)
-          : (responseHeadersReceivedAtMs > 0 && responseTextReceivedAtMs > 0 ? Math.max(0, responseTextReceivedAtMs - responseHeadersReceivedAtMs) : 0),
-        clientResponseReceiveMs: fetchStartedMonotonicMs > 0 && responseTextReceivedMonotonicMs > 0
-          ? Math.max(0, responseTextReceivedMonotonicMs - fetchStartedMonotonicMs)
-          : (fetchStartedAtMs > 0 && responseTextReceivedAtMs > 0 ? Math.max(0, responseTextReceivedAtMs - fetchStartedAtMs) : 0),
-        clientJsonParseMs: responseTextReceivedMonotonicMs > 0 && jsonParseFinishedMonotonicMs > 0
-          ? Math.max(0, jsonParseFinishedMonotonicMs - responseTextReceivedMonotonicMs)
-          : (responseTextReceivedAtMs > 0 && jsonParseFinishedAtMs > 0 ? Math.max(0, jsonParseFinishedAtMs - responseTextReceivedAtMs) : 0)
-      });
-      return summary;
-    }
-
-    function describeInvalidJsonResponse(text) {
-      var sample = String(text || "").trim().slice(0, 120);
+  function describeInvalidJsonResponse(text) {
+    var sample = String(text || "").trim().slice(0, 120);
     if (/^Circle Master GAS API v1\.0 is running/i.test(sample)) {
       return "接続先が API 応答ではありません。GAS Web App URL (/exec) を指定してください。";
     }
@@ -453,7 +367,6 @@
   }
 
   function sendRequest(payload, sync) {
-    var rpcStartedAt = captureClientTime();
     var apiUrl = getApiUrl();
     if (!apiUrl) {
       redirectToSetupIfNeeded();
@@ -465,7 +378,6 @@
     }
     apiUrl = validation.url;
     if (sync) {
-      var syncFetchStartedAt = captureClientTime();
       var xhr = new XMLHttpRequest();
       xhr.open("POST", apiUrl, false);
       xhr.timeout = PORTABLE_FETCH_TIMEOUT_MS;
@@ -479,29 +391,7 @@
         throw createPortableError("HTTP " + xhr.status, { code: "http_error", status: xhr.status, retriable: xhr.status >= 500 });
       }
       try {
-        var responseReceivedAt = captureClientTime();
-        var parsedResult = parseResponseText(xhr.responseText);
-        var jsonParseFinishedAt = captureClientTime();
-        return attachEnvelopeTiming(parsedResult, summarizeClientTiming({
-          clientRpcStartedMonotonicMs: rpcStartedAt.monotonicMs,
-          clientRpcStartedAtMs: rpcStartedAt.epochMs,
-          clientRpcStartedAtIso: toIsoString(rpcStartedAt.epochMs),
-          clientFetchStartedMonotonicMs: syncFetchStartedAt.monotonicMs,
-          clientFetchStartedAtMs: syncFetchStartedAt.epochMs,
-          clientFetchStartedAtIso: toIsoString(syncFetchStartedAt.epochMs),
-          clientResponseHeadersReceivedMonotonicMs: responseReceivedAt.monotonicMs,
-          clientResponseHeadersReceivedAtMs: responseReceivedAt.epochMs,
-          clientResponseHeadersReceivedAtIso: toIsoString(responseReceivedAt.epochMs),
-          clientResponseTextReceivedMonotonicMs: responseReceivedAt.monotonicMs,
-          clientResponseTextReceivedAtMs: responseReceivedAt.epochMs,
-          clientResponseTextReceivedAtIso: toIsoString(responseReceivedAt.epochMs),
-          clientJsonParseFinishedMonotonicMs: jsonParseFinishedAt.monotonicMs,
-          clientJsonParseFinishedAtMs: jsonParseFinishedAt.epochMs,
-          clientJsonParseFinishedAtIso: toIsoString(jsonParseFinishedAt.epochMs),
-          clientAttemptCount: 1,
-          clientResponseStatus: Number(xhr.status || 0),
-          clientResponseBytes: String(xhr.responseText || "").length
-        }));
+        return parseResponseText(xhr.responseText);
       } catch (error) {
         throw createPortableError(describeInvalidJsonResponse(xhr.responseText), { code: "invalid_json", cause: error });
       }
@@ -510,7 +400,6 @@
     var attempt = 0;
     function runFetch() {
       attempt += 1;
-      var fetchStartedAt = captureClientTime();
       var controller = typeof AbortController === "function" ? new AbortController() : null;
       var timeoutId = controller ? setTimeout(function () {
         controller.abort();
@@ -525,47 +414,16 @@
       })
         .then(function (response) {
           if (timeoutId) clearTimeout(timeoutId);
-          var responseHeadersReceivedAt = captureClientTime();
           if (!response.ok) {
             throw createPortableError("HTTP " + response.status, { code: "http_error", status: response.status, retriable: response.status >= 500 });
           }
-          return response.text().then(function (text) {
-            var responseTextReceivedAt = captureClientTime();
-            return {
-              response: response,
-              text: text,
-              fetchStartedAt: fetchStartedAt,
-              responseHeadersReceivedAt: responseHeadersReceivedAt,
-              responseTextReceivedAt: responseTextReceivedAt
-            };
-          });
+          return response.text();
         })
-        .then(function (context) {
+        .then(function (text) {
           try {
-            var parsedResult = parseResponseText(context.text);
-            var jsonParseFinishedAt = captureClientTime();
-            return attachEnvelopeTiming(parsedResult, summarizeClientTiming({
-              clientRpcStartedMonotonicMs: rpcStartedAt.monotonicMs,
-              clientRpcStartedAtMs: rpcStartedAt.epochMs,
-              clientRpcStartedAtIso: toIsoString(rpcStartedAt.epochMs),
-              clientFetchStartedMonotonicMs: context.fetchStartedAt.monotonicMs,
-              clientFetchStartedAtMs: context.fetchStartedAt.epochMs,
-              clientFetchStartedAtIso: toIsoString(context.fetchStartedAt.epochMs),
-              clientResponseHeadersReceivedMonotonicMs: context.responseHeadersReceivedAt.monotonicMs,
-              clientResponseHeadersReceivedAtMs: context.responseHeadersReceivedAt.epochMs,
-              clientResponseHeadersReceivedAtIso: toIsoString(context.responseHeadersReceivedAt.epochMs),
-              clientResponseTextReceivedMonotonicMs: context.responseTextReceivedAt.monotonicMs,
-              clientResponseTextReceivedAtMs: context.responseTextReceivedAt.epochMs,
-              clientResponseTextReceivedAtIso: toIsoString(context.responseTextReceivedAt.epochMs),
-              clientJsonParseFinishedMonotonicMs: jsonParseFinishedAt.monotonicMs,
-              clientJsonParseFinishedAtMs: jsonParseFinishedAt.epochMs,
-              clientJsonParseFinishedAtIso: toIsoString(jsonParseFinishedAt.epochMs),
-              clientAttemptCount: attempt,
-              clientResponseStatus: Number(context.response && context.response.status || 0),
-              clientResponseBytes: String(context.text || "").length
-            }));
+            return parseResponseText(text);
           } catch (error) {
-            throw createPortableError(describeInvalidJsonResponse(context.text), { code: "invalid_json", cause: error });
+            throw createPortableError(describeInvalidJsonResponse(text), { code: "invalid_json", cause: error });
           }
         })
         .catch(function (error) {
@@ -607,8 +465,7 @@
     if (!result.ok) {
       throw new Error(getErrorMessage(result.error));
     }
-    var normalized = normalizePortableContractData(resolvePortableContractActionName(action, payload), result.data);
-    return attachDataTiming(normalized, result.__portableClientTiming);
+    return normalizePortableContractData(resolvePortableContractActionName(action, payload), result.data);
   }
 
   function postActionSync(action, payload) {
@@ -623,8 +480,7 @@
     if (!result.ok) {
       throw new Error(getErrorMessage(result.error));
     }
-    var normalized = normalizePortableContractData(resolvePortableContractActionName(action, payload), result.data);
-    return attachDataTiming(normalized, result.__portableClientTiming);
+    return normalizePortableContractData(resolvePortableContractActionName(action, payload), result.data);
   }
 
   function callPortableMethod(method, args) {
@@ -674,12 +530,6 @@
             var args = Array.prototype.slice.call(arguments);
             callPortableMethod(String(prop), args)
               .then(function (data) {
-                var successHandlerAt = captureClientTime();
-                attachDataTiming(data, {
-                  clientSuccessHandlerMonotonicMs: successHandlerAt.monotonicMs,
-                  clientSuccessHandlerAtMs: successHandlerAt.epochMs,
-                  clientSuccessHandlerAtIso: toIsoString(successHandlerAt.epochMs)
-                });
                 if (typeof successHandler === "function") {
                   successHandler(data);
                 }
@@ -698,18 +548,10 @@
     return proxy;
   }
 
-    window.__portableGas = {
-      getApiUrl: getApiUrl,
-      setApiUrl: setApiUrl,
-      getResolvedApiInfo: function () {
-        var apiUrl = getApiUrl();
-        var validation = validateApiUrl(apiUrl);
-        return {
-          apiUrl: validation && validation.ok ? validation.url : "",
-          source: apiUrl ? "localStorage" : ""
-        };
-      },
-      validateApiUrl: validateApiUrl,
+  window.__portableGas = {
+    getApiUrl: getApiUrl,
+    setApiUrl: setApiUrl,
+    validateApiUrl: validateApiUrl,
     postAction: postAction,
     postActionSync: postActionSync,
     callRpcSync: function (method) {
