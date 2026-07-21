@@ -18,7 +18,11 @@ function Invoke-Step {
 }
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$publishPath = [System.IO.Path]::GetFullPath((Join-Path $repoRoot $PublishDir))
+$publishPath = if ([System.IO.Path]::IsPathRooted($PublishDir)) {
+  [System.IO.Path]::GetFullPath($PublishDir)
+} else {
+  [System.IO.Path]::GetFullPath((Join-Path $repoRoot $PublishDir))
+}
 if (-not (Test-Path -LiteralPath $publishPath)) {
   throw "Publish directory not found: $publishPath"
 }
