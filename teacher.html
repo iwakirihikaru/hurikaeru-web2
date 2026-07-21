@@ -1,8 +1,6 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta name="x-source-commit" content="9e22f58458217f50749af6b312ba22f60ef414ff">
-<script>window.__SOURCE_COMMIT__ = "9e22f58458217f50749af6b312ba22f60ef414ff";</script>
 <script src="./runtime-shim.js?v=3dc7b19e3b"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -279,9 +277,6 @@ body{font-family:var(--font);background:var(--bg);color:#212121;}
 }
 .status-field-tab.active{background:linear-gradient(135deg,#43A047,#2E7D32);border-color:#2E7D32;color:#fff;}
 .status-field-tab.single{cursor:default;}
-.status-sort-row{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px;}
-.status-sort-row .status-top-label{margin-bottom:0;}
-.status-sort-select{min-width:220px;max-width:320px;flex:0 1 320px;}
 .status-view-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;}
 .status-view-tab{
   display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:10px 18px;border-radius:999px;
@@ -332,10 +327,8 @@ body{font-family:var(--font);background:var(--bg);color:#212121;}
 }
 .status-card:hover{transform:translateY(-1px);}
 .status-card:focus-visible{outline:3px solid rgba(67,160,71,.28);outline-offset:2px;}
-.status-card-head{display:flex;flex-direction:column;gap:4px;min-width:0;}
-.status-card-numberrow{display:none;min-width:0;}
-.status-card-mainrow{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;min-width:0;}
-.status-card-name{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1 1 auto;}
+.status-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;}
+.status-card-name{min-width:0;flex:1 1 auto;}
 .status-card-studentline{display:flex;align-items:baseline;gap:8px;min-width:0;white-space:nowrap;}
 .status-card-number{
   flex:0 0 auto;font-size:var(--status-card-meta-size);font-weight:bold;color:#5D7A67;line-height:1.35;
@@ -346,26 +339,25 @@ body{font-family:var(--font);background:var(--bg);color:#212121;}
 }
 .status-card-student.compact{font-size:calc(var(--status-card-student-size) - 1px);}
 .status-card-student.tight{font-size:calc(var(--status-card-student-size) - 2px);}
-.status-card-side{display:flex;align-items:flex-start;justify-content:flex-end;gap:6px;flex:0 0 auto;white-space:nowrap;}
-.status-card-sidebadges{display:flex;align-items:center;justify-content:flex-end;gap:6px;flex:0 0 auto;white-space:nowrap;}
+.status-card-head-meta{
+  flex:0 0 auto;display:flex;align-items:center;justify-content:flex-end;gap:6px;min-width:0;white-space:nowrap;
+}
+.status-card-head-meta:empty{display:none;}
+.status-card-inline-medal{
+  display:inline-flex;align-items:center;justify-content:center;min-height:28px;padding:0 2px;
+}
 .status-favorite-btn{
-  display:inline-flex;align-items:center;justify-content:center;min-width:38px;min-height:38px;
+  position:relative;flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;min-width:38px;min-height:38px;
   padding:0 8px;border:1.5px solid #D8E6D9;border-radius:999px;background:#fff;color:#607D66;
-  font-family:var(--font);font-size:18px;font-weight:bold;line-height:1;cursor:pointer;flex:0 0 auto;
+  font-family:var(--font);font-size:18px;font-weight:bold;line-height:1;cursor:pointer;
 }
 .status-favorite-btn:hover{background:#F5FAF5;}
 .status-favorite-btn:focus-visible{outline:3px solid rgba(67,160,71,.24);outline-offset:2px;}
-.status-favorite-btn[disabled]{cursor:default;opacity:.6;}
 .status-favorite-btn.status-favorite-active{border-color:#F6C342;background:#FFF7D6;color:#C88700;}
-.status-favorite-btn.status-favorite-busy{color:inherit;opacity:.52;}
-.status-rank-chip{
-  display:inline-flex;align-items:center;justify-content:center;min-height:20px;padding:2px 8px;border-radius:999px;
-  font-size:11px;font-weight:bold;line-height:1;color:#fff;
+.status-favorite-btn.status-favorite-busy::after{
+  content:'';position:absolute;right:6px;bottom:6px;width:6px;height:6px;border-radius:999px;background:#43A047;
 }
-.status-medal-chip{
-  display:inline-flex;align-items:center;justify-content:center;min-height:20px;padding:2px 7px;border-radius:999px;
-  background:#FFF8E1;border:1px solid #FFE082;color:#8D6E63;font-size:11px;font-weight:bold;line-height:1;
-}
+.status-favorite-btn.status-favorite-active.status-favorite-busy::after{background:#C88700;}
 .status-card-content{display:flex;flex-direction:column;gap:var(--status-card-section-gap);min-height:0;flex:1;}
 .status-card-section{
   display:flex;flex-direction:column;gap:var(--status-card-block-gap);padding:8px 9px;border-radius:12px;
@@ -380,8 +372,7 @@ body{font-family:var(--font);background:var(--bg);color:#212121;}
   background:#E9F5EB;color:#2E7D32;font-size:var(--status-card-chip-size);font-weight:bold;line-height:1.4;
 }
 .status-card-review-list{display:flex;flex-direction:column;gap:7px;}
-.status-card-review-item,
-.status-review-block{
+.status-card-review-item{
   display:flex;flex-direction:column;gap:6px;padding:7px 8px;border-radius:10px;
   background:#fff;border:1px solid #E7EEF8;
 }
@@ -424,35 +415,6 @@ body{font-family:var(--font);background:var(--bg);color:#212121;}
   --status-card-section-gap:7px;
   --status-card-block-gap:6px;
 }
-.status-card-grid.cols-3 .status-card-numberrow,
-.status-card-grid.cols-4 .status-card-numberrow,
-.status-card-grid.cols-5 .status-card-numberrow{display:block;}
-.status-card-grid.cols-3 .status-card-number-inline,
-.status-card-grid.cols-4 .status-card-number-inline,
-.status-card-grid.cols-5 .status-card-number-inline{display:none;}
-.status-card-grid.cols-3 .status-card-mainrow,
-.status-card-grid.cols-4 .status-card-mainrow,
-.status-card-grid.cols-5 .status-card-mainrow{
-  display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:6px;
-}
-.status-card-grid.cols-3 .status-card-studentline,
-.status-card-grid.cols-4 .status-card-studentline,
-.status-card-grid.cols-5 .status-card-studentline{display:block;min-width:0;white-space:normal;}
-.status-card-grid.cols-3 .status-card-student,
-.status-card-grid.cols-4 .status-card-student,
-.status-card-grid.cols-5 .status-card-student{
-  display:block;overflow:hidden;text-overflow:ellipsis;white-space:normal;word-break:break-word;
-  line-height:1.28;
-}
-.status-card-grid.cols-3 .status-card-side,
-.status-card-grid.cols-4 .status-card-side,
-.status-card-grid.cols-5 .status-card-side{
-  display:grid;grid-template-columns:auto;grid-auto-rows:min-content;justify-items:end;align-items:start;
-  align-self:flex-start;justify-self:end;max-width:100%;overflow:visible;
-}
-.status-card-grid.cols-3 .status-card-sidebadges,
-.status-card-grid.cols-4 .status-card-sidebadges,
-.status-card-grid.cols-5 .status-card-sidebadges{flex-wrap:wrap;}
 .status-card-grid.cols-5 .status-card{
   --status-card-padding:11px;
   --status-card-text-size:12px;
@@ -491,42 +453,56 @@ body{font-family:var(--font);background:var(--bg);color:#212121;}
   max-height:min(calc(var(--status-modal-vh, 1vh) * 94),96vh);padding:18px 18px 16px;display:flex;flex-direction:column;
 }
 .status-card-modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px;}
-.status-card-modal-titlegroup{min-width:0;flex:1 1 auto;}
-.status-card-modal-studentline{display:flex;align-items:baseline;gap:10px;min-width:0;flex-wrap:wrap;}
-.status-card-modal-student{font-size:20px;font-weight:bold;color:var(--navy);line-height:1.5;min-width:0;}
-.status-card-modal-number{font-size:14px;font-weight:bold;color:#607D8B;line-height:1.5;white-space:nowrap;}
-.status-card-modal-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px;}
-.status-card-modal-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;}
+.status-card-modal-titlegroup{min-width:0;}
+.status-card-modal-titleline{display:flex;align-items:center;gap:10px;min-width:0;flex-wrap:wrap;}
+.status-card-modal-student{min-width:0;font-size:20px;font-weight:bold;color:var(--navy);line-height:1.5;}
+.status-card-modal-number{font-size:13px;color:#607D8B;line-height:1.6;}
+.status-card-modal-meta{display:flex;align-items:center;gap:8px;min-width:0;flex-wrap:wrap;}
+.status-card-modal-toolbar{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;}
 .status-card-modal-close{margin-top:0;min-width:96px;}
-.status-feedback-jump-btn{min-height:42px;white-space:nowrap;}
 .status-card-modal-main{
-  flex:1;min-height:0;display:block;
+  flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1.45fr) minmax(320px,.95fr);gap:14px;
 }
 .status-card-modal-pane{
   min-height:0;display:flex;flex-direction:column;border-radius:16px;background:#FAFCFA;border:1px solid #E0ECE3;
 }
+.status-card-modal-pane-title{
+  padding:12px 14px 0;font-size:12px;font-weight:bold;color:#4B6A54;
+}
 .status-card-modal-body{
-  flex:1;overflow:auto;padding:18px 18px 20px;
+  flex:1;overflow:auto;padding:14px 14px 16px;
 }
 .status-card-modal-answer .status-card-content{
-  gap:12px;
+  gap:10px;
 }
 .status-card-modal-answer .status-card-section{
-  padding:14px 15px;border-radius:15px;
+  padding:11px 12px;border-radius:14px;
+}
+.status-card-modal-answer .status-card-section-title{
+  font-size:13px;
 }
 .status-card-modal-answer .status-card-field,
 .status-card-modal-answer .status-card-review-chip{
-  font-size:12px;
+  font-size:11px;
 }
 .status-card-modal-answer .status-card-text{
-  font-size:17px;line-height:1.92;
+  font-size:16px;line-height:1.9;
+}
+.status-card-modal-feedback-body{
+  flex:1;overflow:auto;padding:12px 14px 16px;
+}
+.status-card-modal-feedback-body .status-draft-box{
+  margin-top:0;min-height:100%;
+}
+.status-card-modal-feedback-body .status-draft-textarea{
+  min-height:220px;font-size:14px;line-height:1.8;
+}
+.status-card-modal-feedback-body .status-draft-rank,
+.status-card-modal-feedback-body .status-draft-medal{
+  font-size:13px;
 }
 .status-card-modal-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:space-between;margin-top:14px;}
 .status-card-modal-nav{flex:1;min-width:180px;min-height:44px;}
-.status-feedback-row{scroll-margin-top:88px;}
-.status-feedback-row.is-target{
-  outline:3px solid rgba(67,160,71,.22);outline-offset:-2px;background:#F6FBF7;
-}
 @media(max-width:820px){
   .container{padding:10px;}
   .card{padding:14px;}
@@ -694,7 +670,6 @@ body{font-family:var(--font);background:var(--bg);color:#212121;}
   .status-lesson-box.primary{grid-column:span 1;}
   .status-density-head{flex-direction:column;}
   .status-density-buttons{grid-template-columns:repeat(3,minmax(0,1fr));}
-  .status-sort-select{min-width:0;max-width:none;width:100%;flex:1 1 auto;}
   .status-card-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
   .status-card{min-height:200px;}
   .status-card-text{font-size:14px;}
@@ -702,11 +677,15 @@ body{font-family:var(--font);background:var(--bg);color:#212121;}
     width:94vw;height:min(calc(var(--status-modal-vh, 1vh) * 92),94vh);
     max-height:min(calc(var(--status-modal-vh, 1vh) * 92),94vh);padding:16px;
   }
+  .status-card-head{align-items:flex-start;}
+  .status-card-head-meta{gap:4px;}
   .status-favorite-btn{min-width:34px;min-height:34px;font-size:16px;}
   .status-card-modal-head{flex-direction:column;}
-  .status-card-modal-toolbar{width:100%;flex-direction:column;align-items:stretch;}
-  .status-feedback-jump-btn,
+  .status-card-modal-titleline{align-items:flex-start;}
+  .status-card-modal-toolbar{width:100%;justify-content:space-between;}
   .status-card-modal-close{width:100%;}
+  .status-card-modal-main{grid-template-columns:1fr;}
+  .status-card-modal-feedback-body .status-draft-textarea{min-height:160px;}
   .status-card-modal-actions{flex-direction:column;}
   .status-card-modal-nav{width:100%;}
 }
@@ -1085,40 +1064,7 @@ button:not([disabled]):active,button.is-pressed{transform:translateY(1px);filter
             <button class="btn-medal" id="awardMedalsBtn" type="button" onclick="awardMedals()">🏅 メダル発表</button>
           </div>
         </div>
-      </div>
-    </div>
-    <div class="card status-overview-card">
-      <div class="status-overview-head">
-        <div>
-          <h3>児童の回答一覧</h3>
-          <div class="status-overview-note">一覧では見つける、拡大表示では読む、の役割に分けて確認できます。</div>
-        </div>
-      </div>
-      <div class="status-view-tabs" role="tablist" aria-label="授業スタート表示切替">
-        <button class="status-view-tab active" id="statusViewTabResponses" type="button" role="tab" aria-selected="true" aria-controls="statusResponsesPane" onclick="switchStatusViewTab('responses')">回答を見る</button>
-        <button class="status-view-tab" id="statusViewTabFeedback" type="button" role="tab" aria-selected="false" aria-controls="statusFeedbackPane" onclick="switchStatusViewTab('feedback')">フィードバック</button>
-      </div>
-      <div class="status-view-pane active" id="statusResponsesPane" role="tabpanel" aria-labelledby="statusViewTabResponses">
-        <div id="statusLessonSummary"></div>
-        <div id="statusFieldTabs"></div>
-        <div class="status-sort-row">
-          <div class="status-top-label">並び替え</div>
-          <select class="inp status-sort-select" id="statusSortSelect" onchange="changeStatusSortMode(this.value)" aria-label="回答一覧の並び替え"></select>
-        </div>
-        <div class="status-density-card">
-          <div class="status-density-head">
-            <div>
-              <div class="status-density-title">表示列</div>
-              <div class="status-density-note"><span>1列は読む用</span><span>5列は見渡す用</span></div>
-            </div>
-            <div class="status-density-value" id="statusDensityValue">3列: 標準</div>
-          </div>
-          <div class="status-density-buttons" id="statusDensityButtons" role="group" aria-label="回答一覧の列数"></div>
-        </div>
-        <div id="statusCardGrid"><div class="status-grid-empty"><span class="spinner"></span></div></div>
-      </div>
-      <div class="status-view-pane" id="statusFeedbackPane" role="tabpanel" aria-labelledby="statusViewTabFeedback" hidden>
-        <div class="status-feedback-block status-feedback-block-pane">
+        <div class="status-feedback-block">
           <div class="status-top-label">児童一括フィードバック</div>
           <div class="status-feedback-actions">
             <select class="inp" id="teacherFeedbackRankMode">
@@ -1142,37 +1088,39 @@ button:not([disabled]):active,button.is-pressed{transform:translateY(1px);filter
           <div class="status-feedback-meta" id="statusPerfDebug" style="display:none;"></div>
           <div class="status-feedback-result" id="teacherFeedbackResult"></div>
         </div>
-        <div class="status-feedback-detail-note">既存の個別フィードバック、個別修正、返却操作はこのまま使えます。</div>
-        <div style="overflow-x:auto;">
-          <table class="tbl status-table">
-            <thead><tr><th>児童 / 提出内容</th><th>フィードバック</th></tr></thead>
-            <tbody id="statusBody"><tr><td colspan="2" style="text-align:center;padding:18px;"><span class="spinner"></span></td></tr></tbody>
-          </table>
-        </div>
       </div>
     </div>
+    <div class="card status-overview-card">
+      <div class="status-overview-head">
+        <div>
+          <h3>児童の回答一覧</h3>
+          <div class="status-overview-note">名前と回答を複数人まとめて確認できます。</div>
+        </div>
+        <button class="btn-subtle status-feedback-shortcut" type="button" onclick="toggleStatusFeedbackDetails()">個別フィードバックを開く</button>
+      </div>
+      <div id="statusLessonSummary"></div>
+      <div id="statusFieldTabs"></div>
+      <div id="statusCardGrid"><div class="status-grid-empty"><span class="spinner"></span></div></div>
+    </div>
+    <details class="card status-feedback-details" id="statusFeedbackDetails">
+      <summary>個別フィードバック・返却を開く</summary>
+      <div class="status-feedback-detail-note">既存の個別フィードバック、個別修正、返却操作はこのまま使えます。</div>
+      <div style="overflow-x:auto;">
+        <table class="tbl status-table">
+          <thead><tr><th>児童 / 提出内容</th><th>フィードバック</th></tr></thead>
+          <tbody id="statusBody"><tr><td colspan="2" style="text-align:center;padding:18px;"><span class="spinner"></span></td></tr></tbody>
+        </table>
+      </div>
+    </details>
   </div>
   <div class="modal-bg" id="statusCardModalBg" onclick="handleStatusCardModalBackdrop(event)">
     <div class="modal status-card-modal" role="dialog" aria-modal="true" aria-labelledby="statusCardModalTitle" onclick="event.stopPropagation()">
       <div class="status-card-modal-head">
-        <div class="status-card-modal-titlegroup">
-          <div class="status-card-modal-studentline">
-            <div class="status-card-modal-number" id="statusCardModalNumber"></div>
-            <div class="status-card-modal-student" id="statusCardModalTitle"></div>
-          </div>
-          <div class="status-card-modal-meta" id="statusCardModalMeta"></div>
-        </div>
-        <div class="status-card-modal-toolbar">
-          <button class="status-favorite-btn" id="statusCardModalFavoriteBtn" type="button" hidden onclick="toggleStatusFavorite(event,this.getAttribute('data-response-id')||'')" onkeydown="handleStatusFavoriteButtonKeydown(event,this.getAttribute('data-response-id')||'')">☆</button>
-          <button class="btn-subtle status-feedback-jump-btn" id="statusFeedbackJumpBtn" type="button" onclick="openStatusFeedbackFromModal()">個別フィードバックへ</button>
-          <button class="btn-cancel status-card-modal-close" type="button" onclick="closeStatusCardModal()">閉じる</button>
-        </div>
+        <div class="status-card-modal-student" id="statusCardModalStudent"></div>
+        <button class="btn-cancel status-card-modal-close" type="button" onclick="closeStatusCardModal()">閉じる</button>
       </div>
-      <div class="status-card-modal-main status-card-modal-readonly">
-        <div class="status-card-modal-pane status-card-modal-answer">
-          <div class="status-card-modal-body" id="statusCardModalBody"></div>
-        </div>
-      </div>
+      <div class="status-card-modal-label" id="statusCardModalLabel"></div>
+      <div class="status-card-modal-body" id="statusCardModalBody"></div>
       <div class="status-card-modal-actions">
         <button class="btn-subtle status-card-modal-nav" id="statusCardModalPrevBtn" type="button" onclick="moveStatusCardModal(-1)">← 前の児童</button>
         <button class="btn-update status-card-modal-nav" id="statusCardModalNextBtn" type="button" onclick="moveStatusCardModal(1)">次の児童 →</button>
@@ -3793,7 +3741,6 @@ var selectedStatusFieldKeys = [];
 var latestStatusLessonKey = '';
 var latestStatusFieldOptions = [];
 var latestStatusViewRows = [];
-var statusSortMode = 'recommended';
 var statusModalStudentKey = '';
 var statusModalScrollY = 0;
 var statusCardEventsBound = false;
@@ -3803,7 +3750,11 @@ var statusViewScrollByTab = { responses: 0, feedback: 0 };
 var statusModalBodyLockY = 0;
 var statusFavoriteBusyMap = {};
 var statusFavoriteOverrideMap = {};
-var statusFeedbackRenderedLessonKey = '';
+var statusFavoriteConfirmedMap = {};
+var statusFavoriteQueueOrder = [];
+var statusFavoriteInFlightRequest = null;
+var statusFavoriteReorderTimer = 0;
+var STATUS_FAVORITE_REORDER_DELAY_MS = 1800;
 function formatStatusTimingLine_(label, timing, keys) {
     if (!timing || typeof timing !== 'object' || !Array.isArray(keys) || !keys.length)
         return '';
@@ -3991,8 +3942,7 @@ function updateStatusDensityPreference_(value, save) {
     if (statusCardColumnCount !== nextCount) {
         statusCardColumnCount = nextCount;
         renderStatusCardGrid_();
-        if (statusModalStudentKey)
-            syncStatusCardModal_();
+        syncStatusCardModal_();
         restoreStatusViewportScroll_(scrollYBefore);
     }
     updateStatusDensityControls_();
@@ -4030,31 +3980,8 @@ function switchStatusViewTab(tabName) {
     statusViewScrollByTab[selectedStatusViewTab] = getStatusViewportScrollY_();
     selectedStatusViewTab = nextTab;
     applyStatusViewTabState_();
-    if (nextTab === 'feedback') {
-        ensureStatusFeedbackTableRendered_({ immediate: true });
-    }
     saveStatusViewPrefs_();
     restoreStatusViewportScroll_(statusViewScrollByTab[nextTab] || 0);
-}
-function shouldRenderStatusFeedbackTable_() {
-    return selectedStatusViewTab === 'feedback' || statusFeedbackRenderedLessonKey === latestStatusLessonKey;
-}
-function ensureStatusFeedbackTableRendered_(options) {
-    if (statusFeedbackRenderedLessonKey === latestStatusLessonKey)
-        return;
-    var opts = options && typeof options === 'object' ? options : {};
-    var render = function () {
-        try {
-            renderStatusFeedbackTable_();
-            statusFeedbackRenderedLessonKey = latestStatusLessonKey;
-        }
-        catch (_err) { }
-    };
-    if (opts.immediate === true || typeof requestAnimationFrame !== 'function') {
-        render();
-        return;
-    }
-    requestAnimationFrame(render);
 }
 function syncStatusModalViewportVar_() {
     if (typeof document === 'undefined')
@@ -4095,8 +4022,10 @@ function unlockStatusModalBackgroundScroll_() {
 function loadStatus() {
     bindTeacherFeedbackPrefs_();
     bindStatusViewPrefs_();
-    if (!activeUnitId || !activePeriod)
+    if (!activeUnitId || !activePeriod) {
+        cancelStatusFavoriteReorder_();
         return;
+    }
     if (preloadCache.statusLoading)
         return;
     preloadCache.statusLoading = true;
@@ -4181,7 +4110,7 @@ function buildStatusFieldOptions_(meta, rows) {
     return options;
 }
 function buildStatusViewRows_(rows, fieldOptions) {
-    return (Array.isArray(rows) ? rows : []).map(function (student, index) {
+    return (Array.isArray(rows) ? rows : []).map(function (student) {
         var entryMap = {};
         (Array.isArray(student && student.entries) ? student.entries : []).forEach(function (entry) {
             var key = String(entry && entry.key || '').trim();
@@ -4193,181 +4122,208 @@ function buildStatusViewRows_(rows, fieldOptions) {
             key: getStatusStudentKey_(student),
             entryMap: entryMap,
             previewMap: buildStatusPreviewMap_(entryMap, fieldOptions),
-            stableIndex: index,
         };
     });
 }
-function normalizeStatusSortMode_(value) {
-    var normalized = String(value || '').trim();
-    return getStatusSortOptions_().some(function (option) { return option.value === normalized; }) ? normalized : 'recommended';
+function rememberStatusFavoriteConfirmedStates_(rows) {
+    (Array.isArray(rows) ? rows : []).forEach(function (student) {
+        var responseId = String(student && student.responseId || '').trim();
+        if (!responseId)
+            return;
+        statusFavoriteConfirmedMap[responseId] = Boolean(student && student.isFavorite === true);
+    });
 }
-function hasStatusUpdatedSort_() {
-    return latestStatusRows.some(function (student) { return Number.isFinite(parseStatusSortTimestamp_(student && student.responseUpdatedAt || student && student.submittedAt || '')); });
+function getStatusFavoriteOverride_(responseId) {
+    var normalized = String(responseId || '').trim();
+    if (!normalized || !Object.prototype.hasOwnProperty.call(statusFavoriteOverrideMap, normalized))
+        return null;
+    return statusFavoriteOverrideMap[normalized] === true;
 }
-function getStatusSortOptions_() {
-    var options = [
-        { value: 'recommended', label: 'おすすめ順' },
-        { value: 'student_number', label: '出席番号順' },
-        { value: 'text_length_asc', label: '文字数が少ない順' },
-        { value: 'text_length_desc', label: '文字数が多い順' },
-        { value: 'rank_desc', label: 'ランク順' },
-    ];
-    if (hasStatusUpdatedSort_()) {
-        options.push({ value: 'updated_desc', label: '更新が新しい順' });
-    }
-    return options;
+function getStatusFavoriteConfirmed_(responseId) {
+    var normalized = String(responseId || '').trim();
+    if (!normalized || !Object.prototype.hasOwnProperty.call(statusFavoriteConfirmedMap, normalized))
+        return null;
+    return statusFavoriteConfirmedMap[normalized] === true;
 }
-function renderStatusSortControls_() {
-    var el = document.getElementById('statusSortSelect');
+function getStatusEffectiveFavorite_(student) {
+    var responseId = String(student && student.responseId || '').trim();
+    var override = getStatusFavoriteOverride_(responseId);
+    if (override === null)
+        return Boolean(student && student.isFavorite === true);
+    return override;
+}
+function applyStatusFavoriteOverrides_(rows) {
+    (Array.isArray(rows) ? rows : []).forEach(function (student) {
+        var responseId = String(student && student.responseId || '').trim();
+        if (!responseId || !Object.prototype.hasOwnProperty.call(statusFavoriteOverrideMap, responseId))
+            return;
+        var override = statusFavoriteOverrideMap[responseId] === true;
+        if (Boolean(student && student.isFavorite === true) === override) {
+            delete statusFavoriteOverrideMap[responseId];
+            return;
+        }
+        student.isFavorite = override;
+    });
+}
+function clearStatusFavoriteOverrideIfSettled_(responseId) {
+    var normalized = String(responseId || '').trim();
+    if (!normalized)
+        return;
+    var override = getStatusFavoriteOverride_(normalized);
+    var confirmed = getStatusFavoriteConfirmed_(normalized);
+    if (override === null || confirmed === null || override !== confirmed)
+        return;
+    delete statusFavoriteOverrideMap[normalized];
+}
+function sortStatusViewRowsByFavorite_() {
+    latestStatusViewRows = latestStatusViewRows
+        .map(function (row, index) { return ({ row: row, index: index }); })
+        .sort(function (a, b) {
+        var aFavorite = getStatusEffectiveFavorite_(a.row && a.row.student) ? 1 : 0;
+        var bFavorite = getStatusEffectiveFavorite_(b.row && b.row.student) ? 1 : 0;
+        if (aFavorite !== bFavorite)
+            return bFavorite - aFavorite;
+        return a.index - b.index;
+    })
+        .map(function (item) { return item.row; });
+}
+function syncStatusCardGridOrder_() {
+    var el = document.getElementById('statusCardGrid');
     if (!el)
         return;
-    var options = getStatusSortOptions_();
-    statusSortMode = normalizeStatusSortMode_(statusSortMode);
-    el.innerHTML = options.map(function (option) { return "<option value=\"".concat(escAttr(option.value), "\"").concat(option.value === statusSortMode ? ' selected' : '', ">").concat(esc(option.label), "</option>"); }).join('');
-    el.value = statusSortMode;
+    var cardMap = {};
+    Array.prototype.forEach.call(el.querySelectorAll('.status-card[data-student-key]'), function (card) {
+        var key = String(card.getAttribute('data-student-key') || '').trim();
+        if (key)
+            cardMap[key] = card;
+    });
+    latestStatusViewRows.forEach(function (row) {
+        var key = String(row && row.key || '').trim();
+        var card = key ? cardMap[key] : null;
+        if (card)
+            el.appendChild(card);
+    });
 }
-function changeStatusSortMode(value) {
-    var nextMode = normalizeStatusSortMode_(value);
-    if (nextMode === statusSortMode)
+function isStatusFavoriteAutoSortEnabled_() {
+    var sortEl = document.getElementById('statusCardSort') ||
+        document.getElementById('statusSort') ||
+        document.getElementById('statusOrder');
+    if (!sortEl)
+        return true;
+    var value = String(sortEl.value || sortEl.getAttribute('data-sort-mode') || '').trim().toLowerCase();
+    return !value || value === 'recommended' || value === 'favorite';
+}
+function cancelStatusFavoriteReorder_() {
+    if (statusFavoriteReorderTimer) {
+        window.clearTimeout(statusFavoriteReorderTimer);
+        statusFavoriteReorderTimer = 0;
+    }
+}
+function runStatusFavoriteReorder_() {
+    cancelStatusFavoriteReorder_();
+    if (!isStatusFavoriteAutoSortEnabled_())
         return;
-    statusSortMode = nextMode;
-    refreshStatusSortedUi_(true);
+    sortStatusViewRowsByFavorite_();
+    syncStatusCardGridOrder_();
 }
-function getStatusStudentNumberSortValue_(student) {
-    var normalized = String(student && student.num || '').trim();
+function scheduleStatusFavoriteReorder_() {
+    cancelStatusFavoriteReorder_();
+    if (!isStatusFavoriteAutoSortEnabled_())
+        return;
+    statusFavoriteReorderTimer = window.setTimeout(function () {
+        statusFavoriteReorderTimer = 0;
+        runStatusFavoriteReorder_();
+    }, STATUS_FAVORITE_REORDER_DELAY_MS);
+}
+function removeStatusFavoriteQueueEntry_(responseId) {
+    var normalized = String(responseId || '').trim();
     if (!normalized)
-        return Number.POSITIVE_INFINITY;
-    var raw = Number(normalized);
-    return Number.isFinite(raw) ? raw : Number.POSITIVE_INFINITY;
+        return;
+    statusFavoriteQueueOrder = statusFavoriteQueueOrder.filter(function (queuedId) { return queuedId !== normalized; });
 }
-function getStatusRankSortValue_(rank) {
-    var orderMap = {
-        'S+': 8,
-        'S': 7,
-        'A+': 6,
-        'A': 5,
-        'B+': 4,
-        'B': 3,
-        'C+': 2,
-        'C': 1,
-    };
-    var normalized = String(rank || '').trim().toUpperCase();
-    return Object.prototype.hasOwnProperty.call(orderMap, normalized) ? orderMap[normalized] : -1;
-}
-function parseStatusSortTimestamp_(value) {
-    var parsed = Date.parse(String(value || '').trim());
-    return Number.isFinite(parsed) ? parsed : NaN;
-}
-function getStatusEntryDisplayTextLength_(entry) {
-    var sections = splitStatusReviewSections_(entry);
-    if (!sections.length) {
-        return stripStatusReviewHintLines_(String(entry && entry.value || ''), entry).length;
+function finishStatusFavoriteRequest_(responseId) {
+    var normalized = String(responseId || '').trim();
+    statusFavoriteInFlightRequest = null;
+    if (!normalized)
+        return;
+    var override = getStatusFavoriteOverride_(normalized);
+    var confirmed = getStatusFavoriteConfirmed_(normalized);
+    if (override === null || confirmed === null || override === confirmed) {
+        clearStatusFavoriteOverrideIfSettled_(normalized);
+        setStatusFavoriteBusy_(normalized, false);
+        removeStatusFavoriteQueueEntry_(normalized);
     }
-    return sections.reduce(function (total, section) {
-        return total + stripStatusReviewHintLines_(String(section && section.body || ''), entry).length;
-    }, 0);
+    else {
+        setStatusFavoriteBusy_(normalized, true);
+        if (statusFavoriteQueueOrder.indexOf(normalized) < 0) {
+            statusFavoriteQueueOrder.push(normalized);
+        }
+    }
+    flushStatusFavoriteQueue_();
 }
-function measureStatusRowDisplayTextLength_(row, fields) {
-    return (Array.isArray(fields) ? fields : []).reduce(function (total, field) {
-        var key = String(field && field.key || '').trim();
-        if (!key)
-            return total;
-        return total + getStatusEntryDisplayTextLength_(row && row.entryMap ? row.entryMap[key] : null);
-    }, 0);
-}
-function compareStatusNumericAsc_(left, right) {
-    var leftValid = Number.isFinite(left);
-    var rightValid = Number.isFinite(right);
-    if (!leftValid && !rightValid)
-        return 0;
-    if (!leftValid)
-        return 1;
-    if (!rightValid)
-        return -1;
-    if (left < right)
-        return -1;
-    if (left > right)
-        return 1;
-    return 0;
-}
-function compareStatusNumericDesc_(left, right) {
-    var leftValid = Number.isFinite(left);
-    var rightValid = Number.isFinite(right);
-    if (!leftValid && !rightValid)
-        return 0;
-    if (!leftValid)
-        return 1;
-    if (!rightValid)
-        return -1;
-    if (left > right)
-        return -1;
-    if (left < right)
-        return 1;
-    return 0;
-}
-function sortStatusViewRows_(rows, fields, mode) {
-    var needsTextLength = mode === 'text_length_asc' || mode === 'text_length_desc';
-    var decorated = (Array.isArray(rows) ? rows : []).map(function (row) {
-        return {
-            row: row,
-            favoriteScore: row && row.student && row.student.isFavorite === true ? 1 : 0,
-            rankScore: getStatusRankSortValue_(row && row.student && row.student.rank || ''),
-            numberScore: getStatusStudentNumberSortValue_(row && row.student || null),
-            textLength: needsTextLength ? measureStatusRowDisplayTextLength_(row, fields) : 0,
-            updatedAtScore: parseStatusSortTimestamp_(row && row.student && (row.student.responseUpdatedAt || row.student.submittedAt) || ''),
-            stableIndex: Number(row && row.stableIndex) || 0,
+function flushStatusFavoriteQueue_() {
+    if (statusFavoriteInFlightRequest)
+        return;
+    while (statusFavoriteQueueOrder.length) {
+        var responseId = String(statusFavoriteQueueOrder.shift() || '').trim();
+        var override = getStatusFavoriteOverride_(responseId);
+        var confirmed = getStatusFavoriteConfirmed_(responseId);
+        if (!responseId || override === null || confirmed === null) {
+            setStatusFavoriteBusy_(responseId, false);
+            continue;
+        }
+        if (override === confirmed) {
+            clearStatusFavoriteOverrideIfSettled_(responseId);
+            setStatusFavoriteBusy_(responseId, false);
+            continue;
+        }
+        statusFavoriteInFlightRequest = {
+            responseId: responseId,
+            isFavorite: override === true,
         };
-    });
-    decorated.sort(function (left, right) {
-        if (mode === 'student_number') {
-            return compareStatusNumericAsc_(left.numberScore, right.numberScore) || (left.stableIndex - right.stableIndex);
-        }
-        if (mode === 'text_length_asc') {
-            return compareStatusNumericAsc_(left.textLength, right.textLength)
-                || compareStatusNumericAsc_(left.numberScore, right.numberScore)
-                || (left.stableIndex - right.stableIndex);
-        }
-        if (mode === 'text_length_desc') {
-            return compareStatusNumericDesc_(left.textLength, right.textLength)
-                || compareStatusNumericAsc_(left.numberScore, right.numberScore)
-                || (left.stableIndex - right.stableIndex);
-        }
-        if (mode === 'rank_desc') {
-            return compareStatusNumericDesc_(left.rankScore, right.rankScore)
-                || compareStatusNumericAsc_(left.numberScore, right.numberScore)
-                || (left.stableIndex - right.stableIndex);
-        }
-        if (mode === 'updated_desc') {
-            return compareStatusNumericDesc_(left.updatedAtScore, right.updatedAtScore)
-                || compareStatusNumericAsc_(left.numberScore, right.numberScore)
-                || (left.stableIndex - right.stableIndex);
-        }
-        return compareStatusNumericDesc_(left.favoriteScore, right.favoriteScore)
-            || compareStatusNumericDesc_(left.rankScore, right.rankScore)
-            || compareStatusNumericAsc_(left.numberScore, right.numberScore)
-            || (left.stableIndex - right.stableIndex);
-    });
-    return decorated.map(function (item) { return item.row; });
-}
-function rebuildStatusViewRows_() {
-    statusSortMode = normalizeStatusSortMode_(statusSortMode);
-    latestStatusViewRows = sortStatusViewRows_(buildStatusViewRows_(latestStatusRows, latestStatusFieldOptions), getSelectedStatusFields_(), statusSortMode);
-}
-function refreshStatusSortedUi_(preserveScroll) {
-    var scrollYBefore = preserveScroll ? getStatusViewportScrollY_() : 0;
-    rebuildStatusViewRows_();
-    renderStatusSortControls_();
-    renderStatusFieldTabs_();
-    renderStatusCardGrid_();
-    if (shouldRenderStatusFeedbackTable_()) {
-        renderStatusFeedbackTable_();
-        statusFeedbackRenderedLessonKey = latestStatusLessonKey;
-    }
-    if (statusModalStudentKey) {
-        syncStatusCardModal_();
-    }
-    if (preserveScroll) {
-        restoreStatusViewportScroll_(scrollYBefore);
+        setStatusFavoriteBusy_(responseId, true);
+        google.script.run
+            .withSuccessHandler(function (res) {
+            var request = statusFavoriteInFlightRequest;
+            var requestResponseId = String(request && request.responseId || '').trim();
+            if (!(res && res.ok)) {
+                if (requestResponseId) {
+                    removeStatusFavoriteQueueEntry_(requestResponseId);
+                    delete statusFavoriteOverrideMap[requestResponseId];
+                    patchStatusFavoriteState_(requestResponseId, getStatusFavoriteConfirmed_(requestResponseId) === true, { skipReorder: true });
+                    setStatusFavoriteBusy_(requestResponseId, false);
+                    scheduleStatusFavoriteReorder_();
+                }
+                statusFavoriteInFlightRequest = null;
+                showToast(res && res.error || 'お気に入り更新に失敗しました');
+                flushStatusFavoriteQueue_();
+                return;
+            }
+            if (requestResponseId) {
+                patchStatusFavoriteState_(requestResponseId, Boolean(res.isFavorite), { confirmed: true, skipReorder: true });
+            }
+            finishStatusFavoriteRequest_(requestResponseId);
+        })
+            .withFailureHandler(function (err) {
+            var request = statusFavoriteInFlightRequest;
+            var requestResponseId = String(request && request.responseId || '').trim();
+            if (requestResponseId) {
+                removeStatusFavoriteQueueEntry_(requestResponseId);
+                delete statusFavoriteOverrideMap[requestResponseId];
+                patchStatusFavoriteState_(requestResponseId, getStatusFavoriteConfirmed_(requestResponseId) === true, { skipReorder: true });
+                setStatusFavoriteBusy_(requestResponseId, false);
+                scheduleStatusFavoriteReorder_();
+            }
+            statusFavoriteInFlightRequest = null;
+            showToast(formatTeacherRpcError_(err, 'お気に入り更新に失敗しました', 'お気に入り'), { tone: 'error', duration: 5200 });
+            flushStatusFavoriteQueue_();
+        })
+            .setTeacherResponseFavorite(responseId, override === true, {
+            lessonId: String(latestStatusMeta && latestStatusMeta.lessonId || '').trim(),
+            unitId: String(activeUnitId || latestStatusMeta && latestStatusMeta.unitId || '').trim(),
+            period: Number(activePeriod || latestStatusMeta && latestStatusMeta.period || 0) || 0,
+        });
+        return;
     }
 }
 function buildStatusPreviewMap_(entryMap, fieldOptions) {
@@ -4410,9 +4366,10 @@ function areAllStatusFieldsSelected_() {
 }
 function ensureStatusSelection_(lessonChanged) {
     latestStatusFieldOptions = buildStatusFieldOptions_(latestStatusMeta, latestStatusRows);
+    latestStatusViewRows = buildStatusViewRows_(latestStatusRows, latestStatusFieldOptions);
+    sortStatusViewRowsByFavorite_();
     if (lessonChanged) {
         statusModalStudentKey = '';
-        statusSortMode = 'recommended';
     }
     if (!latestStatusFieldOptions.length) {
         selectedStatusFieldKeys = [];
@@ -4428,14 +4385,14 @@ function getStatusFieldKeysFromSelection_(availableKeys) {
 function renderStatus(d) {
     var previousLessonKey = latestStatusLessonKey;
     var scrollYBefore = getStatusViewportScrollY_();
-    var incomingRows = Array.isArray(d && d.students) ? d.students : [];
+    latestStatusRows = Array.isArray(d && d.students) ? d.students : [];
+    rememberStatusFavoriteConfirmedStates_(latestStatusRows);
+    applyStatusFavoriteOverrides_(latestStatusRows);
     latestStatusMeta = d && d.meta || {};
-    reconcileStatusFavoriteOverrides_(incomingRows);
-    latestStatusRows = applyStatusFavoriteOverrides_(incomingRows);
     latestStatusLessonKey = getStatusLessonKey_(latestStatusMeta);
     var lessonChanged = previousLessonKey !== latestStatusLessonKey;
     if (lessonChanged) {
-        statusFeedbackRenderedLessonKey = '';
+        cancelStatusFavoriteReorder_();
     }
     applyActiveFromStatusMeta_(latestStatusMeta);
     if (!latestStatusRows.length && !(latestStatusMeta && (latestStatusMeta.unitId || latestStatusMeta.lessonId))) {
@@ -4448,7 +4405,7 @@ function renderStatus(d) {
     });
     bindStatusCardEvents_();
     ensureStatusSelection_(lessonChanged);
-    rebuildStatusViewRows_();
+    renderStatusPerfDebug_();
     var st = latestStatusRows;
     var aiReturnedCount = st.filter(function (s) { return String(s.comment || '').trim(); }).length;
     var draftCount = st.filter(function (s) { return hasTeacherDraft(s); }).length;
@@ -4457,44 +4414,16 @@ function renderStatus(d) {
     document.getElementById('statSubmitted').textContent = st.filter(function (s) { return s.submitted; }).length;
     document.getElementById('statAI').textContent = aiReturnedCount;
     syncTeacherFeedbackControls(st, draftCount);
+    renderStatusLessonSummary_();
+    renderStatusFieldTabs_();
     renderStatusCardGrid_();
-    if (statusModalStudentKey) {
-        syncStatusCardModal_();
-    }
+    renderStatusFeedbackTable_();
+    syncStatusCardModal_();
     if (lessonChanged) {
         scrollStatusGridToTop_();
     }
     else {
         restoreStatusViewportScroll_(scrollYBefore);
-    }
-    try {
-        renderStatusLessonSummary_();
-        renderStatusSortControls_();
-    }
-    catch (_err) { }
-    if (selectedStatusViewTab === 'responses') {
-        if (typeof requestAnimationFrame === 'function') {
-            requestAnimationFrame(function () {
-                try {
-                    renderStatusFieldTabs_();
-                    renderStatusPerfDebug_();
-                }
-                catch (_err) { }
-            });
-        }
-        else {
-            try {
-                renderStatusFieldTabs_();
-                renderStatusPerfDebug_();
-            }
-            catch (_err) { }
-        }
-    }
-    else {
-        renderStatusFieldTabs_();
-        renderStatusFeedbackTable_();
-        statusFeedbackRenderedLessonKey = latestStatusLessonKey;
-        renderStatusPerfDebug_();
     }
 }
 function renderStatusLessonSummary_() {
@@ -4560,22 +4489,32 @@ function renderStatusCard_(row, fields) {
     var variantClass = getStatusCardVariantClass_(content.textLength, fields.length);
     var studentName = safeStudentName(student);
     var studentClass = studentName.length >= 13 ? 'status-card-student tight' : studentName.length >= 9 ? 'status-card-student compact' : 'status-card-student';
-    var numberLabel = getStatusStudentNumberLabel_(student);
-    var sideParts = [
-        renderStatusFavoriteButton_(student),
-        renderStatusHeaderBadgesHtml_(student),
-    ].filter(Boolean);
-    return "\n    <div class=\"status-card ".concat(variantClass, "\" role=\"button\" tabindex=\"0\" data-student-key=\"").concat(escAttr(row.key), "\" onclick=\"openStatusCardModal('").concat(escAttr(row.key), "')\" onkeydown=\"handleStatusCardKeydown(event,'").concat(escAttr(row.key), "')\">\n      <div class=\"status-card-head\">\n        <div class=\"status-card-mainrow\">\n          <div class=\"status-card-name\">\n            <div class=\"status-card-numberrow\"><span class=\"status-card-number\">").concat(esc(numberLabel), "</span></div>\n            <div class=\"status-card-studentline\">\n              <span class=\"status-card-number status-card-number-inline\">").concat(esc(numberLabel), "</span>\n              <span class=\"").concat(studentClass, "\">").concat(esc(studentName), "</span>\n            </div>\n          </div>\n          ").concat(sideParts.length ? "<div class=\"status-card-side\">".concat(sideParts.join(''), "</div>") : '', "\n        </div>\n      </div>\n      ").concat(content.html, "\n    </div>");
+    return "\n    <div class=\"status-card ".concat(variantClass, "\" role=\"button\" tabindex=\"0\" data-student-key=\"").concat(escAttr(row.key), "\" onclick=\"openStatusCardModal('").concat(escAttr(row.key), "')\" onkeydown=\"handleStatusCardKeydown(event,'").concat(escAttr(row.key), "')\">\n      <div class=\"status-card-head\">\n        <div class=\"status-card-name\">\n          <div class=\"status-card-studentline\">\n            <span class=\"status-card-number\">").concat(esc(getStatusStudentNumberLabel_(student)), "</span>\n            <span class=\"").concat(studentClass, "\">").concat(esc(studentName), "</span>\n          </div>\n        </div>\n        <div class=\"status-card-head-meta\">").concat(renderStatusHeaderMeta_(student, { context: 'card' }), "</div>\n      </div>\n      ").concat(content.html, "\n    </div>");
 }
-function renderStatusFavoriteButton_(student) {
+function renderStatusHeaderMeta_(student, options) {
+    var opts = options || {};
+    var parts = [];
+    var rank = String(student && student.rank || '').trim();
+    if (rank) {
+        parts.push("<span class=\"rank-chip r-".concat(escAttr(rank.replace('+', 'p')), "\">").concat(esc(rank), "</span>"));
+    }
+    if (student && student.medal) {
+        parts.push("<span class=\"status-card-inline-medal\">".concat(renderMedal(student.medal, student.medalColor), "</span>"));
+    }
+    if (opts.includeFavorite !== false) {
+        parts.push(renderStatusFavoriteButton_(student, opts.context || 'card'));
+    }
+    return parts.join('');
+}
+function renderStatusFavoriteButton_(student, context) {
     var responseId = String(student && student.responseId || '').trim();
     if (!responseId)
         return '';
-    var isFavorite = student && student.isFavorite === true;
+    var isFavorite = getStatusEffectiveFavorite_(student);
     var isBusy = isStatusFavoriteBusy_(responseId);
     var label = isFavorite ? 'お気に入りを解除' : 'お気に入りに追加';
     var classes = 'status-favorite-btn' + (isFavorite ? ' status-favorite-active' : '') + (isBusy ? ' status-favorite-busy' : '');
-    return "<button class=\"".concat(classes, "\" type=\"button\" data-response-id=\"").concat(escAttr(responseId), "\" aria-pressed=\"").concat(isFavorite ? 'true' : 'false', "\" aria-busy=\"").concat(isBusy ? 'true' : 'false', "\" aria-label=\"").concat(escAttr(label), "\" title=\"").concat(escAttr(label), "\"").concat(isBusy ? ' disabled' : '', " onclick=\"toggleStatusFavorite(event,'").concat(escAttr(responseId), "')\" onkeydown=\"handleStatusFavoriteButtonKeydown(event,'").concat(escAttr(responseId), "')\">").concat(isFavorite ? '★' : '☆', "</button>");
+    return "<button class=\"".concat(classes, "\" type=\"button\" data-response-id=\"").concat(escAttr(responseId), "\" data-favorite-context=\"").concat(escAttr(String(context || 'card')), "\" aria-pressed=\"").concat(isFavorite ? 'true' : 'false', "\" aria-label=\"").concat(escAttr(label), "\" title=\"").concat(escAttr(label), "\" aria-busy=\"").concat(isBusy ? 'true' : 'false', "\" onclick=\"toggleStatusFavorite(event,'").concat(escAttr(responseId), "')\" onkeydown=\"handleStatusFavoriteButtonKeydown(event,'").concat(escAttr(responseId), "')\">").concat(isFavorite ? '★' : '☆', "</button>");
 }
 function handleStatusCardKeydown(event, studentKey) {
     var key = String(event && event.key || '');
@@ -4589,14 +4528,11 @@ function renderStatusFeedbackTable_() {
     var body = document.getElementById('statusBody');
     if (!body)
         return;
-    if (!latestStatusViewRows.length) {
+    if (!latestStatusRows.length) {
         body.innerHTML = '<tr><td colspan="2" style="text-align:center;padding:18px;color:#78909C;">授業を開始すると、ここに児童の記録とフィードバックが表示されます。</td></tr>';
         return;
     }
-    body.innerHTML = latestStatusViewRows.map(function (row) {
-        var s = row && row.student || null;
-        return "\n    <tr class=\"status-feedback-row\" data-response-id=\"".concat(escAttr(String(s && s.responseId || '')), "\">\n      <td data-label=\"\u5150\u7AE5 / \u63D0\u51FA\u5185\u5BB9\" class=\"status-student-cell\">").concat(renderStatusStudentCell(s), "</td>\n      <td data-label=\"\u30D5\u30A3\u30FC\u30C9\u30D0\u30C3\u30AF\" class=\"status-comment-cell\">").concat(renderStatusComment(s), "</td>\n    </tr>");
-    }).join('');
+    body.innerHTML = latestStatusRows.map(function (s) { return "\n    <tr>\n      <td data-label=\"\u5150\u7AE5 / \u63D0\u51FA\u5185\u5BB9\" class=\"status-student-cell\">".concat(renderStatusStudentCell(s), "</td>\n      <td data-label=\"\u30D5\u30A3\u30FC\u30C9\u30D0\u30C3\u30AF\" class=\"status-comment-cell\">").concat(renderStatusComment(s), "</td>\n    </tr>"); }).join('');
 }
 function getStatusStudentKey_(student) {
     var responseId = String(student && student.responseId || '').trim();
@@ -4607,30 +4543,6 @@ function getStatusStudentKey_(student) {
 function getStatusStudentNumberLabel_(student) {
     var num = String(student && student.num || '').trim();
     return num ? "".concat(num, "\u756A") : '番号なし';
-}
-function renderStatusRankChip_(rank, options) {
-    var value = String(rank || '').trim();
-    if (!value)
-        return '';
-    var label = String(options && options.labelPrefix || 'AIランク');
-    return "<span class=\"status-rank-chip rank-chip r-".concat(escAttr(value.replace('+', 'p')), "\" title=\"").concat(escAttr("".concat(label, " ").concat(value)), "\" aria-label=\"").concat(escAttr("".concat(label, " ").concat(value)), "\">").concat(esc(value), "</span>");
-}
-function renderStatusMedalChip_(medal) {
-    var value = String(medal || '').trim();
-    if (!value)
-        return '';
-    if (/^\d+th$/i.test(value)) {
-        var num = value.replace(/th$/i, '');
-        return "<span class=\"status-medal-chip\" aria-label=\"\u30E1\u30C0\u30EB ".concat(escAttr(num), "\">\uD83C\uDFC5").concat(esc(num), "</span>");
-    }
-    return "<span class=\"status-medal-chip\" aria-label=\"\u30E1\u30C0\u30EB ".concat(escAttr(value), "\">").concat(esc(value), "</span>");
-}
-function renderStatusHeaderBadgesHtml_(student, options) {
-    var parts = [
-        renderStatusRankChip_(student && student.rank || '', options),
-        renderStatusMedalChip_(student && student.medal || ''),
-    ].filter(Boolean);
-    return parts.length ? "<div class=\"status-card-sidebadges\">".concat(parts.join(''), "</div>") : '';
 }
 function getSelectedStatusField_() {
     return getSelectedStatusFields_()[0] || null;
@@ -4647,7 +4559,9 @@ function toggleStatusField(fieldKey) {
     selectedStatusFieldKeys = exists
         ? selectedKeys.filter(function (key) { return key !== nextKey; })
         : selectedKeys.concat([nextKey]);
-    refreshStatusSortedUi_(false);
+    renderStatusFieldTabs_();
+    renderStatusCardGrid_();
+    syncStatusCardModal_();
     restoreStatusViewportScroll_(scrollYBefore);
 }
 function toggleAllStatusFields() {
@@ -4660,7 +4574,9 @@ function toggleAllStatusFields() {
     else {
         selectedStatusFieldKeys = latestStatusFieldOptions.map(function (field) { return String(field && field.key || ''); });
     }
-    refreshStatusSortedUi_(false);
+    renderStatusFieldTabs_();
+    renderStatusCardGrid_();
+    syncStatusCardModal_();
     restoreStatusViewportScroll_(scrollYBefore);
 }
 function getStatusReviewHintLabels_(entry) {
@@ -4676,50 +4592,23 @@ function stripStatusReviewHintLines_(text, entry) {
     });
     return value.replace(/\n{3,}/g, '\n\n').trim();
 }
-function findStatusReviewLabelMatch_(text, label, fromIndex) {
-    var source = String(text || '');
-    var target = String(label || '').trim();
-    var startIndex = Math.max(0, Number(fromIndex) || 0);
-    if (!source || !target)
-        return null;
-    var patterns = [
-        new RegExp("[\\[［【「『]\\s*".concat(teacherEscapeRegex_(target), "\\s*[\\]］】」』]"), 'g'),
-        new RegExp("(^|\\n)\\s*(?:[\\[［【「『]\\s*)?".concat(teacherEscapeRegex_(target), "(?:\\s*[\\]］】」』])?\\s*(?:[:：])?"), 'gm'),
-    ];
-    var best = null;
-    patterns.forEach(function (pattern, priority) {
-        pattern.lastIndex = startIndex;
-        var match = pattern.exec(source);
-        if (!match)
-            return;
-        var candidate = {
-            label: target,
-            start: match.index,
-            end: pattern.lastIndex,
-            priority: priority,
-        };
-        if (!best || candidate.start < best.start || (candidate.start === best.start && candidate.priority < best.priority)) {
-            best = candidate;
-        }
-    });
-    return best;
-}
 function splitStatusReviewSections_(entry) {
     var text = String(entry && entry.value || '').trim();
     var labels = getStatusReviewHintLabels_(entry);
     if (!text || !labels.length) {
         return [];
     }
+    var pattern = new RegExp('(?:^|\\n)\\s*(' + labels.map(teacherEscapeRegex_).join('|') + ')\\s*(?=\\n|$)', 'g');
     var matches = [];
-    var cursor = 0;
-    labels.forEach(function (label) {
-        var match = findStatusReviewLabelMatch_(text, label, cursor);
-        if (!match)
-            return;
-        matches.push(match);
-        cursor = Math.max(cursor, match.end);
-    });
-    if (!matches.length || (labels.length > 1 && matches.length < 2)) {
+    var match = null;
+    while ((match = pattern.exec(text))) {
+        matches.push({
+            label: String(match[1] || '').trim(),
+            start: match.index,
+            end: pattern.lastIndex,
+        });
+    }
+    if (!matches.length) {
         return [];
     }
     return matches.map(function (item, index) {
@@ -4747,9 +4636,9 @@ function renderStatusReviewSectionHtml_(entry, mode) {
     return {
         html: "<div class=\"status-card-review-list\">".concat(sections.map(function (section) {
             var body = String(section && section.body || '').trim();
-            return "<div class=\"status-card-review-item status-review-block\"><span class=\"status-card-review-chip\">".concat(esc(section.label || '項目'), "</span><div class=\"status-card-text").concat(body ? '' : ' status-card-empty', "\">").concat(body ? esc(body).replace(/\n/g, '<br>') : 'まだ入力がありません', "</div></div>");
+            return "<div class=\"status-card-review-item\"><span class=\"status-card-review-chip\">".concat(esc(section.label || '項目'), "</span><div class=\"status-card-text").concat(body ? '' : ' status-card-empty', "\">").concat(body ? esc(body).replace(/\n/g, '<br>') : 'まだ入力がありません', "</div></div>");
         }).join(''), "</div>"),
-        textLength: sections.reduce(function (sum, section) { return sum + String(section && section.body || '').trim().length; }, 0),
+        textLength: countText.length,
     };
 }
 function buildStatusContentHtml_(row, fields, options) {
@@ -4834,69 +4723,8 @@ function findStatusStudentByResponseId_(responseId) {
     }
     return null;
 }
-function getStatusFavoriteOverride_(responseId) {
-    var normalized = String(responseId || '').trim();
-    return normalized ? statusFavoriteOverrideMap[normalized] || null : null;
-}
-function setStatusFavoriteOverride_(responseId, isFavorite, pending) {
-    var normalized = String(responseId || '').trim();
-    if (!normalized)
-        return;
-    statusFavoriteOverrideMap[normalized] = {
-        isFavorite: isFavorite === true,
-        pending: pending === true,
-        updatedAt: Date.now(),
-    };
-}
-function clearStatusFavoriteOverride_(responseId) {
-    var normalized = String(responseId || '').trim();
-    if (!normalized)
-        return;
-    delete statusFavoriteOverrideMap[normalized];
-}
-function applyStatusFavoriteOverrides_(rows) {
-    return (Array.isArray(rows) ? rows : []).map(function (student) {
-        var responseId = String(student && student.responseId || '').trim();
-        var override = getStatusFavoriteOverride_(responseId);
-        if (!override)
-            return student;
-        return __assign(__assign({}, student), { isFavorite: override.isFavorite === true });
-    });
-}
-function reconcileStatusFavoriteOverrides_(rows) {
-    (Array.isArray(rows) ? rows : []).forEach(function (student) {
-        var responseId = String(student && student.responseId || '').trim();
-        var override = getStatusFavoriteOverride_(responseId);
-        if (!override || override.pending === true)
-            return;
-        if ((student && student.isFavorite === true) === (override.isFavorite === true)) {
-            clearStatusFavoriteOverride_(responseId);
-        }
-    });
-}
 function isStatusFavoriteBusy_(responseId) {
     return Boolean(statusFavoriteBusyMap[String(responseId || '').trim()]);
-}
-function refreshStatusFavoriteButtons_(responseId) {
-    var normalized = String(responseId || '').trim();
-    if (!normalized || typeof document === 'undefined')
-        return;
-    var student = findStatusStudentByResponseId_(normalized);
-    var isFavorite = Boolean(student && student.isFavorite === true);
-    var isBusy = isStatusFavoriteBusy_(normalized);
-    var label = isFavorite ? 'お気に入りを解除' : 'お気に入りに追加';
-    Array.prototype.forEach.call(document.querySelectorAll('.status-favorite-btn'), function (button) {
-        if (String(button.getAttribute('data-response-id') || '').trim() !== normalized)
-            return;
-        button.classList.toggle('status-favorite-active', isFavorite);
-        button.classList.toggle('status-favorite-busy', isBusy);
-        button.setAttribute('aria-pressed', isFavorite ? 'true' : 'false');
-        button.setAttribute('aria-busy', isBusy ? 'true' : 'false');
-        button.setAttribute('aria-label', label);
-        button.setAttribute('title', label);
-        button.disabled = isBusy;
-        button.textContent = isFavorite ? '★' : '☆';
-    });
 }
 function setStatusFavoriteBusy_(responseId, isBusy) {
     var normalized = String(responseId || '').trim();
@@ -4910,23 +4738,50 @@ function setStatusFavoriteBusy_(responseId, isBusy) {
     }
     refreshStatusFavoriteButtons_(normalized);
 }
+function refreshStatusFavoriteButtons_(responseId) {
+    var normalized = String(responseId || '').trim();
+    if (!normalized || typeof document === 'undefined')
+        return;
+    var student = findStatusStudentByResponseId_(normalized);
+    var isFavorite = getStatusEffectiveFavorite_(student);
+    var isBusy = isStatusFavoriteBusy_(normalized);
+    var label = isFavorite ? 'お気に入りを解除' : 'お気に入りに追加';
+    Array.prototype.forEach.call(document.querySelectorAll('.status-favorite-btn'), function (button) {
+        if (String(button.getAttribute('data-response-id') || '').trim() !== normalized)
+            return;
+        button.classList.toggle('status-favorite-active', isFavorite);
+        button.classList.toggle('status-favorite-busy', isBusy);
+        button.setAttribute('aria-pressed', isFavorite ? 'true' : 'false');
+        button.setAttribute('aria-label', label);
+        button.setAttribute('title', label);
+        button.setAttribute('aria-busy', isBusy ? 'true' : 'false');
+        button.textContent = isFavorite ? '★' : '☆';
+    });
+}
+function syncStatusFavoriteUiForResponse_(responseId) {
+    var normalized = String(responseId || '').trim();
+    if (!normalized)
+        return;
+    refreshStatusFavoriteButtons_(normalized);
+}
 function patchStatusFavoriteState_(responseId, isFavorite, options) {
     var student = findStatusStudentByResponseId_(responseId);
     if (!student)
         return;
-    var opts = options && typeof options === 'object' ? options : {};
-    student.isFavorite = isFavorite === true;
-    if (statusSortMode === 'recommended' && opts.deferResort !== true) {
-        refreshStatusSortedUi_(true);
-        return;
+    var normalized = String(responseId || '').trim();
+    var opts = options || {};
+    if (opts.confirmed) {
+        statusFavoriteConfirmedMap[normalized] = isFavorite === true;
+        student.isFavorite = isFavorite === true;
+        clearStatusFavoriteOverrideIfSettled_(normalized);
     }
-    refreshStatusFavoriteButtons_(responseId);
-    if (statusModalStudentKey) {
-        var row = findStatusViewRowByKey_(statusModalStudentKey);
-        var modalStudent = row && row.student || null;
-        if (String(modalStudent && modalStudent.responseId || '').trim() === String(responseId || '').trim()) {
-            syncStatusCardModal_();
-        }
+    else {
+        statusFavoriteOverrideMap[normalized] = isFavorite === true;
+    }
+    student.isFavorite = isFavorite === true;
+    syncStatusFavoriteUiForResponse_(responseId);
+    if (opts.skipReorder !== true) {
+        scheduleStatusFavoriteReorder_();
     }
 }
 function handleStatusFavoriteButtonKeydown(event, responseId) {
@@ -4944,37 +4799,13 @@ function toggleStatusFavorite(event, responseId) {
         event.stopPropagation();
     var normalized = String(responseId || '').trim();
     var student = findStatusStudentByResponseId_(normalized);
-    if (!normalized || !student || isStatusFavoriteBusy_(normalized))
+    if (!normalized || !student)
         return;
-    var previousFavorite = student.isFavorite === true;
-    var nextFavorite = !previousFavorite;
-    setStatusFavoriteOverride_(normalized, nextFavorite, true);
-    patchStatusFavoriteState_(normalized, nextFavorite, { deferResort: true });
+    patchStatusFavoriteState_(normalized, !getStatusEffectiveFavorite_(student), { skipReorder: false });
     setStatusFavoriteBusy_(normalized, true);
-    google.script.run
-        .withSuccessHandler(function (res) {
-        if (!(res && res.ok)) {
-            clearStatusFavoriteOverride_(normalized);
-            patchStatusFavoriteState_(normalized, previousFavorite, { deferResort: true });
-            setStatusFavoriteBusy_(normalized, false);
-            showToast(res && res.error || 'お気に入り更新に失敗しました');
-            return;
-        }
-        setStatusFavoriteOverride_(normalized, Boolean(res.isFavorite), false);
-        patchStatusFavoriteState_(normalized, Boolean(res.isFavorite));
-        setStatusFavoriteBusy_(normalized, false);
-    })
-        .withFailureHandler(function (err) {
-        clearStatusFavoriteOverride_(normalized);
-        patchStatusFavoriteState_(normalized, previousFavorite, { deferResort: true });
-        setStatusFavoriteBusy_(normalized, false);
-        showToast(formatTeacherRpcError_(err, 'お気に入り更新に失敗しました', 'お気に入り'), { tone: 'error', duration: 5200 });
-    })
-        .setTeacherResponseFavorite(normalized, nextFavorite, {
-        lessonId: String(latestStatusMeta && latestStatusMeta.lessonId || '').trim(),
-        unitId: String(activeUnitId || latestStatusMeta && latestStatusMeta.unitId || '').trim(),
-        period: Number(activePeriod || latestStatusMeta && latestStatusMeta.period || 0) || 0,
-    });
+    removeStatusFavoriteQueueEntry_(normalized);
+    statusFavoriteQueueOrder.push(normalized);
+    flushStatusFavoriteQueue_();
 }
 function openStatusCardModal(studentKey) {
     var key = String(studentKey || '').trim();
@@ -5008,43 +4839,34 @@ function moveStatusCardModal(delta) {
     statusModalStudentKey = latestStatusViewRows[nextIndex].key;
     syncStatusCardModal_();
 }
-function findStatusFeedbackRow_(responseId) {
-    var normalized = String(responseId || '').trim();
-    if (!normalized)
-        return null;
-    return document.querySelector(".status-feedback-row[data-response-id=\"".concat(escAttr(normalized), "\"]"));
-}
-function focusStatusFeedbackRow_(responseId) {
-    var normalized = String(responseId || '').trim();
-    if (!normalized)
-        return;
-    document.querySelectorAll('.status-feedback-row.is-target').forEach(function (row) { return row.classList.remove('is-target'); });
-    var row = findStatusFeedbackRow_(normalized);
-    if (!row)
-        return;
-    row.classList.add('is-target');
-    if (typeof row.scrollIntoView === 'function') {
-        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+function syncStatusCardModalHeader_(student) {
+    var safeStudent = student || {};
+    var studentEl = document.getElementById('statusCardModalTitle');
+    var numberEl = document.getElementById('statusCardModalNumber');
+    var metaEl = document.getElementById('statusCardModalMeta');
+    var favoriteBtn = document.getElementById('statusCardModalFavoriteBtn');
+    if (studentEl) {
+        studentEl.textContent = safeStudentName(safeStudent);
     }
-    window.setTimeout(function () {
-        var field = row.querySelector('.status-draft-textarea, .status-draft-rank');
-        if (field && typeof field.focus === 'function') {
-            field.focus({ preventScroll: true });
+    if (numberEl) {
+        numberEl.textContent = getStatusStudentNumberLabel_(safeStudent);
+    }
+    if (metaEl) {
+        metaEl.innerHTML = renderStatusHeaderMeta_(safeStudent, { context: 'modal', includeFavorite: false });
+    }
+    if (favoriteBtn) {
+        var responseId = String(safeStudent.responseId || '').trim();
+        favoriteBtn.hidden = !responseId;
+        if (responseId) {
+            favoriteBtn.setAttribute('data-response-id', responseId);
+            favoriteBtn.setAttribute('data-favorite-context', 'modal');
         }
-    }, 120);
-}
-function openStatusFeedbackFromModal() {
-    var row = findStatusViewRowByKey_(statusModalStudentKey);
-    var responseId = String(row && row.responseId || row && row.student && row.student.responseId || '').trim();
-    closeStatusCardModal();
-    var tabBtn = document.querySelector(".tab[onclick*=\"'status'\"]");
-    if (typeof switchTab === 'function') {
-        switchTab('status', tabBtn || null);
+        else {
+            favoriteBtn.removeAttribute('data-response-id');
+            favoriteBtn.removeAttribute('data-favorite-context');
+        }
+        refreshStatusFavoriteButtons_(responseId);
     }
-    switchStatusViewTab('feedback');
-    if (!responseId)
-        return;
-    window.setTimeout(function () { return focusStatusFeedbackRow_(responseId); }, 80);
 }
 function syncStatusCardModal_() {
     var bg = document.getElementById('statusCardModalBg');
@@ -5062,40 +4884,18 @@ function syncStatusCardModal_() {
     var fields = getSelectedStatusFields_();
     var student = row.student || {};
     var index = findStatusViewRowIndexByKey_(statusModalStudentKey);
-    var studentEl = document.getElementById('statusCardModalTitle');
-    var numberEl = document.getElementById('statusCardModalNumber');
-    var metaEl = document.getElementById('statusCardModalMeta');
     var bodyEl = document.getElementById('statusCardModalBody');
-    var favoriteBtn = document.getElementById('statusCardModalFavoriteBtn');
-    var feedbackBtn = document.getElementById('statusFeedbackJumpBtn');
+    var feedbackEl = document.getElementById('statusCardModalFeedback');
     var prevBtn = document.getElementById('statusCardModalPrevBtn');
     var nextBtn = document.getElementById('statusCardModalNextBtn');
-    if (studentEl) {
-        studentEl.textContent = safeStudentName(student);
-    }
-    if (numberEl) {
-        numberEl.textContent = getStatusStudentNumberLabel_(student);
-    }
-    if (metaEl) {
-        metaEl.innerHTML = renderStatusHeaderBadgesHtml_(student, { labelPrefix: 'AIランク' });
-    }
-    if (favoriteBtn) {
-        var responseId = String(student && student.responseId || '').trim();
-        favoriteBtn.hidden = !responseId;
-        if (responseId) {
-            favoriteBtn.setAttribute('data-response-id', responseId);
-        }
-        else {
-            favoriteBtn.removeAttribute('data-response-id');
-        }
-        refreshStatusFavoriteButtons_(responseId);
-    }
+    syncStatusCardModalHeader_(student);
     if (bodyEl) {
         bodyEl.innerHTML = buildStatusContentHtml_(row, fields, { mode: 'modal' }).html;
         bodyEl.scrollTop = 0;
     }
-    if (feedbackBtn) {
-        feedbackBtn.disabled = !String(student && student.responseId || '').trim();
+    if (feedbackEl) {
+        feedbackEl.innerHTML = renderTeacherDraftEditor(student, String(student.draftComment || '').trim(), String(student.draftRank || '').trim());
+        feedbackEl.scrollTop = 0;
     }
     if (prevBtn)
         prevBtn.disabled = index <= 0;
@@ -5137,6 +4937,15 @@ function bindStatusCardEvents_() {
             return;
         if (statusModalStudentKey) {
             closeStatusCardModal();
+        }
+    });
+    document.addEventListener('change', function (event) {
+        var target = event && event.target;
+        var targetId = String(target && target.id || '').trim();
+        if (targetId !== 'statusCardSort' && targetId !== 'statusSort' && targetId !== 'statusOrder')
+            return;
+        if (!isStatusFavoriteAutoSortEnabled_()) {
+            cancelStatusFavoriteReorder_();
         }
     });
     bindStatusViewPrefs_();
@@ -5186,17 +4995,21 @@ function renderStatusComment(student) {
     return parts.join('');
 }
 function clearRenderedStatus_() {
+    cancelStatusFavoriteReorder_();
     latestStatusRows = [];
     latestStatusMeta = {};
     latestStatusLessonKey = '';
     latestStatusFieldOptions = [];
     latestStatusViewRows = [];
-    statusSortMode = 'recommended';
     selectedStatusFieldKeys = [];
     statusModalStudentKey = '';
     statusModalScrollY = 0;
     statusModalBodyLockY = 0;
     statusFavoriteBusyMap = {};
+    statusFavoriteOverrideMap = {};
+    statusFavoriteConfirmedMap = {};
+    statusFavoriteQueueOrder = [];
+    statusFavoriteInFlightRequest = null;
     var totalEl = document.getElementById('statTotal');
     var writtenEl = document.getElementById('statWritten');
     var submittedEl = document.getElementById('statSubmitted');
@@ -5217,9 +5030,6 @@ function clearRenderedStatus_() {
     var fieldTabs = document.getElementById('statusFieldTabs');
     if (fieldTabs)
         fieldTabs.innerHTML = '';
-    var sortSelect = document.getElementById('statusSortSelect');
-    if (sortSelect)
-        sortSelect.innerHTML = '';
     var cardGrid = document.getElementById('statusCardGrid');
     if (cardGrid) {
         cardGrid.className = "status-card-grid cols-".concat(statusCardColumnCount);
@@ -5231,10 +5041,14 @@ function clearRenderedStatus_() {
     if (body) {
         body.innerHTML = '<tr><td colspan="2" style="text-align:center;padding:18px;color:#78909C;">授業を開始すると、ここに児童の記録とフィードバックが表示されます。</td></tr>';
     }
+    var modalMeta = document.getElementById('statusCardModalMeta');
+    if (modalMeta)
+        modalMeta.innerHTML = '';
     var modalFavoriteBtn = document.getElementById('statusCardModalFavoriteBtn');
     if (modalFavoriteBtn) {
         modalFavoriteBtn.hidden = true;
         modalFavoriteBtn.removeAttribute('data-response-id');
+        modalFavoriteBtn.removeAttribute('data-favorite-context');
     }
     closeStatusCardModal();
 }
@@ -5342,8 +5156,11 @@ function findTeacherDraftRow_(responseId) {
     var normalized = String(responseId || '').trim();
     if (!normalized)
         return null;
-    var row = findStatusFeedbackRow_(normalized);
-    return row ? row.querySelector('.status-draft-box') : null;
+    var field = document.querySelector(".status-card-modal-feedback .status-draft-textarea[data-response-id=\"".concat(escAttr(normalized), "\"]"))
+        || document.querySelector(".status-card-modal-feedback .status-draft-rank[data-response-id=\"".concat(escAttr(normalized), "\"]"))
+        || document.querySelector(".status-draft-textarea[data-response-id=\"".concat(escAttr(normalized), "\"]"))
+        || document.querySelector(".status-draft-rank[data-response-id=\"".concat(escAttr(normalized), "\"]"));
+    return field ? field.closest('.status-draft-box') : null;
 }
 function getTeacherDraftState_(responseId) {
     var normalized = String(responseId || '').trim();
