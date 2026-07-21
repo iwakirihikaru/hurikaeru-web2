@@ -7,7 +7,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 const portableDir = path.join(rootDir, 'portable');
-const publishDir = path.join(rootDir, 'portable-publish');
+const publishDirArgIndex = process.argv.indexOf('--publish-dir');
+const publishDirArg = publishDirArgIndex >= 0 ? String(process.argv[publishDirArgIndex + 1] || '').trim() : '';
+if (publishDirArgIndex >= 0 && !publishDirArg) throw new Error('--publish-dir requires a path.');
+const publishDir = publishDirArg ? path.resolve(rootDir, publishDirArg) : path.join(rootDir, 'portable-publish');
 const filesToCopy = [
   '_headers',
   'README.md',
@@ -27,6 +30,7 @@ const sourceFilesToCheck = [
   'portable-src/runtime-shim.js',
   'scripts/sync-portable-publish.mjs',
   'scripts/publish-portable-publish.ps1',
+  'scripts/deploy-full.ps1',
 ];
 const portableArtifactNames = ['index.html', 'student.html', 'teacher.html', 'setup.html', 'runtime-shim.js'];
 const conflictMarkerPattern = /^(<<<<<<< .+|=======|>>>>>>> .+)$/;
@@ -173,4 +177,4 @@ const sourceCommit = readSourceCommit();
   }
 });
 
-console.log(`Synced portable artifacts into portable-publish from ${sourceCommit}`);
+console.log(`Synced portable artifacts into ${publishDir} from ${sourceCommit}`);

@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-  [string]$DescriptionSuffix = ""
+  [string]$DescriptionSuffix = "",
+  [string]$PagesPublishDir = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -24,7 +25,23 @@ if ($LASTEXITCODE -ne 0) {
   throw "GAS deploy failed"
 }
 
-& powershell -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "publish-portable-publish.ps1") -Build
+$publishArgs = @(
+  "-ExecutionPolicy", "Bypass",
+  "-File", (Join-Path $PSScriptRoot "publish-portable-publish.ps1"),
+  "-Build"
+)
+$resolvedPagesPublishDir = if (-not [string]::IsNullOrWhiteSpace($PagesPublishDir)) {
+  $PagesPublishDir
+} elseif (-not [string]::IsNullOrWhiteSpace($env:HURIKAERU_PAGES_PUBLISH_DIR)) {
+  $env:HURIKAERU_PAGES_PUBLISH_DIR
+} else {
+  ""
+}
+if (-not [string]::IsNullOrWhiteSpace($resolvedPagesPublishDir)) {
+  $publishArgs += @("-PublishDir", $resolvedPagesPublishDir)
+}
+
+& powershell @publishArgs
 if ($LASTEXITCODE -ne 0) {
   throw "Pages publish failed"
 }

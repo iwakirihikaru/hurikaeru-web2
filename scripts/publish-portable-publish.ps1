@@ -73,7 +73,7 @@ Invoke-Step -Label "Confirm pages-release is current" -Action {
   }
 }
 
-$syncArgs = @(".\scripts\sync-portable-publish.mjs")
+$syncArgs = @(".\scripts\sync-portable-publish.mjs", "--publish-dir", $publishPath)
 if ($Build) {
   $syncArgs += "--build"
 }
