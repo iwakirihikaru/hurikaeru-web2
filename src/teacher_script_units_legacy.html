@@ -338,8 +338,11 @@ function loadStatus() {
             return;
         renderStatus(d);
     })
-        .withFailureHandler(function () {
+        .withFailureHandler(function (err) {
         preloadCache.statusLoading = false;
+        if (typeof window !== 'undefined' && typeof window.markTeacherStatusStaleFromError_ === 'function') {
+            window.markTeacherStatusStaleFromError_(err);
+        }
     })
         .getLessonStatus(requestUnitId, requestPeriod);
 }
@@ -728,6 +731,9 @@ function flushStatusFavoriteQueue_() {
         })
             .withFailureHandler(function (err) {
             var request = statusFavoriteInFlightRequest;
+            if (typeof window !== 'undefined' && typeof window.markTeacherStatusStaleFromError_ === 'function') {
+                window.markTeacherStatusStaleFromError_(err);
+            }
             failStatusFavoriteRequest_(request, formatTeacherRpcError_(err, 'お気に入り更新に失敗しました', 'お気に入り'));
         })
             .setTeacherResponseFavorite(responseId, override === true, {
@@ -808,8 +814,14 @@ function renderStatus(d) {
     }
     applyActiveFromStatusMeta_(latestStatusMeta);
     if (!latestStatusRows.length && !(latestStatusMeta && (latestStatusMeta.unitId || latestStatusMeta.lessonId))) {
+        if (typeof window !== 'undefined' && typeof window.clearTeacherStatusConnectionNotice_ === 'function') {
+            window.clearTeacherStatusConnectionNotice_();
+        }
         clearRenderedStatus_();
         return;
+    }
+    if (typeof window !== 'undefined' && typeof window.clearTeacherStatusConnectionNotice_ === 'function') {
+        window.clearTeacherStatusConnectionNotice_();
     }
     writeTeacherStatusPreloadCache_({
         meta: latestStatusMeta,

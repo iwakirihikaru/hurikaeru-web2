@@ -463,7 +463,7 @@
       result = await sendRequest(buildLegacyRpcPayload(action, payload), false);
     }
     if (!result.ok) {
-      throw new Error(getErrorMessage(result.error));
+      throw normalizePortableError(result.error);
     }
     return normalizePortableContractData(resolvePortableContractActionName(action, payload), result.data);
   }
@@ -478,7 +478,7 @@
       result = sendRequest(buildLegacyRpcPayload(action, payload), true);
     }
     if (!result.ok) {
-      throw new Error(getErrorMessage(result.error));
+      throw normalizePortableError(result.error);
     }
     return normalizePortableContractData(resolvePortableContractActionName(action, payload), result.data);
   }
