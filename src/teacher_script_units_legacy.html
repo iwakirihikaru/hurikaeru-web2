@@ -27,6 +27,7 @@ var selectedStatusFieldKeys = [];
 var latestStatusLessonKey = '';
 var latestStatusFieldOptions = [];
 var latestStatusViewRows = [];
+var statusSortMode = 'recommended';
 var statusModalStudentKey = '';
 var statusModalScrollY = 0;
 var statusCardEventsBound = false;
@@ -172,6 +173,7 @@ function saveStatusViewPrefs_() {
         localStorage.setItem(STATUS_VIEW_PREFS_KEY, JSON.stringify({
             tab: selectedStatusViewTab === 'feedback' ? 'feedback' : 'responses',
             columns: Math.max(1, Math.min(5, Number(statusCardColumnCount || 3) || 3)),
+            sort: normalizeStatusSortMode_(statusSortMode),
         }));
     }
     catch (_err) { }
@@ -203,12 +205,15 @@ function applyStatusViewPrefs_() {
     var prefs = loadStatusViewPrefs_();
     selectedStatusViewTab = String(prefs.tab || selectedStatusViewTab || 'responses') === 'feedback' ? 'feedback' : 'responses';
     statusCardColumnCount = Math.max(1, Math.min(5, Number(prefs.columns || statusCardColumnCount || 3) || 3));
+    statusSortMode = normalizeStatusSortMode_(prefs.sort || statusSortMode);
     updateStatusDensityControls_();
+    renderStatusSortControls_();
     applyStatusViewTabState_();
 }
 function bindStatusViewPrefs_() {
     applyStatusViewPrefs_();
     updateStatusDensityControls_();
+    renderStatusSortControls_();
 }
 function updateStatusDensityControls_() {
     var valueEl = document.getElementById('statusDensityValue');
@@ -228,7 +233,8 @@ function updateStatusDensityPreference_(value, save) {
     if (statusCardColumnCount !== nextCount) {
         statusCardColumnCount = nextCount;
         renderStatusCardGrid_();
-        syncStatusCardModal_();
+        if (statusModalStudentKey)
+            syncStatusCardModal_();
         restoreStatusViewportScroll_(scrollYBefore);
     }
     updateStatusDensityControls_();
@@ -396,7 +402,7 @@ function buildStatusFieldOptions_(meta, rows) {
     return options;
 }
 function buildStatusViewRows_(rows, fieldOptions) {
-    return (Array.isArray(rows) ? rows : []).map(function (student) {
+    return (Array.isArray(rows) ? rows : []).map(function (student, stableIndex) {
         var entryMap = {};
         (Array.isArray(student && student.entries) ? student.entries : []).forEach(function (entry) {
             var key = String(entry && entry.key || '').trim();
@@ -406,6 +412,7 @@ function buildStatusViewRows_(rows, fieldOptions) {
         return {
             student: student,
             key: getStatusStudentKey_(student),
+            stableIndex: stableIndex,
             entryMap: entryMap,
             previewMap: buildStatusPreviewMap_(entryMap, fieldOptions),
         };
@@ -461,17 +468,140 @@ function clearStatusFavoriteOverrideIfSettled_(responseId) {
         return;
     delete statusFavoriteOverrideMap[normalized];
 }
-function sortStatusViewRowsByFavorite_() {
-    latestStatusViewRows = latestStatusViewRows
-        .map(function (row, index) { return ({ row: row, index: index }); })
-        .sort(function (a, b) {
-        var aFavorite = getStatusEffectiveFavorite_(a.row && a.row.student) ? 1 : 0;
-        var bFavorite = getStatusEffectiveFavorite_(b.row && b.row.student) ? 1 : 0;
-        if (aFavorite !== bFavorite)
-            return bFavorite - aFavorite;
-        return a.index - b.index;
-    })
-        .map(function (item) { return item.row; });
+function normalizeStatusSortMode_(value) {
+    var normalized = String(value || '').trim();
+    return getStatusSortOptions_().some(function (option) { return option.value === normalized; }) ? normalized : 'recommended';
+}
+function parseStatusSortTimestamp_(value) {
+    var parsed = Date.parse(String(value || '').trim());
+    return Number.isFinite(parsed) ? parsed : NaN;
+}
+function hasStatusUpdatedSort_() {
+    return latestStatusRows.some(function (student) { return Number.isFinite(parseStatusSortTimestamp_(student && (student.responseUpdatedAt || student.submittedAt) || '')); });
+}
+function getStatusSortOptions_() {
+    var options = [
+        { value: 'recommended', label: 'おすすめ順' },
+        { value: 'student_number', label: '出席番号順' },
+        { value: 'text_length_asc', label: '文字数が少ない順' },
+        { value: 'text_length_desc', label: '文字数が多い順' },
+        { value: 'rank_desc', label: 'ランク順' },
+    ];
+    if (hasStatusUpdatedSort_())
+        options.push({ value: 'updated_desc', label: '更新が新しい順' });
+    return options;
+}
+function renderStatusSortControls_() {
+    var el = document.getElementById('statusSortSelect');
+    if (!el)
+        return;
+    var options = getStatusSortOptions_();
+    statusSortMode = normalizeStatusSortMode_(statusSortMode);
+    el.innerHTML = options.map(function (option) { return "<option value=\"".concat(escAttr(option.value), "\"").concat(option.value === statusSortMode ? ' selected' : '', ">").concat(esc(option.label), "</option>"); }).join('');
+    el.value = statusSortMode;
+}
+function changeStatusSortMode(value) {
+    var nextMode = normalizeStatusSortMode_(value);
+    if (nextMode === statusSortMode)
+        return;
+    statusSortMode = nextMode;
+    cancelStatusFavoriteReorder_();
+    refreshStatusSortedUi_(true);
+    saveStatusViewPrefs_();
+}
+function getStatusStudentNumberSortValue_(student) {
+    var normalized = String(student && student.num || '').trim();
+    if (!normalized)
+        return Number.POSITIVE_INFINITY;
+    var raw = Number(normalized);
+    return Number.isFinite(raw) ? raw : Number.POSITIVE_INFINITY;
+}
+function getStatusRankSortValue_(rank) {
+    var orderMap = { 'S+': 8, 'S': 7, 'A+': 6, 'A': 5, 'B+': 4, 'B': 3, 'C+': 2, 'C': 1 };
+    var normalized = String(rank || '').trim().toUpperCase();
+    return Object.prototype.hasOwnProperty.call(orderMap, normalized) ? orderMap[normalized] : -1;
+}
+function getStatusEntryDisplayTextLength_(entry) {
+    var sections = splitStatusReviewSections_(entry);
+    if (!sections.length)
+        return stripStatusReviewHintLines_(String(entry && entry.value || ''), entry).length;
+    return sections.reduce(function (total, section) {
+        return total + stripStatusReviewHintLines_(String(section && section.body || ''), entry).length;
+    }, 0);
+}
+function measureStatusRowDisplayTextLength_(row, fields) {
+    return (Array.isArray(fields) ? fields : []).reduce(function (total, field) {
+        var key = String(field && field.key || '').trim();
+        return key ? total + getStatusEntryDisplayTextLength_(row && row.entryMap ? row.entryMap[key] : null) : total;
+    }, 0);
+}
+function compareStatusNumericAsc_(left, right) {
+    var leftValid = Number.isFinite(left);
+    var rightValid = Number.isFinite(right);
+    if (!leftValid && !rightValid)
+        return 0;
+    if (!leftValid)
+        return 1;
+    if (!rightValid)
+        return -1;
+    return left < right ? -1 : left > right ? 1 : 0;
+}
+function compareStatusNumericDesc_(left, right) {
+    var leftValid = Number.isFinite(left);
+    var rightValid = Number.isFinite(right);
+    if (!leftValid && !rightValid)
+        return 0;
+    if (!leftValid)
+        return 1;
+    if (!rightValid)
+        return -1;
+    return left > right ? -1 : left < right ? 1 : 0;
+}
+function sortStatusViewRows_(rows, fields, mode) {
+    var needsTextLength = mode === 'text_length_asc' || mode === 'text_length_desc';
+    var decorated = (Array.isArray(rows) ? rows : []).map(function (row) {
+        return {
+            row: row,
+            favoriteScore: getStatusEffectiveFavorite_(row && row.student) ? 1 : 0,
+            rankScore: getStatusRankSortValue_(row && row.student && row.student.rank || ''),
+            numberScore: getStatusStudentNumberSortValue_(row && row.student || null),
+            textLength: needsTextLength ? measureStatusRowDisplayTextLength_(row, fields) : 0,
+            updatedAtScore: parseStatusSortTimestamp_(row && row.student && (row.student.responseUpdatedAt || row.student.submittedAt) || ''),
+            stableIndex: Number(row && row.stableIndex) || 0,
+        };
+    });
+    decorated.sort(function (left, right) {
+        if (mode === 'student_number')
+            return compareStatusNumericAsc_(left.numberScore, right.numberScore) || (left.stableIndex - right.stableIndex);
+        if (mode === 'text_length_asc')
+            return compareStatusNumericAsc_(left.textLength, right.textLength) || compareStatusNumericAsc_(left.numberScore, right.numberScore) || (left.stableIndex - right.stableIndex);
+        if (mode === 'text_length_desc')
+            return compareStatusNumericDesc_(left.textLength, right.textLength) || compareStatusNumericAsc_(left.numberScore, right.numberScore) || (left.stableIndex - right.stableIndex);
+        if (mode === 'rank_desc')
+            return compareStatusNumericDesc_(left.rankScore, right.rankScore) || compareStatusNumericAsc_(left.numberScore, right.numberScore) || (left.stableIndex - right.stableIndex);
+        if (mode === 'updated_desc')
+            return compareStatusNumericDesc_(left.updatedAtScore, right.updatedAtScore) || compareStatusNumericAsc_(left.numberScore, right.numberScore) || (left.stableIndex - right.stableIndex);
+        return compareStatusNumericDesc_(left.favoriteScore, right.favoriteScore)
+            || compareStatusNumericDesc_(left.rankScore, right.rankScore)
+            || compareStatusNumericAsc_(left.numberScore, right.numberScore)
+            || (left.stableIndex - right.stableIndex);
+    });
+    return decorated.map(function (item) { return item.row; });
+}
+function rebuildStatusViewRows_() {
+    statusSortMode = normalizeStatusSortMode_(statusSortMode);
+    latestStatusViewRows = sortStatusViewRows_(buildStatusViewRows_(latestStatusRows, latestStatusFieldOptions), getSelectedStatusFields_(), statusSortMode);
+}
+function refreshStatusSortedUi_(preserveScroll) {
+    var scrollYBefore = preserveScroll ? getStatusViewportScrollY_() : 0;
+    rebuildStatusViewRows_();
+    renderStatusSortControls_();
+    renderStatusFieldTabs_();
+    renderStatusCardGrid_();
+    if (statusModalStudentKey)
+        syncStatusCardModal_();
+    if (preserveScroll)
+        restoreStatusViewportScroll_(scrollYBefore);
 }
 function syncStatusCardGridOrder_() {
     var el = document.getElementById('statusCardGrid');
@@ -491,13 +621,7 @@ function syncStatusCardGridOrder_() {
     });
 }
 function isStatusFavoriteAutoSortEnabled_() {
-    var sortEl = document.getElementById('statusCardSort') ||
-        document.getElementById('statusSort') ||
-        document.getElementById('statusOrder');
-    if (!sortEl)
-        return true;
-    var value = String(sortEl.value || sortEl.getAttribute('data-sort-mode') || '').trim().toLowerCase();
-    return !value || value === 'recommended' || value === 'favorite';
+    return statusSortMode === 'recommended';
 }
 function cancelStatusFavoriteReorder_() {
     if (statusFavoriteReorderTimer) {
@@ -509,7 +633,7 @@ function runStatusFavoriteReorder_() {
     cancelStatusFavoriteReorder_();
     if (!isStatusFavoriteAutoSortEnabled_())
         return;
-    sortStatusViewRowsByFavorite_();
+    rebuildStatusViewRows_();
     syncStatusCardGridOrder_();
 }
 function scheduleStatusFavoriteReorder_() {
@@ -538,6 +662,7 @@ function finishStatusFavoriteRequest_(responseId) {
         clearStatusFavoriteOverrideIfSettled_(normalized);
         setStatusFavoriteBusy_(normalized, false);
         removeStatusFavoriteQueueEntry_(normalized);
+        scheduleStatusFavoriteReorder_();
     }
     else {
         setStatusFavoriteBusy_(normalized, true);
@@ -545,6 +670,26 @@ function finishStatusFavoriteRequest_(responseId) {
             statusFavoriteQueueOrder.push(normalized);
         }
     }
+    flushStatusFavoriteQueue_();
+}
+function failStatusFavoriteRequest_(request, message) {
+    var responseId = String(request && request.responseId || '').trim();
+    var requestedFavorite = Boolean(request && request.isFavorite);
+    statusFavoriteInFlightRequest = null;
+    if (responseId) {
+        removeStatusFavoriteQueueEntry_(responseId);
+        var latestOverride = getStatusFavoriteOverride_(responseId);
+        if (latestOverride === null || latestOverride === requestedFavorite) {
+            delete statusFavoriteOverrideMap[responseId];
+            patchStatusFavoriteState_(responseId, getStatusFavoriteConfirmed_(responseId) === true, { skipReorder: true });
+            setStatusFavoriteBusy_(responseId, false);
+        }
+        else {
+            setStatusFavoriteBusy_(responseId, true);
+            statusFavoriteQueueOrder.push(responseId);
+        }
+    }
+    showToast(message || 'お気に入り更新に失敗しました', { tone: 'error', duration: 5200 });
     flushStatusFavoriteQueue_();
 }
 function flushStatusFavoriteQueue_() {
@@ -573,16 +718,7 @@ function flushStatusFavoriteQueue_() {
             var request = statusFavoriteInFlightRequest;
             var requestResponseId = String(request && request.responseId || '').trim();
             if (!(res && res.ok)) {
-                if (requestResponseId) {
-                    removeStatusFavoriteQueueEntry_(requestResponseId);
-                    delete statusFavoriteOverrideMap[requestResponseId];
-                    patchStatusFavoriteState_(requestResponseId, getStatusFavoriteConfirmed_(requestResponseId) === true, { skipReorder: true });
-                    setStatusFavoriteBusy_(requestResponseId, false);
-                    scheduleStatusFavoriteReorder_();
-                }
-                statusFavoriteInFlightRequest = null;
-                showToast(res && res.error || 'お気に入り更新に失敗しました');
-                flushStatusFavoriteQueue_();
+                failStatusFavoriteRequest_(request, res && res.error || 'お気に入り更新に失敗しました');
                 return;
             }
             if (requestResponseId) {
@@ -592,17 +728,7 @@ function flushStatusFavoriteQueue_() {
         })
             .withFailureHandler(function (err) {
             var request = statusFavoriteInFlightRequest;
-            var requestResponseId = String(request && request.responseId || '').trim();
-            if (requestResponseId) {
-                removeStatusFavoriteQueueEntry_(requestResponseId);
-                delete statusFavoriteOverrideMap[requestResponseId];
-                patchStatusFavoriteState_(requestResponseId, getStatusFavoriteConfirmed_(requestResponseId) === true, { skipReorder: true });
-                setStatusFavoriteBusy_(requestResponseId, false);
-                scheduleStatusFavoriteReorder_();
-            }
-            statusFavoriteInFlightRequest = null;
-            showToast(formatTeacherRpcError_(err, 'お気に入り更新に失敗しました', 'お気に入り'), { tone: 'error', duration: 5200 });
-            flushStatusFavoriteQueue_();
+            failStatusFavoriteRequest_(request, formatTeacherRpcError_(err, 'お気に入り更新に失敗しました', 'お気に入り'));
         })
             .setTeacherResponseFavorite(responseId, override === true, {
             lessonId: String(latestStatusMeta && latestStatusMeta.lessonId || '').trim(),
@@ -652,18 +778,18 @@ function areAllStatusFieldsSelected_() {
 }
 function ensureStatusSelection_(lessonChanged) {
     latestStatusFieldOptions = buildStatusFieldOptions_(latestStatusMeta, latestStatusRows);
-    latestStatusViewRows = buildStatusViewRows_(latestStatusRows, latestStatusFieldOptions);
-    sortStatusViewRowsByFavorite_();
     if (lessonChanged) {
         statusModalStudentKey = '';
     }
     if (!latestStatusFieldOptions.length) {
         selectedStatusFieldKeys = [];
+        rebuildStatusViewRows_();
         return;
     }
     var availableKeys = latestStatusFieldOptions.map(function (field) { return String(field && field.key || ''); });
     var filtered = getStatusFieldKeysFromSelection_(availableKeys);
     selectedStatusFieldKeys = filtered.length ? filtered : [availableKeys[0]];
+    rebuildStatusViewRows_();
 }
 function getStatusFieldKeysFromSelection_(availableKeys) {
     return getSelectedStatusFieldKeys_().filter(function (fieldKey) { return availableKeys.indexOf(fieldKey) >= 0; });
@@ -700,8 +826,8 @@ function renderStatus(d) {
     document.getElementById('statSubmitted').textContent = st.filter(function (s) { return s.submitted; }).length;
     document.getElementById('statAI').textContent = aiReturnedCount;
     syncTeacherFeedbackControls(st, draftCount);
-    renderStatusLessonSummary_();
     renderStatusFieldTabs_();
+    renderStatusSortControls_();
     renderStatusCardGrid_();
     renderStatusFeedbackTable_();
     syncStatusCardModal_();
@@ -711,23 +837,6 @@ function renderStatus(d) {
     else {
         restoreStatusViewportScroll_(scrollYBefore);
     }
-}
-function renderStatusLessonSummary_() {
-    var el = document.getElementById('statusLessonSummary');
-    if (!el)
-        return;
-    var boxes = [];
-    if (String(latestStatusMeta && latestStatusMeta.unitName || '').trim()) {
-        boxes.push("<div class=\"status-lesson-box primary\"><div class=\"status-lesson-k\">\u6388\u696D</div><div class=\"status-lesson-v\">".concat(esc(String(latestStatusMeta.unitName || '')), "</div></div>"));
-    }
-    if (String(latestStatusMeta && latestStatusMeta.subject || '').trim()) {
-        boxes.push("<div class=\"status-lesson-box\"><div class=\"status-lesson-k\">\u6559\u79D1</div><div class=\"status-lesson-v\">".concat(esc(String(latestStatusMeta.subject || '')), "</div></div>"));
-    }
-    if (Number(latestStatusMeta && latestStatusMeta.period || 0) > 0) {
-        boxes.push("<div class=\"status-lesson-box\"><div class=\"status-lesson-k\">\u6642\u9593\u76EE</div><div class=\"status-lesson-v\">\u7B2C".concat(Number(latestStatusMeta.period || 0), "\u6642</div></div>"));
-    }
-    el.className = 'status-lesson-summary';
-    el.innerHTML = boxes.join('');
 }
 function renderStatusFieldTabs_() {
     var el = document.getElementById('statusFieldTabs');
@@ -756,7 +865,7 @@ function renderStatusCardGrid_() {
     if (!el)
         return;
     var density = getStatusCardDensityConfig_(statusCardColumnCount);
-    if (!latestStatusRows.length) {
+    if (!latestStatusViewRows.length) {
         el.className = "status-card-grid cols-".concat(statusCardColumnCount);
         el.style.setProperty('--status-card-columns', String(statusCardColumnCount));
         el.style.setProperty('--status-card-min-height', "".concat(density.minHeight, "px"));
@@ -818,7 +927,10 @@ function renderStatusFeedbackTable_() {
         body.innerHTML = '<tr><td colspan="2" style="text-align:center;padding:18px;color:#78909C;">授業を開始すると、ここに児童の記録とフィードバックが表示されます。</td></tr>';
         return;
     }
-    body.innerHTML = latestStatusRows.map(function (s) { return "\n    <tr>\n      <td data-label=\"\u5150\u7AE5 / \u63D0\u51FA\u5185\u5BB9\" class=\"status-student-cell\">".concat(renderStatusStudentCell(s), "</td>\n      <td data-label=\"\u30D5\u30A3\u30FC\u30C9\u30D0\u30C3\u30AF\" class=\"status-comment-cell\">").concat(renderStatusComment(s), "</td>\n    </tr>"); }).join('');
+    body.innerHTML = latestStatusViewRows.map(function (row) {
+        var s = row && row.student || null;
+        return "\n    <tr class=\"status-feedback-row\" data-response-id=\"".concat(escAttr(String(s && s.responseId || '')), "\">\n      <td data-label=\"\u5150\u7AE5 / \u63D0\u51FA\u5185\u5BB9\" class=\"status-student-cell\">").concat(renderStatusStudentCell(s), "</td>\n      <td data-label=\"\u30D5\u30A3\u30FC\u30C9\u30D0\u30C3\u30AF\" class=\"status-comment-cell\">").concat(renderStatusComment(s), "</td>\n    </tr>");
+    }).join('');
 }
 function getStatusStudentKey_(student) {
     var responseId = String(student && student.responseId || '').trim();
@@ -845,9 +957,7 @@ function toggleStatusField(fieldKey) {
     selectedStatusFieldKeys = exists
         ? selectedKeys.filter(function (key) { return key !== nextKey; })
         : selectedKeys.concat([nextKey]);
-    renderStatusFieldTabs_();
-    renderStatusCardGrid_();
-    syncStatusCardModal_();
+    refreshStatusSortedUi_(false);
     restoreStatusViewportScroll_(scrollYBefore);
 }
 function toggleAllStatusFields() {
@@ -860,9 +970,7 @@ function toggleAllStatusFields() {
     else {
         selectedStatusFieldKeys = latestStatusFieldOptions.map(function (field) { return String(field && field.key || ''); });
     }
-    renderStatusFieldTabs_();
-    renderStatusCardGrid_();
-    syncStatusCardModal_();
+    refreshStatusSortedUi_(false);
     restoreStatusViewportScroll_(scrollYBefore);
 }
 function getStatusReviewHintLabels_(entry) {
@@ -1087,7 +1195,7 @@ function toggleStatusFavorite(event, responseId) {
     var student = findStatusStudentByResponseId_(normalized);
     if (!normalized || !student)
         return;
-    patchStatusFavoriteState_(normalized, !getStatusEffectiveFavorite_(student), { skipReorder: false });
+    patchStatusFavoriteState_(normalized, !getStatusEffectiveFavorite_(student), { skipReorder: true });
     setStatusFavoriteBusy_(normalized, true);
     removeStatusFavoriteQueueEntry_(normalized);
     statusFavoriteQueueOrder.push(normalized);
@@ -1154,6 +1262,37 @@ function syncStatusCardModalHeader_(student) {
         refreshStatusFavoriteButtons_(responseId);
     }
 }
+function findStatusFeedbackRow_(responseId) {
+    var normalized = String(responseId || '').trim();
+    if (!normalized)
+        return null;
+    return document.querySelector(".status-feedback-row[data-response-id=\"".concat(escAttr(normalized), "\"]"));
+}
+function focusStatusFeedbackRow_(responseId) {
+    var normalized = String(responseId || '').trim();
+    if (!normalized)
+        return;
+    Array.prototype.forEach.call(document.querySelectorAll('.status-feedback-row.is-target'), function (row) { return row.classList.remove('is-target'); });
+    var row = findStatusFeedbackRow_(normalized);
+    if (!row)
+        return;
+    row.classList.add('is-target');
+    if (typeof row.scrollIntoView === 'function')
+        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    window.setTimeout(function () {
+        var field = row.querySelector('.status-draft-textarea, .status-draft-rank');
+        if (field && typeof field.focus === 'function')
+            field.focus({ preventScroll: true });
+    }, 120);
+}
+function openStatusFeedbackFromModal() {
+    var row = findStatusViewRowByKey_(statusModalStudentKey);
+    var responseId = String(row && row.student && row.student.responseId || '').trim();
+    closeStatusCardModal();
+    switchStatusViewTab('feedback');
+    if (responseId)
+        window.setTimeout(function () { return focusStatusFeedbackRow_(responseId); }, 80);
+}
 function syncStatusCardModal_() {
     var bg = document.getElementById('statusCardModalBg');
     if (!bg)
@@ -1171,7 +1310,7 @@ function syncStatusCardModal_() {
     var student = row.student || {};
     var index = findStatusViewRowIndexByKey_(statusModalStudentKey);
     var bodyEl = document.getElementById('statusCardModalBody');
-    var feedbackEl = document.getElementById('statusCardModalFeedback');
+    var feedbackBtn = document.getElementById('statusFeedbackJumpBtn');
     var prevBtn = document.getElementById('statusCardModalPrevBtn');
     var nextBtn = document.getElementById('statusCardModalNextBtn');
     syncStatusCardModalHeader_(student);
@@ -1179,10 +1318,8 @@ function syncStatusCardModal_() {
         bodyEl.innerHTML = buildStatusContentHtml_(row, fields, { mode: 'modal' }).html;
         bodyEl.scrollTop = 0;
     }
-    if (feedbackEl) {
-        feedbackEl.innerHTML = renderTeacherDraftEditor(student, String(student.draftComment || '').trim(), String(student.draftRank || '').trim());
-        feedbackEl.scrollTop = 0;
-    }
+    if (feedbackBtn)
+        feedbackBtn.disabled = !String(student && student.responseId || '').trim();
     if (prevBtn)
         prevBtn.disabled = index <= 0;
     if (nextBtn)
@@ -1228,7 +1365,7 @@ function bindStatusCardEvents_() {
     document.addEventListener('change', function (event) {
         var target = event && event.target;
         var targetId = String(target && target.id || '').trim();
-        if (targetId !== 'statusCardSort' && targetId !== 'statusSort' && targetId !== 'statusOrder')
+        if (targetId !== 'statusSortSelect')
             return;
         if (!isStatusFavoriteAutoSortEnabled_()) {
             cancelStatusFavoriteReorder_();
@@ -1310,12 +1447,10 @@ function clearRenderedStatus_() {
         aiEl.textContent = '0';
     syncTeacherFeedbackControls([], 0);
     renderStatusPerfDebug_();
-    var lessonSummary = document.getElementById('statusLessonSummary');
-    if (lessonSummary)
-        lessonSummary.innerHTML = '';
     var fieldTabs = document.getElementById('statusFieldTabs');
     if (fieldTabs)
         fieldTabs.innerHTML = '';
+    renderStatusSortControls_();
     var cardGrid = document.getElementById('statusCardGrid');
     if (cardGrid) {
         cardGrid.className = "status-card-grid cols-".concat(statusCardColumnCount);
