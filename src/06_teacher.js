@@ -1458,9 +1458,11 @@ function buildLessonStatus_(unitId, period) {
       writtenCount: entries.length,
       responseId: response?.responseId || '',
       studentId: response?.studentId || '',
+      lessonId: response?.lessonId || '',
       rank: response?.rank || '',
       medal: response?.medal || '',
       medalColor: getMedalColor_(response?.medal || ''),
+      isFavorite: response?.isFavorite === true,
       comment: response?.comment || '',
       draftComment: draftCleared ? '' : (draft?.draftComment || response?.comment || ''),
       draftRank: draftCleared ? '' : (draft?.draftRank || response?.rank || ''),
@@ -1816,6 +1818,112 @@ function saveTeacherFeedbackDraftsBulk(items) {
   };
 }
 
+function readTeacherFavoriteMutationActor_() {
+  const spreadsheet = getTenantSpreadsheet_();
+  const setupConfig = loadTemplateSetupConfig_(spreadsheet);
+  const configuredTeacherName = String(setupConfig.teacherName || getTeacherName_() || '').trim();
+  const configuredTeacherEmail = String(setupConfig.teacherEmail || '').trim().toLowerCase();
+  const sessionEmail = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
+  if (!String(getTenantId_() || '').trim()) {
+    throw new Error('tenant が未設定です。');
+  }
+  if (!configuredTeacherName && !configuredTeacherEmail) {
+    throw new Error('教師設定が未完了です。');
+  }
+  if (configuredTeacherEmail && sessionEmail && configuredTeacherEmail !== sessionEmail) {
+    throw new Error('教師権限がありません。');
+  }
+  return {
+    teacherName: configuredTeacherName,
+    teacherEmail: configuredTeacherEmail,
+    sessionEmail,
+  };
+}
+
+function resolveTeacherFavoriteTarget_(responseId, options) {
+  const normalizedResponseId = String(responseId || '').trim();
+  if (!normalizedResponseId) {
+    throw new Error('responseId が不正です。');
+  }
+  const opts = options && typeof options === 'object' ? options : {};
+  const response = getResponseRecordByResponseId_(normalizedResponseId);
+  if (!response || String(response.responseId || '').trim() !== normalizedResponseId) {
+    throw new Error('対象の提出が見つかりません。');
+  }
+  const lesson = getLessonRecordById_(response.lessonId);
+  if (!lesson || String(lesson.lessonId || '').trim() !== String(response.lessonId || '').trim()) {
+    throw new Error('response と lesson の対応が不正です。');
+  }
+  const expectedLessonId = String(opts.lessonId || '').trim();
+  if (expectedLessonId && expectedLessonId !== String(lesson.lessonId || '').trim()) {
+    throw new Error('別授業の responseId は更新できません。');
+  }
+  const expectedUnitId = String(opts.unitId || '').trim();
+  if (expectedUnitId && expectedUnitId !== String(lesson.unitId || '').trim()) {
+    throw new Error('lesson と unit の対応が不正です。');
+  }
+  const expectedPeriod = Number(opts.period || 0);
+  if (expectedPeriod > 0 && expectedPeriod !== Number(lesson.period || 0)) {
+    throw new Error('lesson と period の対応が不正です。');
+  }
+  if (!String(response.studentId || '').trim() || !String(response.studentNumber || '').trim()) {
+    throw new Error('response と児童情報の対応が不正です。');
+  }
+  const rosterExists = getRosterEntries_(true).some(student => {
+    return String(student && student.number || '').trim() === String(response.studentNumber || '').trim();
+  });
+  if (!rosterExists) {
+    throw new Error('response の児童が授業データに存在しません。');
+  }
+  const existingRow = findResponseSheetRowEntryByResponseId_(normalizedResponseId);
+  if (!existingRow || Number(existingRow.rowNumber || 0) < 2) {
+    throw new Error('存在しない responseId は更新できません。');
+  }
+  return {
+    response,
+    lesson,
+    existingRow,
+  };
+}
+
+function setTeacherResponseFavorite(responseId, isFavorite, options) {
+  readTeacherFavoriteMutationActor_();
+  const target = resolveTeacherFavoriteTarget_(responseId, options);
+  const nextFavorite = isFavorite === true;
+  const existing = target.response || {};
+  if (existing.isFavorite === nextFavorite) {
+    return {
+      ok: true,
+      responseId: String(existing.responseId || ''),
+      lessonId: String(existing.lessonId || ''),
+      isFavorite: nextFavorite,
+    };
+  }
+  const next = Object.assign({}, existing, {
+    isFavorite: nextFavorite,
+    updatedAt: nowIso_(),
+  });
+  const row = buildResponseSheetRowValues_(next);
+  mirrorResponseRowsWithAudit_(
+    [row],
+    'response_teacher_favorite_update',
+    'master_mirror_failed_teacher_favorite_update',
+    'teacher'
+  );
+  writeResponseSheetRowEntryUpdates_([{
+    rowNumber: target.existingRow.rowNumber,
+    values: row,
+  }], null, null, null, {
+    updateLessonLiveState: true,
+  });
+  return {
+    ok: true,
+    responseId: String(existing.responseId || ''),
+    lessonId: String(existing.lessonId || ''),
+    isFavorite: nextFavorite,
+  };
+}
+
 function saveTeacherFeedbackMedal(responseId, medal) {
   const existing = getResponseRecordByResponseId_(responseId);
   if (!existing) return { ok:false, error:'対象の提出が見つかりません。' };
@@ -1834,7 +1942,12 @@ function saveTeacherFeedbackMedal(responseId, medal) {
   );
   const existingRow = findResponseSheetRowEntryByResponseId_(responseId);
   if (existingRow) {
-    upsertResponseRow_(row, existingRow);
+    writeResponseSheetRowEntryUpdates_([{
+      rowNumber: existingRow.rowNumber,
+      values: row,
+    }], null, null, null, {
+      updateLessonLiveState: true,
+    });
   }
   return {
     ok: true,

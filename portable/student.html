@@ -439,7 +439,6 @@ textarea.f{min-height:70px;}
   </div>
 </div>
 
-<div id="studentApiDebug" class="student-api-debug">Pages client-20260704-1035 / API waiting</div>
 <div id="toast"></div>
 
 <script>
@@ -514,6 +513,13 @@ const STUDENT_CLASS_SNAPSHOT_CACHE_KEY = 'furikaeri:studentClassSnapshot';
 let studentClassSnapshotPreloadBusy = false;
 let studentClassSnapshotPreloadScheduled = false;
 const STUDENT_CLIENT_BUILD = 'client-20260704-1035';
+const studentDiagnosticsEnabled = (() => {
+  try{
+    return new URLSearchParams(window.location.search || '').get('diagnostics') === '1';
+  }catch(_err){
+    return false;
+  }
+})();
 const studentClientPerfState = {
   pageStartedAt:(typeof performance!=='undefined' && performance && typeof performance.now==='function') ? performance.now() : Date.now(),
   initCalls:0,
@@ -526,6 +532,10 @@ const studentDebugFooterState = {
   apiText:'API waiting',
   clientText:'CLIENT waiting',
   isError:false,
+};
+const studentSessionRecoveryState = {
+  attemptedKey:'',
+  inFlight:false,
 };
 
 function studentNowMs_(){
@@ -1043,8 +1053,20 @@ function logStudentApiTiming_(label,payload){
   console.info('[student-api]', label, timing);
 }
 
+function ensureStudentDebugFooter_(){
+  if(!studentDiagnosticsEnabled) return null;
+  let el=document.getElementById('studentApiDebug');
+  if(el) return el;
+  el=document.createElement('div');
+  el.id='studentApiDebug';
+  el.className='student-api-debug';
+  el.textContent=`Pages ${STUDENT_CLIENT_BUILD}\n${studentDebugFooterState.apiText}\n${studentDebugFooterState.clientText}`;
+  document.body.appendChild(el);
+  return el;
+}
+
 function updateStudentDebugFooter_(){
-  const el=document.getElementById('studentApiDebug');
+  const el=ensureStudentDebugFooter_();
   if(!el) return;
   el.textContent=`Pages ${STUDENT_CLIENT_BUILD}\n${studentDebugFooterState.apiText}\n${studentDebugFooterState.clientText}`;
   el.classList.toggle('error', Boolean(studentDebugFooterState.isError));
@@ -1074,6 +1096,102 @@ function logStudentApiFailure_(label, err){
   if(typeof console!=='undefined' && typeof console.warn==='function'){
     console.warn('[student-api]', label, message || 'failed');
   }
+}
+
+updateStudentDebugFooter_();
+
+function isStudentSessionError_(error){
+  const message=String(error && error.message ? error.message : (error || '')).trim();
+  return /student_session_required|student_session_mismatch|student_session_expired/i.test(message);
+}
+
+function clearStudentSessionRecoveryState_(options){
+  const opts=options||{};
+  if(opts.keepAttemptedKey===true){
+    studentSessionRecoveryState.inFlight=false;
+    return;
+  }
+  studentSessionRecoveryState.attemptedKey='';
+  studentSessionRecoveryState.inFlight=false;
+}
+
+function getStudentSessionRecoveryKey_(){
+  return [String(myNum||''), String(myLessonId||'').trim(), Number(myActiveRevision||0)].join('@');
+}
+
+function resetStudentSessionForReentry_(message){
+  stopPolling();
+  clearInterval(autoTimer);
+  initBusy=false;
+  pollBusy=false;
+  submitInFlight=false;
+  autoSaveInFlight=false;
+  timelineRefreshPending=false;
+  studentActiveReloading=false;
+  studentStateReady=false;
+  currentStudentInitRequestId+=1;
+  currentTimelineRequestId+=1;
+  myNum=null;
+  myLessonId='';
+  myActiveRevision=0;
+  currentStudentName='';
+  currentStudentCustoms=[];
+  currentStudentStateKey='';
+  myUnitId=null;
+  myPeriod=null;
+  studentSessionToken='';
+  lastTimelinePayloadSignature='';
+  submitted=false;
+  clearStudentSessionRecoveryState_();
+  forgetRememberedStudent_();
+  const submitNote=document.getElementById('submitNote');
+  if(submitNote) submitNote.textContent='';
+  document.querySelectorAll('.num-btn').forEach(btn=>btn.disabled=false);
+  document.getElementById('changeStudentBtn').style.display='none';
+  showScreen('screen-select');
+  showToast(message||'もういちど番号をえらんで入りなおしてね。');
+}
+
+function recoverStudentSessionOnce_(label){
+  const recoveryKey=getStudentSessionRecoveryKey_();
+  if(!String(myNum||'').trim() || !String(myLessonId||'').trim() || Number(myActiveRevision||0)<=0){
+    resetStudentSessionForReentry_('もういちど番号をえらんで入りなおしてね。');
+    return;
+  }
+  if(studentSessionRecoveryState.inFlight || studentSessionRecoveryState.attemptedKey===recoveryKey){
+    resetStudentSessionForReentry_('授業がかわったので、もういちど番号をえらんで入りなおしてね。');
+    return;
+  }
+  studentSessionRecoveryState.attemptedKey=recoveryKey;
+  studentSessionRecoveryState.inFlight=true;
+  stopPolling();
+  pollBusy=false;
+  timelineRefreshPending=false;
+  studentSessionToken='';
+  const submitNote=document.getElementById('submitNote');
+  if(submitNote) submitNote.textContent='接続を更新しています…';
+  google.script.run
+    .withSuccessHandler(d=>{
+      clearStudentSessionRecoveryState_({ keepAttemptedKey:true });
+      if(!(d && d.studentSessionToken)){
+        resetStudentSessionForReentry_('接続を更新できなかったので、もういちど番号をえらんで入りなおしてね。');
+        return;
+      }
+      loadMain(d);
+      showToast('接続を更新しました');
+    })
+    .withFailureHandler(err=>{
+      logStudentApiFailure_(`${label}:reinit`, err);
+      resetStudentSessionForReentry_('接続を更新できなかったので、もういちど番号をえらんで入りなおしてね。');
+    })
+    .studentInit(myNum,0);
+}
+
+function handleStudentSessionFailure_(label, error){
+  if(!isStudentSessionError_(error)) return false;
+  logStudentApiFailure_(label, error);
+  recoverStudentSessionOnce_(label);
+  return true;
 }
 
 function getInitialStudentOptions_(){
@@ -1346,8 +1464,8 @@ function selectNumber(num, options){
   myNum=num;
   setNumberSelectionBusy_(num,true);
   markStudentStartIndicatorShown_(perfSession);
+  clearStudentSessionRecoveryState_();
   if(opts.remember!==false) rememberStudentNumber_(num);
-  showCachedStudentLanding_(findRecentStudentStateCache_(num));
   google.script.run
     .withSuccessHandler(d=>{
       if(requestId!==currentStudentInitRequestId) return;
@@ -1461,9 +1579,14 @@ function loadMain(d){
   stopPolling();
   pollBusy=false;
   timelineRefreshPending=false;
+  if(getStudentSessionRecoveryKey_()!==studentSessionRecoveryState.attemptedKey){
+    clearStudentSessionRecoveryState_();
+  }else{
+    studentSessionRecoveryState.inFlight=false;
+  }
   const identity=normalizeStudentIdentity_(d);
   rememberStudentNumber_(identity.num);
-  studentSessionToken=String(d && d.studentSessionToken || studentSessionToken || '').trim();
+  studentSessionToken=String((d && Object.prototype.hasOwnProperty.call(d,'studentSessionToken')) ? (d.studentSessionToken || '') : '').trim();
   myLessonId = String(d && d.lessonId || '').trim();
   myActiveRevision = Number(d && d.activeRevision || 0);
   myUnitId  = d.unit?.id   || null;
@@ -1580,6 +1703,7 @@ function loadStudentState(options){
     .withFailureHandler(err=>{
       if(expectedRequestId!==currentStudentInitRequestId
         || !isCurrentStudentContext_(expectedStudentNumber, expectedLessonId, expectedActiveRevision)) return;
+      if(handleStudentSessionFailure_('studentLoadState', err)) return;
       logStudentApiFailure_('studentLoadState', err);
       studentStateReady=true;
       if(submitted){
@@ -1649,6 +1773,7 @@ function loadPreviousReview(){
     .withFailureHandler(err=>{
       if(expectedRequestId!==currentStudentInitRequestId
         || !isCurrentStudentContext_(expectedStudentNumber, expectedLessonId, expectedActiveRevision)) return;
+      if(handleStudentSessionFailure_('getStudentPreviousReview', err)) return;
       logStudentApiFailure_('getStudentPreviousReview', err);
     })
     .getStudentPreviousReview(myUnitId,myPeriod,myNum,studentSessionToken);
@@ -2108,8 +2233,9 @@ function doSave(silent){
         if(!silent) showToast('✅ ほぞんしたよ！');
       }
     })
-    .withFailureHandler(()=>{
+    .withFailureHandler(err=>{
       autoSaveInFlight=false;
+      if(handleStudentSessionFailure_('autoSave', err)) return;
     })
     .autoSave(myUnitId,myPeriod,myNum,values,studentSessionToken);
 }
@@ -2161,6 +2287,7 @@ function runStudentSubmit_(values, submitOptions, attempt){
       refreshTimeline({ force:true });
     })
     .withFailureHandler(e=>{
+      if(handleStudentSessionFailure_('submitReview', e)) return;
       if(attempt<1 && isRetriableSubmitError_(e)){
         setTimeout(()=>runStudentSubmit_(values, submitOptions, attempt+1), 700);
         return;
@@ -2348,6 +2475,7 @@ function refreshTimeline(options){
     })
     .withFailureHandler(err=>{
       if(requestId!==currentTimelineRequestId || !isCurrentStudentContext_(requestContext.studentNumber, requestContext.lessonId, requestContext.activeRevision)) return;
+      if(handleStudentSessionFailure_('getTimelineSnapshot', err)) return;
       logStudentApiFailure_('getTimelineSnapshot', err);
       logStudentClientPerf_('timeline_error', {
         totalMs:Math.max(0, studentNowMs_()-startedAt),
@@ -2431,6 +2559,8 @@ function handleStudentActiveLessonChange_(payload){
   if(!nextUnitId || nextPeriod<=0){
     studentActiveReloading=true;
     stopPolling();
+    studentSessionToken='';
+    clearStudentSessionRecoveryState_();
     const note=document.getElementById('submitNote');
     if(note) note.textContent='先生が授業を終了しました。画面を更新しています…';
     google.script.run
@@ -2451,6 +2581,8 @@ function handleStudentActiveLessonChange_(payload){
   if(!nextLessonId && String(myUnitId||'')===nextUnitId && Number(myPeriod||0)===nextPeriod) return false;
   studentActiveReloading=true;
   stopPolling();
+  studentSessionToken='';
+  clearStudentSessionRecoveryState_();
   const note=document.getElementById('submitNote');
   if(note) note.textContent='先生が新しい授業を開始しました。画面を更新しています…';
   google.script.run
@@ -2527,8 +2659,9 @@ function loadStudentPastRecords_(options){
         renderStudentPastRecords_(res||{groups:[]});
       }
     })
-    .withFailureHandler(()=>{
+    .withFailureHandler(err=>{
       studentHistoryLoading=false;
+      if(handleStudentSessionFailure_('getStudentPastRecords', err)) return;
       studentHistoryLoaded=!opts.background || activeStudentTab==='history';
       if(!opts.background || activeStudentTab==='history'){
         renderStudentPastRecords_({groups:[]});
@@ -2684,6 +2817,7 @@ function changeStudentNumber_(){
   lastTimelinePayloadSignature='';
   timelineAiWaitCycleCount=0;
   submitted=false;
+  clearStudentSessionRecoveryState_();
   document.querySelectorAll('.num-btn').forEach(btn=>btn.disabled=false);
   forgetRememberedStudent_();
   document.getElementById('changeStudentBtn').style.display='none';
