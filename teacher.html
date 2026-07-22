@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta name="source-commit" content="5970ef0472101724c11cece9506b75f628e69281">
+<meta name="source-commit" content="753d1ea6f9dad3bdc71b27ad3c64ddc4bc2bd46c">
 <script src="./runtime-shim.js?v=3dc7b19e3b"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -7252,6 +7252,9 @@ function savePrompts() {
         persistTeacherPreloadCache_();
         applyPromptData(preloadCache.prompts);
         alert('プロンプトを保存しました！');
+    })
+        .withFailureHandler(function (err) {
+        alert("プロンプトの保存に失敗しました: ".concat((err && err.message) || err || 'unknown_error'));
     })
         .saveGlobalSettings(document.getElementById('pMedal').value, document.getElementById('pComment').value, document.getElementById('pScore').value, document.getElementById('pPortfolio').value, document.getElementById('pUnitSummary').value, document.getElementById('pAssessment').value, document.getElementById('pApiKey').value, document.getElementById('pStudentAiAutoSubmit').checked);
 }
