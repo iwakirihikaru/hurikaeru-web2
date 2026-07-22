@@ -459,6 +459,9 @@ function savePrompts(){
       applyPromptData(preloadCache.prompts);
       alert('プロンプトを保存しました！');
     })
+    .withFailureHandler(err=>{
+      alert(`プロンプトの保存に失敗しました: ${(err && err.message) || err || 'unknown_error'}`);
+    })
     .saveGlobalSettings(
       document.getElementById('pMedal').value,
       document.getElementById('pComment').value,

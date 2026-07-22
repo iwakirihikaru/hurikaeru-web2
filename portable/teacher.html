@@ -7252,6 +7252,9 @@ function savePrompts() {
         applyPromptData(preloadCache.prompts);
         alert('プロンプトを保存しました！');
     })
+        .withFailureHandler(function (err) {
+        alert("プロンプトの保存に失敗しました: ".concat((err && err.message) || err || 'unknown_error'));
+    })
         .saveGlobalSettings(document.getElementById('pMedal').value, document.getElementById('pComment').value, document.getElementById('pScore').value, document.getElementById('pPortfolio').value, document.getElementById('pUnitSummary').value, document.getElementById('pAssessment').value, document.getElementById('pApiKey').value, document.getElementById('pStudentAiAutoSubmit').checked);
 }
 // =====================================

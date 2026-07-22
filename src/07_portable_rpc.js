@@ -42,7 +42,7 @@
   deleteRecentCustomFieldPreset: function(key) { return deleteRecentCustomFieldPreset(key); },
   saveRosterEntries: function(entries) { return saveRosterEntries(entries); },
   updateSubjectDefault: function(subject, fieldDefs) { return updateSubjectDefault(subject, fieldDefs); },
-  saveGlobalSettings: function(valuesByKey) { return saveGlobalSettings(valuesByKey); },
+  saveGlobalSettings: function(medalTop, promptComment, promptScore, promptPortfolio, promptUnitSummary, promptAssessment, apiKey, studentAiAutoSubmitEnabled) { return saveGlobalSettings(medalTop, promptComment, promptScore, promptPortfolio, promptUnitSummary, promptAssessment, apiKey, studentAiAutoSubmitEnabled); },
   setActiveTimelineField: function(fieldKey) { return setActiveTimelineField(fieldKey); },
   teacherStartLesson: function(unitId, period) { return teacherStartLesson(unitId, period); },
   teacherEndLesson: function() { return teacherEndLesson(); },
