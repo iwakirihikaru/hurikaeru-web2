@@ -19,7 +19,7 @@ function beginTeacherFeedbackJob_(lessonId, mode) {
   if (!normalizedLessonId) return { ok:false, error:'授業IDが不正です。' };
   const jobKey = buildTeacherFeedbackJobKey_(normalizedLessonId, mode);
   const token = makeId_('teacherjob');
-  const lock = LockService.getDocumentLock();
+  const lock = LockService.getScriptLock();
   lock.waitLock(5000);
   try {
     const props = PropertiesService.getScriptProperties();
@@ -48,7 +48,7 @@ function endTeacherFeedbackJob_(jobKey, token) {
   const normalizedJobKey = String(jobKey || '').trim();
   const normalizedToken = String(token || '').trim();
   if (!normalizedJobKey || !normalizedToken) return;
-  const lock = LockService.getDocumentLock();
+  const lock = LockService.getScriptLock();
   lock.waitLock(5000);
   try {
     const props = PropertiesService.getScriptProperties();
@@ -1959,7 +1959,12 @@ function saveTeacherFeedbackMedal(responseId, medal) {
   );
   const existingRow = findResponseSheetRowEntryByResponseId_(responseId);
   if (existingRow) {
-    upsertResponseRow_(row, existingRow);
+    writeResponseSheetRowEntryUpdates_([{
+      rowNumber: existingRow.rowNumber,
+      values: row,
+    }], null, null, null, {
+      updateLessonLiveState: true,
+    });
   }
   return {
     ok: true,
@@ -2266,7 +2271,15 @@ function applyTeacherFeedbackDrafts_(lessonId, drafts, options) {
     const lock = LockService.getDocumentLock();
     const mirroredResponseIds = [];
     const responseWriteStartedAt = Date.now();
-    lock.waitLock(LOCK_AI_RESULT_MS);
+    if (!lock.tryLock(250)) {
+      return {
+        ok: false,
+        code: 'busy',
+        retriable: true,
+        reason: 'busy',
+        error: '返却が混み合っています。少し待ってからもう一度お試しください。',
+      };
+    }
     try {
       if (pendingRowUpdates.length) {
         const responseData = getResponseSheetData_();

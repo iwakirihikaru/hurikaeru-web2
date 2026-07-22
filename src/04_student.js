@@ -1,7 +1,10 @@
 // ============================================================
 //  児童向け API
 // ============================================================
-const STUDENT_SESSION_TOKEN_TTL_SEC = 6 * 60 * 60;
+// studentSessionToken is not identity/authentication.
+// It only binds the in-progress student session so the selected number cannot
+// be swapped mid-lesson from the client after entry.
+const STUDENT_SESSION_TOKEN_TTL_SEC = 2 * 60 * 60;
 const STUDENT_SESSION_TOKEN_CACHE_PREFIX = 'student_session_v1:';
 
 function getStudentSessionTokenCache_() {
@@ -12,15 +15,43 @@ function buildStudentSessionTokenCacheKey_(token) {
   return `${STUDENT_SESSION_TOKEN_CACHE_PREFIX}${String(token || '').trim()}`;
 }
 
-function issueStudentSessionToken_(studentNumber) {
+function bytesToHex_(bytes) {
+  return (bytes || []).map(byte => {
+    const normalized = ((Number(byte) || 0) + 256) % 256;
+    return normalized.toString(16).padStart(2, '0');
+  }).join('');
+}
+
+function buildStudentSessionTenantKey_() {
+  const rawTenantId = String(getTenantId_() || 'default').trim() || 'default';
+  const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, rawTenantId);
+  return bytesToHex_(digest).slice(0, 32);
+}
+
+function buildStudentSessionRecord_(studentNumber, lessonId, activeRevision) {
+  const nowMs = Date.now();
+  return {
+    tenantKey: buildStudentSessionTenantKey_(),
+    studentNumber: String(studentNumber || '').trim(),
+    lessonId: String(lessonId || '').trim(),
+    activeRevision: Number(activeRevision || 0),
+    issuedAt: new Date(nowMs).toISOString(),
+    expiresAt: new Date(nowMs + (STUDENT_SESSION_TOKEN_TTL_SEC * 1000)).toISOString(),
+  };
+}
+
+function issueStudentSessionToken_(studentNumber, lessonId, activeRevision) {
   const normalizedStudentNumber = String(studentNumber || '').trim();
-  if (!normalizedStudentNumber) return '';
+  const normalizedLessonId = String(lessonId || '').trim();
+  const normalizedActiveRevision = Number(activeRevision || 0);
+  if (!normalizedStudentNumber || !normalizedLessonId || normalizedActiveRevision <= 0) return '';
   const token = makeId_('student_session');
   try {
-    getStudentSessionTokenCache_().put(buildStudentSessionTokenCacheKey_(token), JSON.stringify({
-      studentNumber: normalizedStudentNumber,
-      issuedAt: nowIso_(),
-    }), STUDENT_SESSION_TOKEN_TTL_SEC);
+    getStudentSessionTokenCache_().put(
+      buildStudentSessionTokenCacheKey_(token),
+      JSON.stringify(buildStudentSessionRecord_(normalizedStudentNumber, normalizedLessonId, normalizedActiveRevision)),
+      STUDENT_SESSION_TOKEN_TTL_SEC
+    );
   } catch (_err) {
     return '';
   }
@@ -39,15 +70,55 @@ function readStudentSessionToken_(token) {
   }
 }
 
-function assertStudentSessionTokenMatches_(token, studentNumber, options) {
+function resolveActiveStudentSessionContext_(units) {
+  const resolvedUnits = Array.isArray(units) ? units : getAllUnits();
+  const active = buildLightweightActiveContext_(resolvedUnits);
+  const activeLesson = active?.unitId && Number(active?.period || 0) > 0
+    ? getLessonRecordByUnitPeriod_(active.unitId, active.period)
+    : null;
+  return {
+    units: resolvedUnits,
+    active,
+    lesson: activeLesson,
+    lessonId: String(activeLesson?.lessonId || '').trim(),
+    activeRevision: Number(active?.activeRevision || 0),
+  };
+}
+
+function resolveExpectedStudentSessionContextForLesson_(lesson, units, activeContext) {
+  const resolvedActiveContext = activeContext && typeof activeContext === 'object'
+    ? activeContext
+    : resolveActiveStudentSessionContext_(units);
+  const resolvedLessonId = String(lesson?.lessonId || '').trim();
+  return {
+    lessonId: resolvedLessonId,
+    activeRevision: resolvedLessonId && resolvedLessonId === String(resolvedActiveContext.lessonId || '').trim()
+      ? Number(resolvedActiveContext.activeRevision || 0)
+      : 0,
+  };
+}
+
+function assertStudentSessionTokenMatches_(token, studentNumber, expectedContext, options) {
+  const normalizedToken = String(token || '').trim();
   const normalizedStudentNumber = String(studentNumber || '').trim();
+  const context = expectedContext && typeof expectedContext === 'object' ? expectedContext : {};
   const opts = options && typeof options === 'object' ? options : {};
-  const session = readStudentSessionToken_(token);
-  if (!session) {
+  if (!normalizedToken) {
     if (opts.allowMissing === true) return null;
     throw new Error('student_session_required');
   }
-  if (String(session.studentNumber || '').trim() !== normalizedStudentNumber) {
+  const session = readStudentSessionToken_(normalizedToken);
+  if (!session) {
+    throw new Error('student_session_mismatch');
+  }
+  const expiresAtMs = Date.parse(String(session.expiresAt || ''));
+  if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
+    throw new Error('student_session_expired');
+  }
+  if (String(session.tenantKey || '').trim() !== buildStudentSessionTenantKey_()
+    || String(session.studentNumber || '').trim() !== normalizedStudentNumber
+    || String(session.lessonId || '').trim() !== String(context.lessonId || '').trim()
+    || Number(session.activeRevision || 0) !== Number(context.activeRevision || 0)) {
     throw new Error('student_session_mismatch');
   }
   return session;
@@ -72,6 +143,8 @@ function buildLightweightActiveContext_(units) {
 // 入口選択後の最初の1画面を成立させる最小データを返す。
 // 背景取得専用データや履歴系はここに寄せない。
 function studentInit(num, periodOverride) {
+  beginExecutionMemoScope_();
+  try {
   const startedAt = Date.now();
   const timing = {};
   let t0 = Date.now();
@@ -121,7 +194,7 @@ function studentInit(num, periodOverride) {
     needPeriodSelect: false,
     lessonId: String(lesson.lessonId || ''),
     activeRevision,
-    studentSessionToken: issueStudentSessionToken_(num),
+    studentSessionToken: issueStudentSessionToken_(num, lesson.lessonId, activeRevision),
     unit: active.unit,
     period,
     teacherSetPeriod: active.period > 0,
@@ -130,6 +203,9 @@ function studentInit(num, periodOverride) {
     studentAiAutoSubmitEnabled: featureFlags.studentAiAutoSubmitEnabled,
     shell,
   }), 'studentInit', startedAt, timing);
+  } finally {
+    endExecutionMemoScope_();
+  }
 }
 
 function buildStudentEntryClassSnapshot_(students, featureFlags, shell) {
@@ -238,9 +314,10 @@ function buildStudentSnapshotState_(row, fields, featureFlags, shell, lessonId, 
 // current lesson に対する児童本人の最新 state 再取得専用。
 // 入口情報や名簿一覧は返さない前提で保つ。
 function studentLoadState(unitId, period, num, studentSessionToken) {
+  beginExecutionMemoScope_();
+  try {
   const startedAt = Date.now();
   const timing = {};
-  assertStudentSessionTokenMatches_(studentSessionToken, num);
   const normalizedPeriod = parseInt(period, 10) || 0;
   let t0 = Date.now();
   const units = getAllUnits();
@@ -248,6 +325,9 @@ function studentLoadState(unitId, period, num, studentSessionToken) {
   timing.unitsMs = Date.now() - t0;
   t0 = Date.now();
   const lesson = getOrCreateLesson_(unitId, normalizedPeriod);
+  const activeContext = resolveActiveStudentSessionContext_(units);
+  const expectedContext = resolveExpectedStudentSessionContextForLesson_(lesson, units, activeContext);
+  assertStudentSessionTokenMatches_(studentSessionToken, num, expectedContext);
   const enabledFields = getEnabledFields_({ fields: getLessonFields_(lesson, unit) });
   timing.lessonFieldsMs = Date.now() - t0;
   t0 = Date.now();
@@ -256,19 +336,17 @@ function studentLoadState(unitId, period, num, studentSessionToken) {
   const studentName = rosterStudent?.name || '';
   timing.rosterMs = Date.now() - t0;
   t0 = Date.now();
-  const active = buildLightweightActiveContext_(units);
-  const activeRevision = String(active?.unitId || '') === String(lesson.unitId || '')
-    && Number(active?.period || 0) === Number(lesson.period || 0)
-    ? Number(active.activeRevision || 0)
-    : 0;
   const payload = buildStudentState_(unit, normalizedPeriod, num, studentName, enabledFields, {
     includePrevReview: false,
-    activeRevision,
+    activeRevision: expectedContext.activeRevision,
     featureFlags: getAiFeatureFlags_(),
     shell: getLiveTenantMaintenanceState(),
   });
   timing.stateMs = Date.now() - t0;
   return attachStudentApiTiming_(payload, 'studentLoadState', startedAt, timing);
+  } finally {
+    endExecutionMemoScope_();
+  }
 }
 
 function getEnabledFields_(unit) {
@@ -311,11 +389,17 @@ function buildTimelinePrivateState_(studentNumber, fields, responseMap, lessonId
   };
 }
 
-function buildTimelineSnapshotPayload_(snapshot, active, teacherTimelineFieldKey, shell, studentNumber) {
+function buildTimelineSnapshotPayload_(snapshot, active, teacherTimelineFieldKey, shell, studentNumber, featureFlags) {
   const safeSnapshot = snapshot && typeof snapshot === 'object' ? snapshot : {};
   const fields = Array.isArray(safeSnapshot.fields) ? safeSnapshot.fields : [];
   const roster = Array.isArray(safeSnapshot.roster) ? safeSnapshot.roster : [];
   const responseMap = safeSnapshot.responseMapByStudentNumber || {};
+  const resolvedFeatureFlags = featureFlags && typeof featureFlags === 'object'
+    ? featureFlags
+    : {
+        studentAiEnabled: isStudentAiEnabled_(),
+        studentAiAutoSubmitEnabled: isStudentAiAutoSubmitEnabled_(),
+      };
   const rows = roster.map(student => buildTimelineRowDto_(student, fields, responseMap));
   const lessonId = String(safeSnapshot.lesson?.lessonId || '');
   const activeLessonId = String(active?.lesson?.lessonId || '');
@@ -327,8 +411,8 @@ function buildTimelineSnapshotPayload_(snapshot, active, teacherTimelineFieldKey
     responseReadMeta: safeSnapshot.responseReadMeta || null,
     teacherTimelineFieldKey: teacherTimelineFieldKey || '',
     fields: fields.map(field => ({ key: field.key || '', label: field.label || '' })),
-    studentAiEnabled: isStudentAiEnabled_(),
-    studentAiAutoSubmitEnabled: isStudentAiAutoSubmitEnabled_(),
+    studentAiEnabled: Boolean(resolvedFeatureFlags.studentAiEnabled),
+    studentAiAutoSubmitEnabled: Boolean(resolvedFeatureFlags.studentAiAutoSubmitEnabled),
     lessonId,
     activeRevision: resolvedActiveRevision,
     active: {
@@ -367,123 +451,207 @@ function getTimeline(unitId, period) {
 }
 
 function getTimelineSnapshot(lessonId, activeRevision, studentNumber, studentSessionToken) {
+  beginExecutionMemoScope_();
+  try {
   const startedAt = Date.now();
   const timing = {};
   const normalizedLessonId = String(lessonId || '').trim();
   const normalizedRevision = Number(activeRevision || 0);
   const normalizedStudentNumber = String(studentNumber || '').trim();
-  assertStudentSessionTokenMatches_(studentSessionToken, normalizedStudentNumber, { allowMissing: !normalizedStudentNumber });
-  let t0 = Date.now();
-  const units = getAllUnits();
-  timing.unitsMs = Date.now() - t0;
+  const sessionValidationStartedAt = Date.now();
+  let t0 = sessionValidationStartedAt;
+  const activeConfig = readGlobalConfig();
+  timing.sessionValidationConfigMs = Date.now() - t0;
+  const activeUnitId = String(parseInt(activeConfig.active_unit, 10) || 0);
+  const activePeriod = parseInt(activeConfig.active_period, 10) || 0;
+  const activeRevisionNumber = parseInt(activeConfig.active_revision, 10) || 0;
+  const activeTimelineFieldKey = String(activeConfig.active_timeline_field || '').trim();
   t0 = Date.now();
-  const active = buildLightweightActiveContext_(units);
-  timing.activeMs = Date.now() - t0;
-  const activeLesson = active?.unitId && Number(active?.period || 0) > 0
-    ? getLessonRecordByUnitPeriod_(active.unitId, active.period)
+  const activeLesson = activeUnitId && activePeriod > 0
+    ? getLessonRecordByUnitPeriod_(activeUnitId, activePeriod)
     : null;
+  timing.sessionValidationActiveLessonMs = Date.now() - t0;
   const activeLessonId = String(activeLesson?.lessonId || '').trim();
-  const activeRevisionNumber = Number(active?.activeRevision || 0);
+  t0 = Date.now();
+  assertStudentSessionTokenMatches_(studentSessionToken, normalizedStudentNumber, {
+    lessonId: activeLessonId,
+    activeRevision: activeRevisionNumber,
+  }, { allowMissing: !normalizedStudentNumber });
+  timing.sessionValidationTokenAssertMs = Date.now() - t0;
+  timing.sessionValidationMs = Date.now() - sessionValidationStartedAt;
+  t0 = Date.now();
+  timing.configReadMs = Date.now() - t0;
+  t0 = Date.now();
   const shell = getLiveTenantMaintenanceState();
+  timing.shellMs = Date.now() - t0;
+  t0 = Date.now();
+  const featureFlags = {
+    studentAiEnabled: isStudentAiEnabled_(),
+    studentAiAutoSubmitEnabled: isStudentAiAutoSubmitEnabled_(),
+  };
+  timing.featureFlagsMs = Date.now() - t0;
   if (!normalizedLessonId || !activeLessonId || normalizedLessonId !== activeLessonId || normalizedRevision !== activeRevisionNumber) {
-    return attachStudentApiTiming_({
+    t0 = Date.now();
+    const payload = {
       rows: [],
       myState: null,
       fields: [],
       lessonId: normalizedLessonId,
       activeRevision: normalizedRevision,
       active: {
-        unitId: active && active.unitId ? String(active.unitId) : '',
-        period: Number(active && active.period || 0),
+        unitId: activeUnitId,
+        period: Number(activePeriod || 0),
         lessonId: activeLessonId,
         activeRevision: activeRevisionNumber,
       },
-      teacherTimelineFieldKey: String(active?.timelineFieldKey || ''),
-      studentAiEnabled: isStudentAiEnabled_(),
-      studentAiAutoSubmitEnabled: isStudentAiAutoSubmitEnabled_(),
+      teacherTimelineFieldKey: activeTimelineFieldKey,
+      studentAiEnabled: Boolean(featureFlags.studentAiEnabled),
+      studentAiAutoSubmitEnabled: Boolean(featureFlags.studentAiAutoSubmitEnabled),
       shell,
       serverNow: nowIso_(),
       responseReadMeta: null,
+    };
+    timing.lessonLookupMs = 0;
+    timing.snapshotMs = 0;
+    timing.rowCount = 0;
+    timing.payloadBuildMs = Date.now() - t0;
+    return attachStudentApiTiming_({
+      ...payload,
     }, 'getTimelineSnapshot', startedAt, timing);
   }
   t0 = Date.now();
   const lesson = getLessonRecordById_(normalizedLessonId);
-  timing.lessonMs = Date.now() - t0;
+  timing.lessonLookupMs = Date.now() - t0;
   if (!lesson
     || String(lesson.lessonId || '').trim() !== activeLessonId
-    || String(lesson.unitId || '').trim() !== String(active?.unitId || '').trim()
-    || Number(lesson.period || 0) !== Number(active?.period || 0)) {
-    return attachStudentApiTiming_({
+    || String(lesson.unitId || '').trim() !== activeUnitId
+    || Number(lesson.period || 0) !== Number(activePeriod || 0)) {
+    t0 = Date.now();
+    const payload = {
       rows: [],
       myState: null,
       fields: [],
       lessonId: normalizedLessonId,
       activeRevision: normalizedRevision,
       active: {
-        unitId: active && active.unitId ? String(active.unitId) : '',
-        period: Number(active && active.period || 0),
+        unitId: activeUnitId,
+        period: Number(activePeriod || 0),
         lessonId: activeLessonId,
         activeRevision: activeRevisionNumber,
       },
-      teacherTimelineFieldKey: String(active?.timelineFieldKey || ''),
-      studentAiEnabled: isStudentAiEnabled_(),
-      studentAiAutoSubmitEnabled: isStudentAiAutoSubmitEnabled_(),
+      teacherTimelineFieldKey: activeTimelineFieldKey,
+      studentAiEnabled: Boolean(featureFlags.studentAiEnabled),
+      studentAiAutoSubmitEnabled: Boolean(featureFlags.studentAiAutoSubmitEnabled),
       shell,
       serverNow: nowIso_(),
       responseReadMeta: null,
+    };
+    timing.snapshotMs = 0;
+    timing.rowCount = 0;
+    timing.payloadBuildMs = Date.now() - t0;
+    return attachStudentApiTiming_({
+      ...payload,
     }, 'getTimelineSnapshot', startedAt, timing);
   }
   t0 = Date.now();
-  const snapshot = getLessonLiveStateSnapshot_(lesson.unitId, lesson.period, { createLesson: false, units, requireRows: false })
-    || getLessonRuntimeSnapshot_(lesson.unitId, lesson.period, { createLesson: false })
-    || {
+  let snapshot = getLessonLiveStateSnapshot_(lesson.unitId, lesson.period, {
+    createLesson: false,
+    lesson,
+    units: [],
+    requireRows: false,
+  });
+  if (snapshot
+    && snapshot.performanceMeta
+    && snapshot.performanceMeta.liveStateSnapshot
+    && typeof snapshot.performanceMeta.liveStateSnapshot === 'object') {
+    snapshot.performanceMeta.liveStateSnapshot.fallbackPath = 'live_state';
+  }
+  if (!snapshot) {
+    snapshot = getLessonRuntimeSnapshot_(lesson.unitId, lesson.period, {
+      createLesson: false,
       lesson,
-      unit: units.find(item => String(item.id || '') === String(lesson.unitId || '')) || null,
+      units: [],
+    });
+    if (snapshot) {
+      snapshot.performanceMeta = buildTimelineSnapshotFallbackPerformanceMeta_('runtime_snapshot');
+    }
+  }
+  if (!snapshot) {
+    const fallbackUnit = Array.isArray(lesson.fields) && lesson.fields.length
+      ? null
+      : (getAllUnits().find(item => String(item.id || '') === String(lesson.unitId || '')) || null);
+    snapshot = {
+      lesson,
+      unit: fallbackUnit,
       period: Number(lesson.period || 0),
-      fields: getEnabledFields_({ fields: getLessonFields_(lesson, units.find(item => String(item.id || '') === String(lesson.unitId || '')) || null) }),
+      fields: getEnabledFields_({ fields: getLessonFields_(lesson, fallbackUnit) }),
       roster: getRosterEntries_(),
       responseMapByStudentNumber: {},
       responseReadMeta: null,
+      performanceMeta: buildTimelineSnapshotFallbackPerformanceMeta_('empty_snapshot'),
       serverNow: nowIso_(),
     };
+  }
   timing.snapshotMs = Date.now() - t0;
   t0 = Date.now();
-    const payload = buildTimelineSnapshotPayload_(
-      snapshot,
-      Object.assign({}, active, { lesson: activeLesson }),
-      String(active?.timelineFieldKey || ''),
-      shell,
-      normalizedStudentNumber
+  const payload = buildTimelineSnapshotPayload_(
+    snapshot,
+    {
+      unitId: activeUnitId,
+      period: activePeriod,
+      activeRevision: activeRevisionNumber,
+      timelineFieldKey: activeTimelineFieldKey,
+      lesson: activeLesson,
+    },
+    activeTimelineFieldKey,
+    shell,
+    normalizedStudentNumber,
+    featureFlags
   );
+  logTimelineSnapshotDiagnostics_(snapshot);
   timing.rowCount = Array.isArray(payload.rows) ? payload.rows.length : 0;
   timing.payloadBuildMs = Date.now() - t0;
   return attachStudentApiTiming_(payload, 'getTimelineSnapshot', startedAt, timing);
+  } finally {
+    endExecutionMemoScope_();
+  }
 }
 
 function getStudentPreviousReview(unitId, period, num, studentSessionToken) {
+  beginExecutionMemoScope_();
+  try {
   const startedAt = Date.now();
   const timing = {};
   const normalizedUnitId = String(unitId || '').trim();
   const normalizedPeriod = parseInt(period, 10) || 0;
   const normalizedNum = String(num || '').trim();
-  assertStudentSessionTokenMatches_(studentSessionToken, normalizedNum);
   if (!normalizedUnitId || normalizedPeriod <= 1 || !normalizedNum) {
     return attachStudentApiTiming_({ prevReview: '', previousNextGoal: '' }, 'getStudentPreviousReview', startedAt, timing);
   }
   let t0 = Date.now();
   const units = getAllUnits();
   const unit = units.find(item => String(item.id) === normalizedUnitId) || null;
+  const lesson = getOrCreateLesson_(normalizedUnitId, normalizedPeriod);
+  const activeContext = resolveActiveStudentSessionContext_(units);
+  assertStudentSessionTokenMatches_(
+    studentSessionToken,
+    normalizedNum,
+    resolveExpectedStudentSessionContextForLesson_(lesson, units, activeContext)
+  );
   timing.unitsMs = Date.now() - t0;
   t0 = Date.now();
   const payload = getPreviousStudentLearningContextFromDb_(normalizedUnitId, normalizedPeriod, normalizedNum, unit);
   timing.previousContextMs = Date.now() - t0;
   return attachStudentApiTiming_(payload, 'getStudentPreviousReview', startedAt, timing);
+  } finally {
+    endExecutionMemoScope_();
+  }
 }
 
 function attachStudentApiTiming_(payload, apiName, startedAt, timing) {
+  const wrapperStartedAt = Date.now();
   const result = payload && typeof payload === 'object' ? payload : {};
   const meta = timing && typeof timing === 'object' ? timing : {};
-  meta.totalMs = Date.now() - Number(startedAt || Date.now());
   meta.api = String(apiName || '');
   try {
     const stringifyStartedAt = Date.now();
@@ -494,13 +662,78 @@ function attachStudentApiTiming_(payload, apiName, startedAt, timing) {
     meta.jsonStringifyMs = 0;
     meta.payloadBytes = 0;
   }
+  meta.wrapperMs = Math.max(0, Date.now() - wrapperStartedAt - Number(meta.jsonStringifyMs || 0));
+  meta.totalMs = Date.now() - Number(startedAt || Date.now());
+  const accountedMs = [
+    'sessionValidationMs',
+    'configReadMs',
+    'lessonLookupMs',
+    'shellMs',
+    'featureFlagsMs',
+    'snapshotMs',
+    'payloadBuildMs',
+    'jsonStringifyMs',
+    'wrapperMs',
+  ].reduce((sum, key) => sum + Math.max(0, Number(meta[key] || 0)), 0);
+  meta.unaccountedMs = Math.max(0, meta.totalMs - accountedMs);
   result.timing = meta;
   return result;
 }
 
+function buildTimelineSnapshotFallbackPerformanceMeta_(fallbackPath) {
+  const liveStateSnapshot = {
+    fallbackPath: String(fallbackPath || 'none'),
+    backfillPath: 'none',
+    backfillCount: 0,
+    cacheHit: false,
+    cacheMiss: true,
+    masterApiCalls: 0,
+  };
+  if (isTimelineSnapshotDiagnosticsEnabled_()) {
+    const diagnostics = getExecutionDiagnostics_();
+    liveStateSnapshot.ensureDbSheetsCalls = Number(diagnostics.ensureDbSheetsCalls || 0);
+    liveStateSnapshot.ensureSheetWithHeadersCalls = Number(diagnostics.ensureSheetWithHeadersCalls || 0);
+    liveStateSnapshot.spreadsheetApiApproxCalls = Number(diagnostics.spreadsheetApiApproxCalls || 0);
+  }
+  return {
+    liveStateSnapshot,
+  };
+}
+
+function logTimelineSnapshotDiagnostics_(snapshot) {
+  if (!isTimelineSnapshotDiagnosticsEnabled_()) return;
+  const liveStateMetrics = snapshot
+    && snapshot.performanceMeta
+    && snapshot.performanceMeta.liveStateSnapshot
+    && typeof snapshot.performanceMeta.liveStateSnapshot === 'object'
+    ? snapshot.performanceMeta.liveStateSnapshot
+    : null;
+  if (!liveStateMetrics) return;
+  const executionDiagnostics = getExecutionDiagnostics_();
+  try {
+    console.log('[timeline_snapshot_diag] ' + JSON.stringify({
+      liveStateHit: liveStateMetrics.cacheHit === true,
+      runtimeFallback: liveStateMetrics.fallbackPath === 'runtime_snapshot',
+      finalFallback: liveStateMetrics.fallbackPath === 'empty_snapshot',
+      backfill: {
+        path: String(liveStateMetrics.backfillPath || 'none'),
+        count: Number(liveStateMetrics.backfillCount || 0),
+      },
+      ensureDbSheetsCalls: Number(executionDiagnostics.ensureDbSheetsCalls || 0),
+      ensureSheetWithHeadersCalls: Number(executionDiagnostics.ensureSheetWithHeadersCalls || 0),
+      spreadsheetApiApproxCalls: Number(executionDiagnostics.spreadsheetApiApproxCalls || 0),
+      masterApiCalls: Number(liveStateMetrics.masterApiCalls || 0),
+    }));
+  } catch (_err) {}
+}
+
 function getStudentPastRecords(num, unitId, limit, studentSessionToken) {
   const normalizedNum = String(num || '').trim();
-  assertStudentSessionTokenMatches_(studentSessionToken, normalizedNum);
+  const activeContext = resolveActiveStudentSessionContext_();
+  assertStudentSessionTokenMatches_(studentSessionToken, normalizedNum, {
+    lessonId: activeContext.lessonId,
+    activeRevision: activeContext.activeRevision,
+  });
   if (!normalizedNum) {
     return { ok: false, groups: [], error: '番号がありません。' };
   }
@@ -827,11 +1060,18 @@ function runResponsePostPersistTasks_(saved, options) {
 }
 
 function autoSave(unitId, period, num, customs, studentSessionToken) {
+  beginExecutionMemoScope_();
+  try {
   const startedAt = Date.now();
-  assertStudentSessionTokenMatches_(studentSessionToken, num);
   const units  = getAllUnits();
   const unit   = units.find(u => u.id == unitId);
   const lesson = getOrCreateLesson_(unitId, period);
+  const activeContext = resolveActiveStudentSessionContext_(units);
+  assertStudentSessionTokenMatches_(
+    studentSessionToken,
+    num,
+    resolveExpectedStudentSessionContextForLesson_(lesson, units, activeContext)
+  );
   const fields = getEnabledFields_({ fields: getLessonFields_(lesson, unit) });
   const studentName = findRosterStudentName_(num);
   const existingResponse = getResponseRecordByStudentNumber_(lesson.lessonId, num);
@@ -853,7 +1093,13 @@ function autoSave(unitId, period, num, customs, studentSessionToken) {
       masterMirrorFailed: false,
       liveStateUpdated: false,
     });
-    return { ok: true, skipped: true, reason: 'busy' };
+    return {
+      ok: false,
+      code: 'save_busy',
+      retriable: true,
+      reason: 'busy',
+      error: '保存が混み合っています。数秒後に再試行してください。',
+    };
   }
   const metrics = {
     lockWaitMs: Date.now() - lockRequestedAt,
@@ -897,14 +1143,24 @@ function autoSave(unitId, period, num, customs, studentSessionToken) {
     metrics.rpcTotalMs = Date.now() - startedAt;
     logStudentSavePerf_('autoSave', metrics);
   }
+  } finally {
+    endExecutionMemoScope_();
+  }
 }
 
 function submitReview(unitId, period, num, customs, submitOptions, studentSessionToken) {
+  beginExecutionMemoScope_();
+  try {
   const startedAt = Date.now();
-  assertStudentSessionTokenMatches_(studentSessionToken, num);
   const units  = getAllUnits();
   const unit   = units.find(u => u.id == unitId);
   const lesson = getOrCreateLesson_(unitId, period);
+  const activeContext = resolveActiveStudentSessionContext_(units);
+  assertStudentSessionTokenMatches_(
+    studentSessionToken,
+    num,
+    resolveExpectedStudentSessionContextForLesson_(lesson, units, activeContext)
+  );
   const fields = getEnabledFields_({ fields: getLessonFields_(lesson, unit) });
   const studentName = findRosterStudentName_(num);
   const opts = submitOptions && typeof submitOptions === 'object' ? submitOptions : {};
@@ -1047,6 +1303,9 @@ function submitReview(unitId, period, num, customs, submitOptions, studentSessio
   metrics.rpcTotalMs = Date.now() - startedAt;
   logStudentSavePerf_('submitReview', metrics);
   return result;
+  } finally {
+    endExecutionMemoScope_();
+  }
 }
 
 function queueAiRescueTrigger() {

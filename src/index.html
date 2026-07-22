@@ -407,7 +407,7 @@ textarea.f{min-height:70px;}
           <div id="fieldContainer"></div>
 
           <div class="btn-row">
-            <button type="button" class="btn btn-submit" id="submitBtn" onclick="doSubmit()">🚀 ていしゅつ</button>
+            <button type="button" class="btn btn-save" id="submitBtn" onclick="doManualSave()" style="display:none;">💾 今すぐ保存</button>
           </div>
           <div id="rewriteRow">
             <button type="button" class="btn btn-rewrite" id="studentRewriteBtn" onclick="doRewrite(event)">✏️ かきなおす（さいていしゅつできるよ）</button>
@@ -438,7 +438,6 @@ textarea.f{min-height:70px;}
   </div>
 </div>
 
-<div id="studentApiDebug" class="student-api-debug">Pages client-20260704-1035 / API waiting</div>
 <div id="toast"></div>
 
 <script>
@@ -490,6 +489,12 @@ let studentSessionToken = '';
 let currentStudentInitRequestId = 0;
 let currentTimelineRequestId = 0;
 let autoSaveInFlight = false;
+let autoSaveRetryTimer = null;
+let autoSaveRetryAttempt = 0;
+let autoSaveQueuedAfterInFlight = false;
+let pendingAutoSaveValues = null;
+let pendingAutoSaveSignature = '';
+let lastStudentSaveUiState = '';
 let studentDraftSaveTimer = null;
 let studentDraftDirty = false;
 let lastServerSavedSignature = '';
@@ -513,6 +518,13 @@ const STUDENT_CLASS_SNAPSHOT_CACHE_KEY = 'furikaeri:studentClassSnapshot';
 let studentClassSnapshotPreloadBusy = false;
 let studentClassSnapshotPreloadScheduled = false;
 const STUDENT_CLIENT_BUILD = 'client-20260704-1035';
+const studentDiagnosticsEnabled = (() => {
+  try{
+    return new URLSearchParams(window.location.search || '').get('diagnostics') === '1';
+  }catch(_err){
+    return false;
+  }
+})();
 const studentClientPerfState = {
   pageStartedAt:(typeof performance!=='undefined' && performance && typeof performance.now==='function') ? performance.now() : Date.now(),
   initCalls:0,
@@ -804,6 +816,72 @@ function markStudentSaveSynced_(values){
   studentDraftDirty=false;
 }
 
+function getStudentSaveButtonLabel_(){
+  return getStudentShellLabel_('studentSaveNowLabel','💾 今すぐ保存');
+}
+
+function clearStudentAutoSaveRetry_(){
+  if(autoSaveRetryTimer) clearTimeout(autoSaveRetryTimer);
+  autoSaveRetryTimer=null;
+  autoSaveRetryAttempt=0;
+}
+
+function queueLatestStudentSave_(){
+  const values=getCustomValues();
+  pendingAutoSaveValues=values;
+  pendingAutoSaveSignature=getStudentDraftSignature_(values);
+  studentDraftDirty=pendingAutoSaveSignature!==lastServerSavedSignature;
+}
+
+function scheduleStudentAutoSaveRetry_(){
+  if(submitted||submitInFlight) return;
+  if(!studentDraftDirty){
+    clearStudentAutoSaveRetry_();
+    updateStudentSaveUi_();
+    return;
+  }
+  if(autoSaveRetryTimer) return;
+  autoSaveRetryAttempt+=1;
+  autoSaveRetryTimer=setTimeout(()=>{
+    autoSaveRetryTimer=null;
+    requestStudentSave_({ silent:true, source:'retry' });
+  }, 2000+Math.floor(Math.random()*3000));
+  updateStudentSaveUi_();
+}
+
+function updateStudentSaveUi_(){
+  const btn=document.getElementById('submitBtn');
+  const note=document.getElementById('submitNote');
+  if(!btn||!note||submitted){
+    lastStudentSaveUiState='';
+    return;
+  }
+  if(studentMaintenanceMode){
+    lastStudentSaveUiState='maintenance';
+    return;
+  }
+  const currentSignature=getStudentDraftSignature_(getCustomValues());
+  const hasUnsaved=studentDraftDirty||currentSignature!==lastServerSavedSignature;
+  const isRetrying=Boolean(autoSaveRetryTimer);
+  const isSaving=autoSaveInFlight;
+  const showButton=hasUnsaved||isRetrying||isSaving;
+  const nextState=isSaving?'saving':(isRetrying?'retrying':(hasUnsaved?'dirty':'saved'));
+  btn.textContent=getStudentSaveButtonLabel_();
+  btn.style.display=showButton?'block':'none';
+  btn.disabled=!showButton||isSaving||studentMaintenanceMode;
+  btn.classList.remove('btn-submit');
+  btn.classList.add('btn-save');
+  if(nextState===lastStudentSaveUiState) return;
+  lastStudentSaveUiState=nextState;
+  note.textContent=nextState==='saving'
+    ? '保存中…'
+    : nextState==='retrying'
+      ? '保存できませんでした。再試行しています'
+      : nextState==='dirty'
+        ? '未保存の変更があります'
+        : '保存しました';
+}
+
 function getNextAutoSaveDelay_(){
   return AUTO_SAVE_BASE_MS + Math.floor(Math.random()*AUTO_SAVE_JITTER_MS);
 }
@@ -1036,8 +1114,65 @@ function logStudentApiTiming_(label,payload){
   console.info('[student-api]', label, timing);
 }
 
+function buildTimelineTransportMetrics_(timing){
+  const meta=timing && typeof timing==='object' ? timing : null;
+  if(!meta) return {};
+  const pickElapsedMs=(monoStart, monoEnd, epochStart, epochEnd)=>(
+    monoStart>0 && monoEnd>0
+      ? Math.max(0, monoEnd-monoStart)
+      : (epochStart>0 && epochEnd>0 ? Math.max(0, epochEnd-epochStart) : 0)
+  );
+  const clientRpcStartedMonotonicMs=Number(meta.clientRpcStartedMonotonicMs||0);
+  const clientFetchStartedMonotonicMs=Number(meta.clientFetchStartedMonotonicMs||0);
+  const clientResponseHeadersReceivedMonotonicMs=Number(meta.clientResponseHeadersReceivedMonotonicMs||0);
+  const clientResponseTextReceivedMonotonicMs=Number(meta.clientResponseTextReceivedMonotonicMs||0);
+  const clientJsonParseFinishedMonotonicMs=Number(meta.clientJsonParseFinishedMonotonicMs||0);
+  const clientSuccessHandlerMonotonicMs=Number(meta.clientSuccessHandlerMonotonicMs||0);
+  const clientRpcStartedAtMs=Number(meta.clientRpcStartedAtMs||0);
+  const clientFetchStartedAtMs=Number(meta.clientFetchStartedAtMs||0);
+  const clientResponseHeadersReceivedAtMs=Number(meta.clientResponseHeadersReceivedAtMs||0);
+  const clientResponseTextReceivedAtMs=Number(meta.clientResponseTextReceivedAtMs||0);
+  const clientJsonParseFinishedAtMs=Number(meta.clientJsonParseFinishedAtMs||0);
+  const clientSuccessHandlerAtMs=Number(meta.clientSuccessHandlerAtMs||0);
+  const serverDispatchStartedAtMs=Number(meta.serverDispatchStartedAtMs||0);
+  const serverDispatchFinishedAtMs=Number(meta.serverDispatchFinishedAtMs||0);
+  const metrics={
+    rpcStartToFetchStartMs: pickElapsedMs(clientRpcStartedMonotonicMs, clientFetchStartedMonotonicMs, clientRpcStartedAtMs, clientFetchStartedAtMs),
+    fetchToHeadersMs: pickElapsedMs(clientFetchStartedMonotonicMs, clientResponseHeadersReceivedMonotonicMs, clientFetchStartedAtMs, clientResponseHeadersReceivedAtMs),
+    headersToBodyMs: pickElapsedMs(clientResponseHeadersReceivedMonotonicMs, clientResponseTextReceivedMonotonicMs, clientResponseHeadersReceivedAtMs, clientResponseTextReceivedAtMs),
+    responseBodyToJsonParseMs: pickElapsedMs(clientResponseTextReceivedMonotonicMs, clientJsonParseFinishedMonotonicMs, clientResponseTextReceivedAtMs, clientJsonParseFinishedAtMs),
+    jsonParseToSuccessHandlerMs: pickElapsedMs(clientJsonParseFinishedMonotonicMs, clientSuccessHandlerMonotonicMs, clientJsonParseFinishedAtMs, clientSuccessHandlerAtMs),
+    responseBodyToSuccessHandlerMs: pickElapsedMs(clientResponseTextReceivedMonotonicMs, clientSuccessHandlerMonotonicMs, clientResponseTextReceivedAtMs, clientSuccessHandlerAtMs),
+  };
+  if(clientFetchStartedAtMs>0 && clientResponseTextReceivedAtMs>0 && serverDispatchStartedAtMs>0 && serverDispatchFinishedAtMs>0){
+    const estimatedClockOffsetMs=((serverDispatchStartedAtMs-clientFetchStartedAtMs)+(serverDispatchFinishedAtMs-clientResponseTextReceivedAtMs))/2;
+    metrics.estimatedClockOffsetMs=estimatedClockOffsetMs;
+    if(clientRpcStartedAtMs>0){
+      metrics.estimatedRpcStartToServerStartMs=Math.max(0, serverDispatchStartedAtMs-(clientRpcStartedAtMs+estimatedClockOffsetMs));
+    }
+    metrics.estimatedFetchStartToServerStartMs=Math.max(0, serverDispatchStartedAtMs-(clientFetchStartedAtMs+estimatedClockOffsetMs));
+    metrics.estimatedServerFinishToResponseBodyMs=Math.max(0, (clientResponseTextReceivedAtMs+estimatedClockOffsetMs)-serverDispatchFinishedAtMs);
+    if(clientSuccessHandlerAtMs>0){
+      metrics.estimatedServerFinishToSuccessHandlerMs=Math.max(0, (clientSuccessHandlerAtMs+estimatedClockOffsetMs)-serverDispatchFinishedAtMs);
+    }
+  }
+  return metrics;
+}
+
+function ensureStudentDebugFooter_(){
+  if(!studentDiagnosticsEnabled) return null;
+  let el=document.getElementById('studentApiDebug');
+  if(el) return el;
+  el=document.createElement('div');
+  el.id='studentApiDebug';
+  el.className='student-api-debug';
+  el.textContent=`Pages ${STUDENT_CLIENT_BUILD}\n${studentDebugFooterState.apiText}\n${studentDebugFooterState.clientText}`;
+  document.body.appendChild(el);
+  return el;
+}
+
 function updateStudentDebugFooter_(){
-  const el=document.getElementById('studentApiDebug');
+  const el=ensureStudentDebugFooter_();
   if(!el) return;
   el.textContent=`Pages ${STUDENT_CLIENT_BUILD}\n${studentDebugFooterState.apiText}\n${studentDebugFooterState.clientText}`;
   el.classList.toggle('error', Boolean(studentDebugFooterState.isError));
@@ -1067,6 +1202,57 @@ function logStudentApiFailure_(label, err){
   if(typeof console!=='undefined' && typeof console.warn==='function'){
     console.warn('[student-api]', label, message || 'failed');
   }
+}
+
+updateStudentDebugFooter_();
+
+function isStudentSessionError_(error){
+  const message=String(error && error.message ? error.message : (error || '')).trim();
+  return /student_session_required|student_session_mismatch|student_session_expired/i.test(message);
+}
+
+function resetStudentSessionForReentry_(message){
+  stopPolling();
+  clearInterval(autoTimer);
+  clearStudentAutoSaveRetry_();
+  initBusy=false;
+  pollBusy=false;
+  submitInFlight=false;
+  autoSaveInFlight=false;
+  autoSaveQueuedAfterInFlight=false;
+  pendingAutoSaveValues=null;
+  pendingAutoSaveSignature='';
+  lastStudentSaveUiState='';
+  timelineRefreshPending=false;
+  studentActiveReloading=false;
+  studentStateReady=false;
+  currentStudentInitRequestId+=1;
+  currentTimelineRequestId+=1;
+  myNum=null;
+  myLessonId='';
+  myActiveRevision=0;
+  currentStudentName='';
+  currentStudentCustoms=[];
+  currentStudentStateKey='';
+  myUnitId=null;
+  myPeriod=null;
+  studentSessionToken='';
+  lastTimelinePayloadSignature='';
+  submitted=false;
+  forgetRememberedStudent_();
+  const submitNote=document.getElementById('submitNote');
+  if(submitNote) submitNote.textContent='';
+  document.querySelectorAll('.num-btn').forEach(btn=>btn.disabled=false);
+  document.getElementById('changeStudentBtn').style.display='none';
+  showScreen('screen-select');
+  showToast(message||'もういちど番号をえらんで入りなおしてね。');
+}
+
+function handleStudentSessionFailure_(label, error){
+  if(!isStudentSessionError_(error)) return false;
+  logStudentApiFailure_(label, error);
+  resetStudentSessionForReentry_('授業がかわったので、もういちど番号をえらんで入りなおしてね。');
+  return true;
 }
 
 function getInitialStudentOptions_(){
@@ -1234,7 +1420,7 @@ function applyStudentShellState_(shell){
     if(maintenanceMode){
       submitBtn.textContent=getStudentShellLabel_('studentMaintenanceSubmitLabel', '⏸️ メンテナンス中');
     }else if(!submitInFlight){
-      submitBtn.textContent=getStudentShellLabel_('studentSubmitLabel', '🚀 ていしゅつ');
+      submitBtn.textContent=getStudentSaveButtonLabel_();
     }
   }
   const submitNote=document.getElementById('submitNote');
@@ -1339,7 +1525,6 @@ function selectNumber(num, options){
   setNumberSelectionBusy_(num,true);
   markStudentStartIndicatorShown_(perfSession);
   if(opts.remember!==false) rememberStudentNumber_(num);
-  showCachedStudentLanding_(findRecentStudentStateCache_(num));
   google.script.run
     .withSuccessHandler(d=>{
       if(requestId!==currentStudentInitRequestId) return;
@@ -1455,7 +1640,7 @@ function loadMain(d){
   timelineRefreshPending=false;
   const identity=normalizeStudentIdentity_(d);
   rememberStudentNumber_(identity.num);
-  studentSessionToken=String(d && d.studentSessionToken || studentSessionToken || '').trim();
+  studentSessionToken=String((d && Object.prototype.hasOwnProperty.call(d,'studentSessionToken')) ? (d.studentSessionToken || '') : '').trim();
   myLessonId = String(d && d.lessonId || '').trim();
   myActiveRevision = Number(d && d.activeRevision || 0);
   myUnitId  = d.unit?.id   || null;
@@ -1572,6 +1757,7 @@ function loadStudentState(options){
     .withFailureHandler(err=>{
       if(expectedRequestId!==currentStudentInitRequestId
         || !isCurrentStudentContext_(expectedStudentNumber, expectedLessonId, expectedActiveRevision)) return;
+      if(handleStudentSessionFailure_('studentLoadState', err)) return;
       logStudentApiFailure_('studentLoadState', err);
       studentStateReady=true;
       if(submitted){
@@ -1579,7 +1765,7 @@ function loadStudentState(options){
         document.getElementById('submitNote').textContent='提出結果を確認中です。少し待ってね。';
       }else{
         setFieldInteractivity(true);
-        document.getElementById('submitNote').textContent='';
+        updateStudentSaveUi_();
       }
     })
     .studentLoadState(myUnitId,myPeriod,myNum,studentSessionToken);
@@ -1641,6 +1827,7 @@ function loadPreviousReview(){
     .withFailureHandler(err=>{
       if(expectedRequestId!==currentStudentInitRequestId
         || !isCurrentStudentContext_(expectedStudentNumber, expectedLessonId, expectedActiveRevision)) return;
+      if(handleStudentSessionFailure_('getStudentPreviousReview', err)) return;
       logStudentApiFailure_('getStudentPreviousReview', err);
     })
     .getStudentPreviousReview(myUnitId,myPeriod,myNum,studentSessionToken);
@@ -1723,7 +1910,7 @@ function applyStudentState(d){
   studentStateReady=true;
   setFieldInteractivity(true);
   markStudentInputReady_(d);
-  document.getElementById('submitNote').textContent='';
+  if(!submitted) updateStudentSaveUi_();
   if(d.submitted){
     lockSubmitted();
     scheduleStudentHistoryPreload_();
@@ -1866,7 +2053,13 @@ function bindFieldInputEvents_(){
 function handleFieldValueChanged_(){
   const values=getCustomValues();
   studentDraftDirty=getStudentDraftSignature_(values)!==lastServerSavedSignature;
+  if(autoSaveInFlight){
+    pendingAutoSaveValues=values;
+    pendingAutoSaveSignature=getStudentDraftSignature_(values);
+    autoSaveQueuedAfterInFlight=true;
+  }
   scheduleLocalDraftSave_();
+  updateStudentSaveUi_();
   renderStudentEntryChips();
   if(window._lastTl) renderTl(window._lastTl);
 }
@@ -1878,7 +2071,8 @@ function setFieldInteractivity(enabled){
     el.style.opacity=enabled?'1':'0.55';
   });
   const submitBtn=document.getElementById('submitBtn');
-  if(submitBtn) submitBtn.disabled=!enabled;
+  if(submitBtn) submitBtn.disabled=!enabled||autoSaveInFlight||studentMaintenanceMode;
+  updateStudentSaveUi_();
 }
 
 function isUnderstandingFieldDef(field){
@@ -2078,32 +2272,74 @@ function resetAutoSave(){
       resetAutoSave();
     }, getNextAutoSaveDelay_());
   }
+  updateStudentSaveUi_();
 }
 
-function doSave(silent){
-  if(submitted||submitInFlight||autoSaveInFlight) return;
-  const values=getCustomValues();
-  const saveSignature=getStudentDraftSignature_(values);
-  if(saveSignature===lastServerSavedSignature){
+function requestStudentSave_(options){
+  const opts=options||{};
+  if(submitted||submitInFlight) return;
+  queueLatestStudentSave_();
+  if(pendingAutoSaveSignature===lastServerSavedSignature){
+    pendingAutoSaveValues=null;
+    pendingAutoSaveSignature='';
+    autoSaveQueuedAfterInFlight=false;
+    clearStudentAutoSaveRetry_();
     studentDraftDirty=false;
+    persistStudentDraftLocally_();
+    updateStudentSaveUi_();
     return;
   }
+  if(autoSaveInFlight){
+    autoSaveQueuedAfterInFlight=true;
+    updateStudentSaveUi_();
+    return;
+  }
+  const values=(pendingAutoSaveValues||getCustomValues()).slice();
+  const saveSignature=pendingAutoSaveSignature||getStudentDraftSignature_(values);
+  pendingAutoSaveValues=null;
+  pendingAutoSaveSignature='';
+  autoSaveQueuedAfterInFlight=false;
   autoSaveInFlight=true;
+  updateStudentSaveUi_();
   google.script.run
     .withSuccessHandler(res=>{
       autoSaveInFlight=false;
-      if(res && res.ok && res.reason!=='busy'){
+      if(res && res.ok){
+        clearStudentAutoSaveRetry_();
         if(getStudentDraftSignature_(getCustomValues())===saveSignature){
           markStudentSaveSynced_(values);
+        }else{
+          studentDraftDirty=true;
+          autoSaveQueuedAfterInFlight=true;
         }
         persistStudentDraftLocally_();
-        if(!silent) showToast('✅ ほぞんしたよ！');
+        if(opts.silent!==true) showToast('✅ ほぞんしたよ！');
+        updateStudentSaveUi_();
+        if((studentDraftDirty||autoSaveQueuedAfterInFlight) && !submitted){
+          requestStudentSave_({ silent:true, source:'followup' });
+        }
+        return;
       }
+      queueLatestStudentSave_();
+      scheduleStudentAutoSaveRetry_();
+      updateStudentSaveUi_();
     })
-    .withFailureHandler(()=>{
+    .withFailureHandler(err=>{
       autoSaveInFlight=false;
+      if(handleStudentSessionFailure_('autoSave', err)) return;
+      queueLatestStudentSave_();
+      scheduleStudentAutoSaveRetry_();
+      updateStudentSaveUi_();
     })
     .autoSave(myUnitId,myPeriod,myNum,values,studentSessionToken);
+}
+
+function doSave(silent){
+  requestStudentSave_({ silent:silent!==false, source:'timer' });
+}
+
+function doManualSave(){
+  requestStudentSave_({ silent:false, source:'manual' });
 }
 
 // =====================================
@@ -2153,6 +2389,7 @@ function runStudentSubmit_(values, submitOptions, attempt){
       refreshTimeline({ force:true });
     })
     .withFailureHandler(e=>{
+      if(handleStudentSessionFailure_('submitReview', e)) return;
       if(attempt<1 && isRetriableSubmitError_(e)){
         setTimeout(()=>runStudentSubmit_(values, submitOptions, attempt+1), 700);
         return;
@@ -2182,6 +2419,7 @@ function lockSubmitted(){
   document.querySelectorAll('.understanding-btn,.radio-btn,.choice-btn').forEach(el=>el.style.pointerEvents='none');
   document.querySelectorAll('.hint-tag').forEach(el=>el.style.pointerEvents='none');
   document.getElementById('submitBtn').disabled=true;
+  document.getElementById('submitBtn').style.display='none';
   document.getElementById('rewriteRow').style.display='block';
   document.getElementById('submitNote').textContent=studentAiEnabled&&studentAiAutoSubmitEnabled
     ? '✅ ていしゅつずみ！AIのコメントをしばらくまっててね😊'
@@ -2208,7 +2446,7 @@ function doRewrite(evt){
   document.querySelectorAll('.understanding-btn,.radio-btn,.choice-btn').forEach(el=>el.style.pointerEvents='');
   document.querySelectorAll('.hint-tag').forEach(el=>el.style.pointerEvents='');
   document.getElementById('submitBtn').disabled=false;
-  document.getElementById('submitBtn').textContent='🚀 さいていしゅつ';
+  document.getElementById('submitBtn').textContent=getStudentSaveButtonLabel_();
   document.getElementById('rewriteRow').style.display='none';
   document.getElementById('submitNote').textContent='✏️ かきなおしてもういちどていしゅつしてね！';
   document.getElementById('studentHistoryList').innerHTML='';
@@ -2223,6 +2461,7 @@ function doRewrite(evt){
   syncStudentTabState_();
   showStudentTab('current');
   resetAutoSave();
+  updateStudentSaveUi_();
 }
 
 function unlockAfterSubmitError_(){
@@ -2237,7 +2476,7 @@ function unlockAfterSubmitError_(){
   document.querySelectorAll('.understanding-btn,.radio-btn,.choice-btn').forEach(el=>el.style.pointerEvents='');
   document.querySelectorAll('.hint-tag').forEach(el=>el.style.pointerEvents='');
   document.getElementById('submitBtn').disabled=false;
-  document.getElementById('submitBtn').textContent=getStudentShellLabel_('studentSubmitLabel', '🚀 ていしゅつ');
+  document.getElementById('submitBtn').textContent=getStudentSaveButtonLabel_();
   document.getElementById('rewriteRow').style.display='none';
   document.getElementById('submitNote').textContent='';
   document.getElementById('studentHistoryList').innerHTML='';
@@ -2276,13 +2515,14 @@ function refreshTimeline(options){
   setTimelineRetryVisible_(false,'');
   const cacheKey=[myLessonId||myUnitId,myPeriod,myNum].join('_');
   google.script.run
-    .withSuccessHandler(payload=>{
-      if(!isTimelineResponseCurrent_(requestId, requestContext, payload)) return;
-      logStudentApiTiming_('getTimelineSnapshot', payload);
-      const responseReceivedAt=studentNowMs_();
-      const payloadSignature=getTimelinePayloadSignature_(payload);
-      const shouldPersist=payloadSignature!==lastTimelinePayloadSignature;
-      const storageStartedAt=studentNowMs_();
+      .withSuccessHandler(payload=>{
+        if(!isTimelineResponseCurrent_(requestId, requestContext, payload)) return;
+        logStudentApiTiming_('getTimelineSnapshot', payload);
+        const responseReceivedAt=studentNowMs_();
+        const transportMetrics=buildTimelineTransportMetrics_(payload&&payload.timing);
+        const payloadSignature=getTimelinePayloadSignature_(payload);
+        const shouldPersist=payloadSignature!==lastTimelinePayloadSignature;
+        const storageStartedAt=studentNowMs_();
       if(shouldPersist){
         writeStudentCache_('timeline',cacheKey,Object.assign({}, payload||{}, {
           lessonId:requestContext.lessonId,
@@ -2296,14 +2536,15 @@ function refreshTimeline(options){
         studentNumber:Number(myNum||0),
         rowCount:Array.isArray(payload&&payload.rows)?payload.rows.length:0,
         lessonId:String(payload&&payload.lessonId||''),
-        activeRevision:Number(payload&&payload.activeRevision||0),
-        rpcToSuccessMs:Math.max(0, responseReceivedAt-startedAt),
-        localStorageWriteMs:Math.max(0, storageFinishedAt-storageStartedAt),
-        persisted:Boolean(shouldPersist),
-        timing:payload&&payload.timing||null,
-      });
-      const applyStartedAt=studentNowMs_();
-      const applyResult=applyTimelinePayload(payload, { signature:payloadSignature });
+          activeRevision:Number(payload&&payload.activeRevision||0),
+          rpcToSuccessMs:Math.max(0, responseReceivedAt-startedAt),
+          localStorageWriteMs:Math.max(0, storageFinishedAt-storageStartedAt),
+          persisted:Boolean(shouldPersist),
+          timing:payload&&payload.timing||null,
+          transport:transportMetrics,
+        });
+        const applyStartedAt=studentNowMs_();
+        const applyResult=applyTimelinePayload(payload, { signature:payloadSignature });
       const applyFinishedAt=studentNowMs_();
       const me=applyResult && typeof applyResult==='object' ? applyResult.me : null;
       const renderMetrics=applyResult && typeof applyResult==='object' ? (applyResult.renderMetrics||{}) : {};
@@ -2326,11 +2567,12 @@ function refreshTimeline(options){
           applyStartedAfterRpcMs:Math.max(0, applyStartedAt-responseReceivedAt),
           renderTlMs:Number(renderMetrics.totalMs||0),
           innerHTMLMs:Number(renderMetrics.innerHTMLMs||0),
-          skippedRender:Boolean(renderMetrics.skipped),
-          firstRafMs:raf1At ? Math.max(0, raf1At-responseReceivedAt) : 0,
-          secondRafMs:Math.max(0, studentNowMs_()-responseReceivedAt),
+            skippedRender:Boolean(renderMetrics.skipped),
+            firstRafMs:raf1At ? Math.max(0, raf1At-responseReceivedAt) : 0,
+            secondRafMs:Math.max(0, studentNowMs_()-responseReceivedAt),
+            transport:transportMetrics,
+          });
         });
-      });
       pollBusy=false;
       if(timelineRefreshPending){
         timelineRefreshPending=false;
@@ -2340,6 +2582,7 @@ function refreshTimeline(options){
     })
     .withFailureHandler(err=>{
       if(requestId!==currentTimelineRequestId || !isCurrentStudentContext_(requestContext.studentNumber, requestContext.lessonId, requestContext.activeRevision)) return;
+      if(handleStudentSessionFailure_('getTimelineSnapshot', err)) return;
       logStudentApiFailure_('getTimelineSnapshot', err);
       logStudentClientPerf_('timeline_error', {
         totalMs:Math.max(0, studentNowMs_()-startedAt),
@@ -2423,6 +2666,7 @@ function handleStudentActiveLessonChange_(payload){
   if(!nextUnitId || nextPeriod<=0){
     studentActiveReloading=true;
     stopPolling();
+    studentSessionToken='';
     const note=document.getElementById('submitNote');
     if(note) note.textContent='先生が授業を終了しました。画面を更新しています…';
     google.script.run
@@ -2443,6 +2687,7 @@ function handleStudentActiveLessonChange_(payload){
   if(!nextLessonId && String(myUnitId||'')===nextUnitId && Number(myPeriod||0)===nextPeriod) return false;
   studentActiveReloading=true;
   stopPolling();
+  studentSessionToken='';
   const note=document.getElementById('submitNote');
   if(note) note.textContent='先生が新しい授業を開始しました。画面を更新しています…';
   google.script.run
@@ -2519,8 +2764,9 @@ function loadStudentPastRecords_(options){
         renderStudentPastRecords_(res||{groups:[]});
       }
     })
-    .withFailureHandler(()=>{
+    .withFailureHandler(err=>{
       studentHistoryLoading=false;
+      if(handleStudentSessionFailure_('getStudentPastRecords', err)) return;
       studentHistoryLoaded=!opts.background || activeStudentTab==='history';
       if(!opts.background || activeStudentTab==='history'){
         renderStudentPastRecords_({groups:[]});
@@ -2929,6 +3175,14 @@ function truncateText_(text, maxLen){
 function normalizeDisplayText_(text){
   return String(text||'').replace(/^[・\-●]\s*/gm,'').trim();
 }
+
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='hidden') requestStudentSave_({ silent:true, source:'visibilitychange' });
+});
+
+window.addEventListener('pagehide',()=>{
+  requestStudentSave_({ silent:true, source:'pagehide' });
+});
 </script>
 </body>
 </html>

@@ -13,6 +13,7 @@ var __assign = (this && this.__assign) || function () {
 var latestStatusRows = [];
 var latestStatusMeta = {};
 var teacherStatusRequestSeq = 0;
+var teacherStatusRequestTimeoutTimer = null;
 var teacherFeedbackResultTimer = null;
 var unitSaveState = { busy: false, requestToken: '' };
 var lessonFieldEditState = { mode: 'unit', unitId: '', period: 0 };
@@ -324,8 +325,21 @@ function loadStatus() {
     var requestSeq = ++teacherStatusRequestSeq;
     var requestUnitId = String(activeUnitId || '');
     var requestPeriod = Number(activePeriod || 0);
+    if (teacherStatusRequestTimeoutTimer)
+        clearTimeout(teacherStatusRequestTimeoutTimer);
+    teacherStatusRequestTimeoutTimer = window.setTimeout(function () {
+        if (requestSeq !== teacherStatusRequestSeq)
+            return;
+        preloadCache.statusLoading = false;
+        if (typeof window !== 'undefined' && typeof window.setTeacherStatusConnectionNotice_ === 'function') {
+            window.setTeacherStatusConnectionNotice_('授業内容を取得できませんでした。少し待ってから再試行します。');
+        }
+    }, 12000);
     google.script.run
         .withSuccessHandler(function (d) {
+        if (teacherStatusRequestTimeoutTimer)
+            clearTimeout(teacherStatusRequestTimeoutTimer);
+        teacherStatusRequestTimeoutTimer = null;
         preloadCache.statusLoading = false;
         if (requestSeq !== teacherStatusRequestSeq)
             return;
@@ -338,8 +352,16 @@ function loadStatus() {
             return;
         renderStatus(d);
     })
-        .withFailureHandler(function () {
+        .withFailureHandler(function (err) {
+        if (teacherStatusRequestTimeoutTimer)
+            clearTimeout(teacherStatusRequestTimeoutTimer);
+        teacherStatusRequestTimeoutTimer = null;
         preloadCache.statusLoading = false;
+        if (requestSeq !== teacherStatusRequestSeq)
+            return;
+        if (typeof window !== 'undefined' && typeof window.markTeacherStatusStaleFromError_ === 'function') {
+            window.markTeacherStatusStaleFromError_(err);
+        }
     })
         .getLessonStatus(requestUnitId, requestPeriod);
 }
@@ -728,6 +750,9 @@ function flushStatusFavoriteQueue_() {
         })
             .withFailureHandler(function (err) {
             var request = statusFavoriteInFlightRequest;
+            if (typeof window !== 'undefined' && typeof window.markTeacherStatusStaleFromError_ === 'function') {
+                window.markTeacherStatusStaleFromError_(err);
+            }
             failStatusFavoriteRequest_(request, formatTeacherRpcError_(err, 'お気に入り更新に失敗しました', 'お気に入り'));
         })
             .setTeacherResponseFavorite(responseId, override === true, {
@@ -808,8 +833,14 @@ function renderStatus(d) {
     }
     applyActiveFromStatusMeta_(latestStatusMeta);
     if (!latestStatusRows.length && !(latestStatusMeta && (latestStatusMeta.unitId || latestStatusMeta.lessonId))) {
+        if (typeof window !== 'undefined' && typeof window.clearTeacherStatusConnectionNotice_ === 'function') {
+            window.clearTeacherStatusConnectionNotice_();
+        }
         clearRenderedStatus_();
         return;
+    }
+    if (typeof window !== 'undefined' && typeof window.clearTeacherStatusConnectionNotice_ === 'function') {
+        window.clearTeacherStatusConnectionNotice_();
     }
     writeTeacherStatusPreloadCache_({
         meta: latestStatusMeta,
