@@ -14,6 +14,7 @@ var latestStatusRows = [];
 var latestStatusMeta = {};
 var teacherStatusRequestSeq = 0;
 var teacherStatusRequestTimeoutTimer = null;
+var teacherStatusPendingLessonKey = '';
 var teacherFeedbackResultTimer = null;
 var unitSaveState = { busy: false, requestToken: '' };
 var lessonFieldEditState = { mode: 'unit', unitId: '', period: 0 };
@@ -312,6 +313,11 @@ function unlockStatusModalBackgroundScroll_() {
     body.style.right = '';
     body.style.width = '';
 }
+function buildTeacherStatusLessonKey_(unitId, period) {
+    var normalizedUnitId = String(unitId || '').trim();
+    var normalizedPeriod = Number(period || 0);
+    return normalizedUnitId && normalizedPeriod > 0 ? "".concat(normalizedUnitId, ":").concat(normalizedPeriod) : '';
+}
 function finalizeTeacherStatusRequest_(requestSeq, timeoutTimer) {
     if (timeoutTimer) {
         clearTimeout(timeoutTimer);
@@ -325,16 +331,40 @@ function finalizeTeacherStatusRequest_(requestSeq, timeoutTimer) {
     preloadCache.statusLoading = false;
     return true;
 }
+function consumePendingTeacherStatusRequest_(requestLessonKey) {
+    var pendingLessonKey = String(teacherStatusPendingLessonKey || '').trim();
+    if (!pendingLessonKey || pendingLessonKey === String(requestLessonKey || '').trim()) {
+        return false;
+    }
+    var activeLessonKey = buildTeacherStatusLessonKey_(activeUnitId, activePeriod);
+    if (!activeLessonKey) {
+        teacherStatusPendingLessonKey = '';
+        return false;
+    }
+    if (pendingLessonKey !== activeLessonKey) {
+        teacherStatusPendingLessonKey = activeLessonKey;
+    }
+    else {
+        teacherStatusPendingLessonKey = '';
+    }
+    loadStatus();
+    return true;
+}
 function loadStatus() {
     bindTeacherFeedbackPrefs_();
     bindStatusViewPrefs_();
     if (!activeUnitId || !activePeriod) {
+        teacherStatusPendingLessonKey = '';
         cancelStatusFavoriteReorder_();
         return;
     }
-    if (preloadCache.statusLoading)
+    var requestLessonKey = buildTeacherStatusLessonKey_(activeUnitId, activePeriod);
+    if (preloadCache.statusLoading) {
+        teacherStatusPendingLessonKey = requestLessonKey;
         return;
+    }
     preloadCache.statusLoading = true;
+    teacherStatusPendingLessonKey = '';
     var requestSeq = ++teacherStatusRequestSeq;
     var requestUnitId = String(activeUnitId || '');
     var requestPeriod = Number(activePeriod || 0);
@@ -342,6 +372,8 @@ function loadStatus() {
         clearTimeout(teacherStatusRequestTimeoutTimer);
     var timeoutTimer = window.setTimeout(function () {
         if (!finalizeTeacherStatusRequest_(requestSeq, timeoutTimer))
+            return;
+        if (consumePendingTeacherStatusRequest_(requestLessonKey))
             return;
         if (typeof window !== 'undefined' && typeof window.setTeacherStatusConnectionNotice_ === 'function') {
             window.setTeacherStatusConnectionNotice_('授業内容を取得できませんでした。少し待ってから再試行します。');
@@ -352,17 +384,23 @@ function loadStatus() {
         .withSuccessHandler(function (d) {
         if (!finalizeTeacherStatusRequest_(requestSeq, timeoutTimer))
             return;
-        if (String(activeUnitId || '') !== requestUnitId || Number(activePeriod || 0) !== requestPeriod)
+        if (String(activeUnitId || '') !== requestUnitId || Number(activePeriod || 0) !== requestPeriod) {
+            consumePendingTeacherStatusRequest_(requestLessonKey);
             return;
+        }
         var meta = d && d.meta || {};
         var responseUnitId = String(meta.unitId || requestUnitId);
         var responsePeriod = Number(meta.period || requestPeriod);
-        if (responseUnitId !== requestUnitId || responsePeriod !== requestPeriod)
+        if (responseUnitId !== requestUnitId || responsePeriod !== requestPeriod) {
+            consumePendingTeacherStatusRequest_(requestLessonKey);
             return;
+        }
         renderStatus(d);
     })
         .withFailureHandler(function (err) {
         if (!finalizeTeacherStatusRequest_(requestSeq, timeoutTimer))
+            return;
+        if (consumePendingTeacherStatusRequest_(requestLessonKey))
             return;
         if (typeof window !== 'undefined' && typeof window.markTeacherStatusStaleFromError_ === 'function') {
             window.markTeacherStatusStaleFromError_(err);
