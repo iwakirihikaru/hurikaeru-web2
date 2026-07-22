@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta name="source-commit" content="ce9dfcfe460a802402db210738a4875f3c017e7d">
-<script src="./runtime-shim.js?v=614b5f4eae"></script>
+<meta name="source-commit" content="cb0aa1f75c055989f3d0380ecc90a52a2795add9">
+<script src="./runtime-shim.js?v=3dc7b19e3b"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ふりカエル 先生ページ</title>
@@ -1029,7 +1029,6 @@ button:not([disabled]):active,button.is-pressed{transform:translateY(1px);filter
   <!-- ① 授業スタート -->
   <div class="section active" id="sec-status">
     <div id="activeBanner"></div>
-    <div id="statusConnectionHint" style="display:none;margin:0 0 12px;padding:8px 12px;border-radius:10px;background:#FFF8E1;border:1px solid #FFE082;color:#795548;font-size:12px;line-height:1.6;"></div>
     <details class="card status-top-card status-tools-details">
       <summary class="status-tools-summary">▶️ 授業操作（開始・単元設定・メダル）</summary>
       <div class="status-top-grid status-tools-body">
@@ -1991,78 +1990,17 @@ function showToast(message, options) {
     window.setTimeout(close, Number(options && options.duration || 2600));
 }
 function formatTeacherRpcError_(err, fallback, actionLabel) {
-    var code = getTeacherRpcErrorCode_(err);
     var raw = String(err && err.message ? err.message : (err || '')).trim();
     var label = String(actionLabel || '通信').trim();
     if (!raw)
         return fallback || "".concat(label, "\u306B\u5931\u6557\u3057\u307E\u3057\u305F");
-    if (code === 'missing_api_url')
-        return "".concat(label, "\u306B\u5931\u6557\u3057\u307E\u3057\u305F\u3002\u63A5\u7D9A\u5148URL\u304C\u672A\u8A2D\u5B9A\u3067\u3059\u3002setup \u30DA\u30FC\u30B8\u3067 GAS URL \u3092\u4FDD\u5B58\u3057\u76F4\u3057\u3066\u304F\u3060\u3055\u3044\u3002");
-    if (code === 'invalid_api_url')
-        return "".concat(label, "\u306B\u5931\u6557\u3057\u307E\u3057\u305F\u3002\u63A5\u7D9A\u5148URL\u304C\u4E0D\u6B63\u3067\u3059\u3002setup \u30DA\u30FC\u30B8\u3067 GAS Web App URL (/exec) \u3092\u78BA\u8A8D\u3057\u3066\u304F\u3060\u3055\u3044\u3002");
-    if (code === 'network_error' || code === 'timeout')
-        return "".concat(label, "\u306B\u5931\u6557\u3057\u307E\u3057\u305F\u3002\u4E00\u6642\u7684\u306B\u901A\u4FE1\u3067\u304D\u3066\u3044\u307E\u305B\u3093\u3002\u6642\u9593\u3092\u304A\u3044\u3066\u518D\u5EA6\u8A66\u3057\u3066\u304F\u3060\u3055\u3044\u3002");
-    if (code === 'http_error')
-        return "".concat(label, "\u306B\u5931\u6557\u3057\u307E\u3057\u305F\u3002GAS \u304C HTTP \u30A8\u30E9\u30FC\u3092\u8FD4\u3057\u307E\u3057\u305F\u3002");
-    if (code === 'invalid_json')
-        return "".concat(label, "\u306B\u5931\u6557\u3057\u307E\u3057\u305F\u3002\u63A5\u7D9A\u5148\u304C\u6B63\u3057\u3044 JSON \u3092\u8FD4\u3057\u3066\u3044\u307E\u305B\u3093\u3002");
+    if (/Failed to fetch|NetworkError|Load failed|Request timed out|timeout/i.test(raw)) {
+        return "".concat(label, "\u306B\u5931\u6557\u3057\u307E\u3057\u305F\u3002GAS\u306B\u63A5\u7D9A\u3067\u304D\u3066\u3044\u307E\u305B\u3093\u3002\u63A5\u7D9A\u5148URL\u30FBPages\u53CD\u6620\u30FB\u30CD\u30C3\u30C8\u30EF\u30FC\u30AF\u3092\u78BA\u8A8D\u3057\u3066\u304F\u3060\u3055\u3044\u3002");
+    }
+    if (/missing_api_url|GAS_API_URL/i.test(raw)) {
+        return "".concat(label, "\u306B\u5931\u6557\u3057\u307E\u3057\u305F\u3002\u63A5\u7D9A\u5148GAS URL\u304C\u672A\u8A2D\u5B9A\u3067\u3059\u3002\u63A5\u7D9A\u88DC\u52A9\u30DA\u30FC\u30B8\u3067\u4FDD\u5B58\u3057\u76F4\u3057\u3066\u304F\u3060\u3055\u3044\u3002");
+    }
     return "".concat(fallback || "".concat(label, "\u306B\u5931\u6557\u3057\u307E\u3057\u305F"), ": ").concat(raw);
-}
-function getTeacherRpcErrorCode_(err) {
-    var explicit = String(err && err.code || '').trim();
-    if (explicit)
-        return explicit;
-    var raw = String(err && err.message ? err.message : (err || '')).trim();
-    if (!raw)
-        return '';
-    if (/missing_api_url|GAS_API_URL/i.test(raw))
-        return 'missing_api_url';
-    if (/invalid_api_url|\u5F62\u5F0F\u304C\u6B63\u3057\u304F\u3042\u308A\u307E\u305B\u3093|\/exec\)/i.test(raw))
-        return 'invalid_api_url';
-    if (/Request timed out|timeout/i.test(raw))
-        return 'timeout';
-    if (/HTTP\s+\d+/i.test(raw))
-        return 'http_error';
-    if (/Invalid JSON|\u6B63\u3057\u3044 JSON|\u63A5\u7D9A\u5148\u304C HTML \u30DA\u30FC\u30B8|\u63A5\u7D9A\u5148\u304C API \u5FDC\u7B54/i.test(raw))
-        return 'invalid_json';
-    if (/Failed to fetch|NetworkError|Load failed/i.test(raw))
-        return 'network_error';
-    return '';
-}
-function isTeacherTransientConnectionErrorCode_(code) {
-    return ['network_error', 'timeout', 'http_error', 'invalid_json'].indexOf(String(code || '').trim()) >= 0;
-}
-function setTeacherStatusConnectionNotice_(message) {
-    var el = document.getElementById('statusConnectionHint');
-    if (!el)
-        return;
-    var text = String(message || '').trim();
-    el.textContent = text;
-    el.style.display = text ? 'block' : 'none';
-}
-function clearTeacherStatusConnectionNotice_() {
-    setTeacherStatusConnectionNotice_('');
-}
-function markTeacherStatusStaleFromError_(err) {
-    if (!isTeacherTransientConnectionErrorCode_(getTeacherRpcErrorCode_(err)))
-        return;
-    setTeacherStatusConnectionNotice_('\u63A5\u7D9A\u304C\u4E0D\u5B89\u5B9A\u3067\u3059\u3002\u8868\u793A\u4E2D\u306E\u5185\u5BB9\u306F\u524D\u56DE\u53D6\u5F97\u6642\u70B9\u3067\u3059');
-}
-function hasTeacherRenderedActiveLesson_() {
-    return Boolean(String(activeUnitId || '').trim() && Number(activePeriod || 0) > 0);
-}
-function hasTeacherRenderableStatusPayload_(status) {
-    var rows = Array.isArray(status && status.students) ? status.students : [];
-    var meta = status && status.meta || {};
-    return Boolean(rows.length || String(meta.unitId || meta.lessonId || '').trim());
-}
-function shouldPreserveTeacherActiveState_(data) {
-    if (teacherEndingLesson || !hasTeacherRenderedActiveLesson_())
-        return false;
-    var active = data && data.active || null;
-    if (active && String(active.unitId || '').trim() && Number(active.period || 0) > 0)
-        return false;
-    return !hasTeacherRenderableStatusPayload_(data && data.status);
 }
 window.alert = function (message) {
     showToast(message);
@@ -2140,7 +2078,7 @@ function loadInit() {
             .withSuccessHandler(function (d) {
             if (requestEpoch !== teacherDataEpoch)
                 return;
-            applyTeacherInitData(d, { includeRoster: true, renderUnitList: true, schedulePreload: true, source: 'teacherInit', preserveActiveState: shouldPreserveTeacherActiveState_(d) });
+            applyTeacherInitData(d, { includeRoster: true, renderUnitList: true, schedulePreload: true, source: 'teacherInit' });
             scheduleTeacherUnitProgressRefresh_(d);
         })
             .withFailureHandler(function (err) {
@@ -2158,7 +2096,7 @@ function loadInit() {
             .withSuccessHandler(function (d) {
             if (requestEpoch !== teacherDataEpoch)
                 return;
-            applyTeacherInitData(d, { includeRoster: false, renderUnitList: false, schedulePreload: false, source: 'teacherStatusSnapshot', preserveActiveState: shouldPreserveTeacherActiveState_(d) });
+            applyTeacherInitData(d, { includeRoster: false, renderUnitList: false, schedulePreload: false, source: 'teacherStatusSnapshot' });
             if (d && d.status && Array.isArray(d.status.students) && d.status.students.length) {
                 renderStatus(d.status);
             }
@@ -2199,8 +2137,7 @@ function loadStatusInit(options) {
         .withSuccessHandler(function (d) {
         if (requestEpoch !== teacherDataEpoch)
             return;
-        var preserveActiveState = shouldPreserveTeacherActiveState_(d);
-        applyTeacherInitData(d, { includeRoster: false, renderUnitList: false, schedulePreload: true, source: 'teacherStatusSnapshot', preserveActiveState: preserveActiveState });
+        applyTeacherInitData(d, { includeRoster: false, renderUnitList: false, schedulePreload: true, source: 'teacherStatusSnapshot' });
         if (d && d.status && Array.isArray(d.status.students) && d.status.students.length) {
             renderStatus(d.status);
         }
@@ -2221,7 +2158,6 @@ function loadStatusInit(options) {
         if (requestEpoch !== teacherDataEpoch)
             return;
         console.warn('teacherStatusSnapshot failed', err);
-        markTeacherStatusStaleFromError_(err);
         if (opts.startPolling) {
             startStatusPoll(false);
         }
@@ -2245,7 +2181,6 @@ function ensureTeacherShellInitAfterStatus_(requestEpoch) {
             renderUnitList: false,
             schedulePreload: true,
             source: 'teacherInitAfterStatus',
-            preserveActiveState: shouldPreserveTeacherActiveState_(d),
         });
         scheduleTeacherUnitProgressRefresh_(d);
     })
@@ -2346,13 +2281,6 @@ function applyTeacherInitData(d, options) {
     }
     if (d.active !== undefined) {
         var rawActive = d.active || {};
-        if (opts.preserveActiveState === true && previousUnitId != null && previousPeriod > 0 && !(rawActive && rawActive.unitId)) {
-            d.active = {
-                unitId: previousUnitId,
-                period: previousPeriod,
-            };
-            rawActive = d.active;
-        }
         d.active = buildResolvedActiveState_(d.active);
         activeUnitId = d.active && d.active.unitId || null;
         activePeriod = d.active && d.active.period || 0;
@@ -2381,12 +2309,9 @@ function applyTeacherInitData(d, options) {
     }
     if (!activeUnitId || !activePeriod) {
         clearTeacherStatusPreloadCache_();
-        if (opts.preserveActiveState !== true && typeof clearRenderedStatus_ === 'function') {
+        if (typeof clearRenderedStatus_ === 'function') {
             clearRenderedStatus_();
         }
-    }
-    if (opts.preserveActiveState !== true) {
-        clearTeacherStatusConnectionNotice_();
     }
     persistPortableTeacherBootstrap_();
     applySavedUiState();
@@ -3809,6 +3734,7 @@ var __assign = (this && this.__assign) || function () {
 var latestStatusRows = [];
 var latestStatusMeta = {};
 var teacherStatusRequestSeq = 0;
+var teacherStatusRequestTimeoutTimer = null;
 var teacherFeedbackResultTimer = null;
 var unitSaveState = { busy: false, requestToken: '' };
 var lessonFieldEditState = { mode: 'unit', unitId: '', period: 0 };
@@ -4120,8 +4046,21 @@ function loadStatus() {
     var requestSeq = ++teacherStatusRequestSeq;
     var requestUnitId = String(activeUnitId || '');
     var requestPeriod = Number(activePeriod || 0);
+    if (teacherStatusRequestTimeoutTimer)
+        clearTimeout(teacherStatusRequestTimeoutTimer);
+    teacherStatusRequestTimeoutTimer = window.setTimeout(function () {
+        if (requestSeq !== teacherStatusRequestSeq)
+            return;
+        preloadCache.statusLoading = false;
+        if (typeof window !== 'undefined' && typeof window.setTeacherStatusConnectionNotice_ === 'function') {
+            window.setTeacherStatusConnectionNotice_('授業内容を取得できませんでした。少し待ってから再試行します。');
+        }
+    }, 12000);
     google.script.run
         .withSuccessHandler(function (d) {
+        if (teacherStatusRequestTimeoutTimer)
+            clearTimeout(teacherStatusRequestTimeoutTimer);
+        teacherStatusRequestTimeoutTimer = null;
         preloadCache.statusLoading = false;
         if (requestSeq !== teacherStatusRequestSeq)
             return;
@@ -4135,7 +4074,12 @@ function loadStatus() {
         renderStatus(d);
     })
         .withFailureHandler(function (err) {
+        if (teacherStatusRequestTimeoutTimer)
+            clearTimeout(teacherStatusRequestTimeoutTimer);
+        teacherStatusRequestTimeoutTimer = null;
         preloadCache.statusLoading = false;
+        if (requestSeq !== teacherStatusRequestSeq)
+            return;
         if (typeof window !== 'undefined' && typeof window.markTeacherStatusStaleFromError_ === 'function') {
             window.markTeacherStatusStaleFromError_(err);
         }
