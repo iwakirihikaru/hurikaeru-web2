@@ -4032,6 +4032,19 @@ function unlockStatusModalBackgroundScroll_() {
     body.style.right = '';
     body.style.width = '';
 }
+function finalizeTeacherStatusRequest_(requestSeq, timeoutTimer) {
+    if (timeoutTimer) {
+        clearTimeout(timeoutTimer);
+        if (teacherStatusRequestTimeoutTimer === timeoutTimer) {
+            teacherStatusRequestTimeoutTimer = null;
+        }
+    }
+    if (requestSeq !== teacherStatusRequestSeq) {
+        return false;
+    }
+    preloadCache.statusLoading = false;
+    return true;
+}
 function loadStatus() {
     bindTeacherFeedbackPrefs_();
     bindStatusViewPrefs_();
@@ -4047,21 +4060,17 @@ function loadStatus() {
     var requestPeriod = Number(activePeriod || 0);
     if (teacherStatusRequestTimeoutTimer)
         clearTimeout(teacherStatusRequestTimeoutTimer);
-    teacherStatusRequestTimeoutTimer = window.setTimeout(function () {
-        if (requestSeq !== teacherStatusRequestSeq)
+    var timeoutTimer = window.setTimeout(function () {
+        if (!finalizeTeacherStatusRequest_(requestSeq, timeoutTimer))
             return;
-        preloadCache.statusLoading = false;
         if (typeof window !== 'undefined' && typeof window.setTeacherStatusConnectionNotice_ === 'function') {
             window.setTeacherStatusConnectionNotice_('授業内容を取得できませんでした。少し待ってから再試行します。');
         }
     }, 12000);
+    teacherStatusRequestTimeoutTimer = timeoutTimer;
     google.script.run
         .withSuccessHandler(function (d) {
-        if (teacherStatusRequestTimeoutTimer)
-            clearTimeout(teacherStatusRequestTimeoutTimer);
-        teacherStatusRequestTimeoutTimer = null;
-        preloadCache.statusLoading = false;
-        if (requestSeq !== teacherStatusRequestSeq)
+        if (!finalizeTeacherStatusRequest_(requestSeq, timeoutTimer))
             return;
         if (String(activeUnitId || '') !== requestUnitId || Number(activePeriod || 0) !== requestPeriod)
             return;
@@ -4073,11 +4082,7 @@ function loadStatus() {
         renderStatus(d);
     })
         .withFailureHandler(function (err) {
-        if (teacherStatusRequestTimeoutTimer)
-            clearTimeout(teacherStatusRequestTimeoutTimer);
-        teacherStatusRequestTimeoutTimer = null;
-        preloadCache.statusLoading = false;
-        if (requestSeq !== teacherStatusRequestSeq)
+        if (!finalizeTeacherStatusRequest_(requestSeq, timeoutTimer))
             return;
         if (typeof window !== 'undefined' && typeof window.markTeacherStatusStaleFromError_ === 'function') {
             window.markTeacherStatusStaleFromError_(err);
