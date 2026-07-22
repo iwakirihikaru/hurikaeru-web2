@@ -187,7 +187,10 @@ function studentInit(num, periodOverride) {
   timing.lessonFieldsMs = Date.now() - t0;
   timing.fieldCount = Array.isArray(enabledFields) ? enabledFields.length : 0;
   t0 = Date.now();
-  const state = buildStudentState_(active.unit, period, num, studentName, enabledFields, { includePrevReview: false });
+  const state = buildStudentState_(active.unit, period, num, studentName, enabledFields, {
+    includePrevReview: false,
+    lesson,
+  });
   timing.stateMs = Date.now() - t0;
 
   return attachStudentApiTiming_(Object.assign({}, state, {
@@ -882,7 +885,14 @@ function resolveStudentForWrite_(lessonId, num, studentName) {
 function buildStudentState_(unit, period, num, studentName, enabledFields, options) {
   const opts = options || {};
   const unitId = unit?.id || '';
-  const lesson = getOrCreateLesson_(unitId, period);
+  const providedLesson = opts.lesson && typeof opts.lesson === 'object' ? opts.lesson : null;
+  const providedLessonUnitId = String(providedLesson?.unitId || '').trim();
+  const providedLessonPeriod = Number(providedLesson?.period || 0);
+  const lesson = providedLesson
+    && providedLessonUnitId === String(unitId || '').trim()
+    && providedLessonPeriod === Number(period || 0)
+    ? providedLesson
+    : getOrCreateLesson_(unitId, period);
   const response = getResponseRecordByStudentNumber_(lesson.lessonId, num);
   const masterUsed = String(response?.readSource || '') === 'master';
   const responseReadMeta = {

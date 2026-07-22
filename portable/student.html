@@ -519,7 +519,7 @@ const STUDENT_ENTRY_CACHE_KEY = 'furikaeri:studentEntryOptions';
 const STUDENT_CLASS_SNAPSHOT_CACHE_KEY = 'furikaeri:studentClassSnapshot';
 let studentClassSnapshotPreloadBusy = false;
 let studentClassSnapshotPreloadScheduled = false;
-const STUDENT_CLIENT_BUILD = 'client-20260704-1035';
+const STUDENT_CLIENT_BUILD = 'client-e499f1b9a56d';
 const studentDiagnosticsEnabled = (() => {
   try{
     return new URLSearchParams(window.location.search || '').get('diagnostics') === '1';
@@ -1169,7 +1169,11 @@ function buildTimelineTransportMetrics_(timing){
 }
 
 function ensureStudentDebugFooter_(){
-  if(!studentDiagnosticsEnabled) return null;
+  if(!studentDiagnosticsEnabled){
+    const existing=document.getElementById('studentApiDebug');
+    if(existing) existing.remove();
+    return null;
+  }
   let el=document.getElementById('studentApiDebug');
   if(el) return el;
   el=document.createElement('div');

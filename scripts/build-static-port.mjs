@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -32,6 +33,18 @@ function buildRuntimeShimVersion(runtimeShim) {
   return crypto.createHash('sha1').update(String(runtimeShim || ''), 'utf8').digest('hex').slice(0, 10);
 }
 
+function buildPortableStudentClientVersion() {
+  try {
+    const shortCommit = execSync('git rev-parse --short=12 HEAD', {
+      cwd: rootDir,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    if (shortCommit) return `client-${shortCommit}`;
+  } catch (_error) {}
+  return 'client-build-unknown';
+}
+
 function injectSharedRuntime(html, runtimeShimVersion) {
   return html.replace('<head>', `<head>\n<script src="./runtime-shim.js?v=${runtimeShimVersion}"></script>`);
 }
@@ -44,7 +57,7 @@ function buildTeacherHtml(runtimeShimVersion) {
   );
 }
 
-function buildStudentHtml(runtimeShimVersion) {
+function buildStudentHtml(runtimeShimVersion, studentClientBuild) {
   const html = injectSharedRuntime(readSrcFile('index.html'), runtimeShimVersion);
   return html.replace(
     /const bootstrapStudentOptions = <\?!= JSON\.stringify\(typeof bootstrapStudentOptions !== 'undefined' \? bootstrapStudentOptions : \{students:\[\]\}\) \?>;/,
@@ -52,6 +65,9 @@ function buildStudentHtml(runtimeShimVersion) {
   ).replace(
     'startStudentApp_();',
     "startStudentApp_();\nbootstrapStudentReadyPromise.then(data => applyStudentBootstrapData_(data)).catch(error => { console.error(error); });"
+  ).replace(
+    /const STUDENT_CLIENT_BUILD = '([^']+)';/,
+    `const STUDENT_CLIENT_BUILD = '${studentClientBuild}';`
   );
 }
 
@@ -376,9 +392,10 @@ body{margin:0;font-family:var(--font);background:var(--bg);color:#212121}
 
 const runtimeShim = buildRuntimeShim();
 const runtimeShimVersion = buildRuntimeShimVersion(runtimeShim);
+const portableStudentClientBuild = buildPortableStudentClientVersion();
 
 writeOutFile('teacher.html', buildTeacherHtml(runtimeShimVersion));
-writeOutFile('student.html', buildStudentHtml(runtimeShimVersion));
+writeOutFile('student.html', buildStudentHtml(runtimeShimVersion, portableStudentClientBuild));
 writeOutFile('index.html', buildIndexHtml());
 writeOutFile('setup.html', buildSetupHtml(runtimeShimVersion));
 writeOutFile('runtime-shim.js', runtimeShim);

@@ -1162,7 +1162,11 @@ function buildTimelineTransportMetrics_(timing){
 }
 
 function ensureStudentDebugFooter_(){
-  if(!studentDiagnosticsEnabled) return null;
+  if(!studentDiagnosticsEnabled){
+    const existing=document.getElementById('studentApiDebug');
+    if(existing) existing.remove();
+    return null;
+  }
   let el=document.getElementById('studentApiDebug');
   if(el) return el;
   el=document.createElement('div');
