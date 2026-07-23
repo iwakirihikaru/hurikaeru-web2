@@ -2565,34 +2565,43 @@ function getOrCreateStudent_(number, name) {
 }
 
 function getOrCreateLesson_(unitId, period, lessonDate) {
-  const sheet = getLessonsDbSheet_();
   const unit = getUnitById_(unitId);
   const existing = getLessonRecordByUnitPeriod_(unitId, period);
   if (existing) return existing;
 
-  const fields = normalizeFieldConfigArray_(unit?.fields || []);
-  const lesson = {
-    lessonId: makeId_('lesson'),
-    unitId,
-    period,
-    lessonDate: lessonDate || Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd'),
-    status: 'active',
-    createdAt: nowIso_(),
-    updatedAt: nowIso_(),
-    fields,
-  };
-  sheet.appendRow([
-    lesson.lessonId,
-    lesson.unitId,
-    lesson.period,
-    lesson.lessonDate,
-    lesson.status,
-    lesson.createdAt,
-    lesson.updatedAt,
-    JSON.stringify(fields),
-  ]);
-  invalidateLessonRecordCaches_();
-  return cacheLessonRecord_(lesson);
+  const lock = LockService.getDocumentLock();
+  lock.waitLock(10000);
+  try {
+    const lockedExisting = getLessonRecordByUnitPeriod_(unitId, period);
+    if (lockedExisting) return lockedExisting;
+
+    const sheet = getLessonsDbSheet_();
+    const fields = normalizeFieldConfigArray_(unit?.fields || []);
+    const lesson = {
+      lessonId: makeId_('lesson'),
+      unitId,
+      period,
+      lessonDate: lessonDate || Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd'),
+      status: 'active',
+      createdAt: nowIso_(),
+      updatedAt: nowIso_(),
+      fields,
+    };
+    sheet.appendRow([
+      lesson.lessonId,
+      lesson.unitId,
+      lesson.period,
+      lesson.lessonDate,
+      lesson.status,
+      lesson.createdAt,
+      lesson.updatedAt,
+      JSON.stringify(fields),
+    ]);
+    invalidateLessonRecordCaches_();
+    return cacheLessonRecord_(lesson);
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function getResponseSheetData_() {

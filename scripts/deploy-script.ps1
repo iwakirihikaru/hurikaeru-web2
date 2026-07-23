@@ -32,20 +32,43 @@ function Get-RequiredConfigValue {
 $repoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location -LiteralPath $repoRoot
 
+function Get-TrimmedCommandOutput {
+  param(
+    [Parameter(Mandatory = $true)][string[]]$Command
+  )
+  $result = & $Command[0] $Command[1..($Command.Length - 1)]
+  if ($LASTEXITCODE -ne 0) {
+    throw "Command failed: $($Command -join ' ')"
+  }
+  return ($result | Out-String).Trim()
+}
+
+function Test-HeadPushedToUpstream {
+  $null = Get-TrimmedCommandOutput -Command @("git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
+  & git merge-base --is-ancestor HEAD "@{u}"
+  return $LASTEXITCODE -eq 0
+}
+
 if (-not (Test-Path -LiteralPath $ConfigPath)) {
   throw "Config file not found: $ConfigPath"
 }
 
+$dirtyEntries = git status --short
+if ($LASTEXITCODE -ne 0) {
+  throw "git status --short failed"
+}
+if (($dirtyEntries | Out-String).Trim()) {
+  throw "Refusing deploy with a dirty git worktree."
+}
+
+if (-not (Test-HeadPushedToUpstream)) {
+  throw "Refusing deploy because HEAD is not pushed to upstream."
+}
+
 $config = Get-Content -LiteralPath $ConfigPath -Raw | ConvertFrom-Json
 $deploymentId = Get-RequiredConfigValue -Config $config -Name "webappDeploymentId"
-$descriptionPrefix = if ([string]::IsNullOrWhiteSpace([string]$config.descriptionPrefix)) { "deploy" } else { [string]$config.descriptionPrefix }
-$timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-$gitSha = (git rev-parse --short HEAD).Trim()
-$description = "$descriptionPrefix $timestamp"
-if (-not [string]::IsNullOrWhiteSpace($DescriptionSuffix)) {
-  $description = "$description $DescriptionSuffix".Trim()
-}
-$description = "$description $gitSha".Trim()
+$gitSha = Get-TrimmedCommandOutput -Command @("git", "rev-parse", "HEAD")
+$description = $gitSha
 
 if (-not $SkipPush) {
   Invoke-Step -Label "clasp push" -Action {
@@ -75,4 +98,6 @@ Write-Host ""
 Write-Host "GAS deploy completed" -ForegroundColor Green
 Write-Host "deploymentId: $deploymentId"
 Write-Host "version: $versionNumber"
+Write-Host "headSha: $gitSha"
 Write-Host "description: $description"
+Write-Host "headMatchesDescription: $([string]::Equals($gitSha, $description, [System.StringComparison]::Ordinal))"
