@@ -6,6 +6,10 @@
 - 最小差分で進め、無関係なリファクタと無関係なコード整形はしない。
 - 必要な確認だけ行い、未確認事項は報告する。
 - レビューは P1 / P2 のみ確認し、P3 は追わない。
+- clean worktree で npm script を実行する前に `node_modules` の有無を確認する。
+- `node_modules` が無く `package-lock.json` がある場合のみ `npm ci` を許可する。
+- `package-lock.json` が無い場合は `npm install` に勝手に切り替えず停止する。
+- `clasp` はローカル `node_modules` を使い、`npx` やグローバル `clasp` で別 version を取得しない。
 - 重点確認は今回の変更に直接関係する範囲だけで行う。
   データ安全性、権限、個人情報、tenant 境界、GAS、Spreadsheet、teacher 画面、aggregate、portfolio、runtime-shim、iPad / Safari、性能。
 

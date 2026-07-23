@@ -65,6 +65,11 @@ if (-not (Test-HeadPushedToUpstream)) {
   throw "Refusing deploy because HEAD is not pushed to upstream."
 }
 
+$claspCommand = Join-Path $repoRoot "node_modules/.bin/clasp.cmd"
+if (-not (Test-Path -LiteralPath $claspCommand)) {
+  throw "Local clasp not found at node_modules/.bin/clasp. node_modules may be missing. Run npm ci and retry."
+}
+
 $config = Get-Content -LiteralPath $ConfigPath -Raw | ConvertFrom-Json
 $deploymentId = Get-RequiredConfigValue -Config $config -Name "webappDeploymentId"
 $gitSha = Get-TrimmedCommandOutput -Command @("git", "rev-parse", "HEAD")
@@ -72,13 +77,13 @@ $description = $gitSha
 
 if (-not $SkipPush) {
   Invoke-Step -Label "clasp push" -Action {
-    npx clasp push
+    & $claspCommand push
     if ($LASTEXITCODE -ne 0) { throw "clasp push failed" }
   }
 }
 
 Invoke-Step -Label "Create GAS version" -Action {
-  $versionOutput = & npx clasp version $description
+  $versionOutput = & $claspCommand version $description
   if ($LASTEXITCODE -ne 0) { throw "clasp version failed" }
   $script:versionOutput = $versionOutput
 }
@@ -90,7 +95,7 @@ if (-not $versionMatch.Success) {
 $versionNumber = $versionMatch.Groups[1].Value
 
 Invoke-Step -Label "Deploy GAS webapp" -Action {
-  npx clasp deploy -i $deploymentId -V $versionNumber -d $description
+  & $claspCommand deploy -i $deploymentId -V $versionNumber -d $description
   if ($LASTEXITCODE -ne 0) { throw "clasp deploy failed" }
 }
 
