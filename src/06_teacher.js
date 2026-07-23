@@ -2442,6 +2442,76 @@ function logTeacherPerf_(name, payload) {
   } catch (_err) {}
 }
 
+function getAggregateResponseDedupKey_(response, lessonMap) {
+  const responseId = String(response && response.responseId || '').trim();
+  if (responseId) return `response:${responseId}`;
+  const lessonId = String(response && response.lessonId || '').trim();
+  const studentNumber = String(response && response.studentNumber || '').trim();
+  if (lessonId && studentNumber) return `lesson:${lessonId}:student:${studentNumber}`;
+  const unitId = String(response && response.unitId || '').trim();
+  const lesson = lessonId ? lessonMap[lessonId] : null;
+  const period = String(response && response.period || lesson && lesson.period || '').trim();
+  if (unitId && period && studentNumber) return `unit:${unitId}:period:${period}:student:${studentNumber}`;
+  return '';
+}
+
+function getAggregateResponseDedupTime_(response) {
+  const keys = ['updatedAt', 'submittedAt', 'createdAt', 'timestamp'];
+  for (let idx = 0; idx < keys.length; idx++) {
+    const value = String(response && response[keys[idx]] || '').trim();
+    if (!value) continue;
+    const parsed = Date.parse(value);
+    if (!Number.isNaN(parsed)) return parsed;
+  }
+  return NaN;
+}
+
+function getAggregateResponseContentSize_(response) {
+  const answersJson = String(response && response.answersJson || '');
+  const answersMap = response && typeof response.answersMap === 'object' ? response.answersMap : {};
+  return [
+    answersJson,
+    JSON.stringify(answersMap),
+    String(response && response.reviewText || ''),
+    String(response && response.comment || ''),
+    String(response && response.rank || ''),
+    String(response && response.studentName || ''),
+  ].join('').length;
+}
+
+function preferAggregateResponseCandidate_(candidate, current) {
+  const candidateTime = getAggregateResponseDedupTime_(candidate);
+  const currentTime = getAggregateResponseDedupTime_(current);
+  const candidateHasTime = !Number.isNaN(candidateTime);
+  const currentHasTime = !Number.isNaN(currentTime);
+  if (candidateHasTime && currentHasTime && candidateTime !== currentTime) return candidateTime > currentTime;
+  if (candidateHasTime !== currentHasTime) return candidateHasTime;
+  return getAggregateResponseContentSize_(candidate) > getAggregateResponseContentSize_(current);
+}
+
+function dedupeAggregateResponses_(responses, lessonMap) {
+  const list = Array.isArray(responses) ? responses : [];
+  const deduped = [];
+  const indexByKey = {};
+  list.forEach(response => {
+    const key = getAggregateResponseDedupKey_(response, lessonMap || {});
+    if (!key) {
+      deduped.push(response);
+      return;
+    }
+    const existingIndex = indexByKey[key];
+    if (existingIndex === undefined) {
+      indexByKey[key] = deduped.length;
+      deduped.push(response);
+      return;
+    }
+    if (preferAggregateResponseCandidate_(response, deduped[existingIndex])) {
+      deduped[existingIndex] = response;
+    }
+  });
+  return deduped;
+}
+
 function readTeacherRecordSource_(options) {
   const opts = options && typeof options === 'object' ? options : {};
   const filterUnitId = String(opts.unitId || '').trim();
@@ -2497,6 +2567,7 @@ function readTeacherRecordSource_(options) {
   } else {
     allResponses = listAllResponses_();
   }
+  allResponses = dedupeAggregateResponses_(allResponses, lessonMap);
   timing.responsesMs = Date.now() - t0;
   counts.rawResponseCount = allResponses.length;
   counts.studentScoped = filterStudentNumber ? 1 : 0;
