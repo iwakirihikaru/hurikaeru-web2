@@ -16,6 +16,10 @@ const DRIVE_API_BASE = 'https://www.googleapis.com/drive/v3';
 const DEFAULT_AUTH_URI = 'https://accounts.google.com/o/oauth2/v2/auth';
 const DEFAULT_TOKEN_URI = 'https://oauth2.googleapis.com/token';
 const DEFAULT_TIMEOUT_MS = 180000;
+const REQUIRED_WEBAPP_ACCESS = 'ANYONE_ANONYMOUS';
+const SECRET_PLACEHOLDER = 'REPLACE_ME';
+const CODE_SECRET_PLACEHOLDER = '__POC_SHARED_SECRET_JSON__';
+const CODE_SHEET_PLACEHOLDER = '__POC_TEST_SHEET_NAME_JSON__';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -76,16 +80,56 @@ export async function loadScriptTemplateFiles() {
     readFile(path.join(__dirname, 'poc-script', 'appsscript.json'), 'utf8'),
   ]);
 
+  return { codeSource, manifestSource };
+}
+
+export function validateConfig(config) {
+  if (!config?.templateSpreadsheetId) {
+    throw new Error('Config is missing templateSpreadsheetId');
+  }
+  if (!config?.testSheetName) {
+    throw new Error('Config is missing testSheetName');
+  }
+  if (!config?.sharedSecret) {
+    throw new Error('Config is missing sharedSecret');
+  }
+  if (config.sharedSecret === SECRET_PLACEHOLDER) {
+    throw new Error('Config sharedSecret must be replaced from REPLACE_ME');
+  }
+  if (!config?.webappAccess) {
+    throw new Error('Config is missing webappAccess');
+  }
+  if (config.webappAccess !== REQUIRED_WEBAPP_ACCESS) {
+    throw new Error(`Config webappAccess must be ${REQUIRED_WEBAPP_ACCESS}`);
+  }
+}
+
+export function buildCodeSource(template, config) {
+  return template
+    .replaceAll(CODE_SECRET_PLACEHOLDER, JSON.stringify(config.sharedSecret))
+    .replaceAll(CODE_SHEET_PLACEHOLDER, JSON.stringify(config.testSheetName));
+}
+
+export function buildManifestSource(template, config) {
+  const manifest = JSON.parse(template);
+  manifest.webapp = {
+    ...manifest.webapp,
+    access: config.webappAccess,
+  };
+  return `${JSON.stringify(manifest, null, 2)}\n`;
+}
+
+export function buildScriptFiles(config, templates) {
   return [
     {
       name: 'Code',
       type: 'SERVER_JS',
-      source: codeSource,
+      source: buildCodeSource(templates.codeSource, config),
     },
     {
       name: 'appsscript',
       type: 'JSON',
-      source: manifestSource,
+      source: buildManifestSource(templates.manifestSource, config),
     },
   ];
 }
@@ -103,12 +147,6 @@ export function extractWebAppUrl(deployment) {
 function ensureInstallCommand(command) {
   if (command !== 'install') {
     throw new Error('Usage: node onboarding/poc-drive-install.mjs install --config <path> --credentials <path> [--dry-run]');
-  }
-}
-
-function validateConfig(config) {
-  if (!config?.templateSpreadsheetId) {
-    throw new Error('Config is missing templateSpreadsheetId');
   }
 }
 
@@ -331,6 +369,21 @@ function printInstallResult(result) {
   console.log(`web app URL: ${result.webAppUrl}`);
 }
 
+function printPartialFailureResult(partialResult) {
+  if (partialResult.spreadsheetId) {
+    console.error(`copied spreadsheet ID: ${partialResult.spreadsheetId}`);
+  }
+  if (partialResult.scriptId) {
+    console.error(`script ID: ${partialResult.scriptId}`);
+  }
+  if (partialResult.versionNumber !== undefined) {
+    console.error(`version number: ${partialResult.versionNumber}`);
+  }
+  if (partialResult.deploymentId) {
+    console.error(`deployment ID: ${partialResult.deploymentId}`);
+  }
+}
+
 export async function runInstall({ configPath, credentialsPath, dryRun }) {
   if (!configPath) {
     throw new Error('Missing --config');
@@ -341,13 +394,14 @@ export async function runInstall({ configPath, credentialsPath, dryRun }) {
 
   const resolvedConfigPath = path.resolve(configPath);
   const resolvedCredentialsPath = path.resolve(credentialsPath);
-  const [config, credentialsJson, files] = await Promise.all([
+  const [config, credentialsJson, templates] = await Promise.all([
     loadJsonFile(resolvedConfigPath),
     loadJsonFile(resolvedCredentialsPath),
     loadScriptTemplateFiles(),
   ]);
 
   validateConfig(config);
+  const files = buildScriptFiles(config, templates);
   const credentials = parseDesktopCredentials(credentialsJson);
 
   if (dryRun) {
@@ -358,29 +412,40 @@ export async function runInstall({ configPath, credentialsPath, dryRun }) {
     return null;
   }
 
-  const accessToken = await authorizeUser(credentials, DEFAULT_SCOPES);
-  const copiedSpreadsheet = await copySpreadsheet(accessToken, config);
-  const createdProject = await createBoundScriptProject(accessToken, copiedSpreadsheet.id, config);
-  const scriptId = createdProject.scriptId;
-  if (!scriptId) {
-    throw new Error('projects.create did not return scriptId');
+  const partialResult = {};
+
+  try {
+    const accessToken = await authorizeUser(credentials, DEFAULT_SCOPES);
+    const copiedSpreadsheet = await copySpreadsheet(accessToken, config);
+    partialResult.spreadsheetId = copiedSpreadsheet.id;
+    const createdProject = await createBoundScriptProject(accessToken, copiedSpreadsheet.id, config);
+    const scriptId = createdProject.scriptId;
+    partialResult.scriptId = scriptId;
+    if (!scriptId) {
+      throw new Error('projects.create did not return scriptId');
+    }
+
+    await updateProjectContent(accessToken, scriptId, files);
+    const version = await createVersion(accessToken, scriptId, config);
+    partialResult.versionNumber = version.versionNumber;
+    const deployment = await createDeployment(accessToken, scriptId, version.versionNumber, config);
+    partialResult.deploymentId = deployment.deploymentId;
+    const webAppUrl = extractWebAppUrl(deployment);
+
+    const result = {
+      spreadsheetId: copiedSpreadsheet.id,
+      spreadsheetUrl: copiedSpreadsheet.webViewLink ?? `https://docs.google.com/spreadsheets/d/${copiedSpreadsheet.id}/edit`,
+      scriptId,
+      versionNumber: version.versionNumber,
+      deploymentId: deployment.deploymentId,
+      webAppUrl,
+    };
+    printInstallResult(result);
+    return result;
+  } catch (error) {
+    printPartialFailureResult(partialResult);
+    throw error;
   }
-
-  await updateProjectContent(accessToken, scriptId, files);
-  const version = await createVersion(accessToken, scriptId, config);
-  const deployment = await createDeployment(accessToken, scriptId, version.versionNumber, config);
-  const webAppUrl = extractWebAppUrl(deployment);
-
-  const result = {
-    spreadsheetId: copiedSpreadsheet.id,
-    spreadsheetUrl: copiedSpreadsheet.webViewLink ?? `https://docs.google.com/spreadsheets/d/${copiedSpreadsheet.id}/edit`,
-    scriptId,
-    versionNumber: version.versionNumber,
-    deploymentId: deployment.deploymentId,
-    webAppUrl,
-  };
-  printInstallResult(result);
-  return result;
 }
 
 async function main() {

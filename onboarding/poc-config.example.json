@@ -2,6 +2,9 @@
   "templateSpreadsheetId": "REPLACE_WITH_TEST_TEMPLATE_SPREADSHEET_ID",
   "copiedSpreadsheetName": "hurikaeru phase1 poc copy",
   "scriptTitle": "hurikaeru phase1 poc bound script",
+  "testSheetName": "REPLACE_ME",
+  "sharedSecret": "REPLACE_ME",
+  "webappAccess": "ANYONE_ANONYMOUS",
   "versionDescription": "Phase 1 PoC version",
   "deploymentDescription": "Phase 1 PoC web app deployment"
 }
