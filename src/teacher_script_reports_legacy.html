@@ -1073,7 +1073,7 @@ function filterGrading() {
     var scopedRows = dedupePortfolioAggregateRows_(allAggData.filter(function (r) {
         if (subject && String(r.subject || '') !== String(subject))
             return false;
-        if (unitId && String(r.unitId || '') !== String(unitId))
+        if (mode !== 'subject' && unitId && String(r.unitId || '') !== String(unitId))
             return false;
         return true;
     }));
