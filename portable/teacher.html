@@ -7788,12 +7788,77 @@ function sortPortfolioRows_(rows) {
         return String(a.date || '').localeCompare(String(b.date || ''));
     });
 }
+function buildPortfolioAggregateDedupKey_(row) {
+    var responseId = String(row && row.responseId || '').trim();
+    if (responseId)
+        return "response:".concat(responseId);
+    var lessonId = String(row && row.lessonId || '').trim();
+    if (lessonId)
+        return "lesson:".concat(lessonId);
+    return "fallback:".concat(String(row && row.unitId || '').trim(), "::").concat(String(row && row.period || '').trim(), "::").concat(String(row && row.num || '').trim());
+}
+function getPortfolioAggregateRowTimestamp_(row) {
+    var candidates = [
+        row && row.updatedAt,
+        row && row.submittedAt,
+        row && row.createdAt,
+        row && row.timestamp,
+    ];
+    for (var i = 0; i < candidates.length; i++) {
+        var value = candidates[i];
+        if (value === null || value === undefined || value === '')
+            continue;
+        var numeric = Number(value);
+        if (isFinite(numeric) && numeric > 0)
+            return numeric;
+        var parsed = Date.parse(String(value));
+        if (isFinite(parsed) && parsed > 0)
+            return parsed;
+    }
+    return 0;
+}
+function getPortfolioAggregateRowRichness_(row) {
+    var score = 0;
+    ['review', 'comment', 'rank', 'medal', 'date', 'name', 'subject', 'unitName'].forEach(function (key) {
+        if (String(row && row[key] || '').trim())
+            score += 1;
+    });
+    if (Number(row && row.score || 0))
+        score += 1;
+    var answersMap = row && row.answersMap && typeof row.answersMap === 'object' ? row.answersMap : {};
+    Object.keys(answersMap).forEach(function (key) {
+        if (String(answersMap[key] || '').trim())
+            score += 2;
+    });
+    var fields = Array.isArray(row && row.fields) ? row.fields : [];
+    fields.forEach(function (field) {
+        if (field && field.enabled === false)
+            return;
+        score += 1;
+        if (String(field && field.label || '').trim())
+            score += 1;
+    });
+    return score;
+}
+function choosePreferredPortfolioAggregateRow_(currentRow, nextRow) {
+    var currentTs = getPortfolioAggregateRowTimestamp_(currentRow);
+    var nextTs = getPortfolioAggregateRowTimestamp_(nextRow);
+    if (currentTs || nextTs) {
+        if (nextTs !== currentTs)
+            return nextTs > currentTs ? nextRow : currentRow;
+    }
+    var currentRichness = getPortfolioAggregateRowRichness_(currentRow);
+    var nextRichness = getPortfolioAggregateRowRichness_(nextRow);
+    if (nextRichness !== currentRichness)
+        return nextRichness > currentRichness ? nextRow : currentRow;
+    return currentRow;
+}
 function buildPortfolioRowsFromAggregate_(rows, studentNumber, unitId) {
     var normalizedStudent = String(studentNumber || '').trim();
     var normalizedUnit = String(unitId || '').trim();
     if (!normalizedStudent || !Array.isArray(rows) || !rows.length)
         return [];
-    return sortPortfolioRows_(rows
+    var uniqueRows = Array.from(rows
         .filter(function (row) {
         if (String(row && row.num || '').trim() !== normalizedStudent)
             return false;
@@ -7801,6 +7866,13 @@ function buildPortfolioRowsFromAggregate_(rows, studentNumber, unitId) {
             return false;
         return true;
     })
+        .reduce(function (map, row) {
+        var key = buildPortfolioAggregateDedupKey_(row);
+        var current = map.get(key);
+        map.set(key, current ? choosePreferredPortfolioAggregateRow_(current, row) : row);
+        return map;
+    }, new Map()).values());
+    return sortPortfolioRows_(uniqueRows
         .map(function (row) { return ({
         unitName: row && row.unitName || '',
         subject: row && row.subject || '',
