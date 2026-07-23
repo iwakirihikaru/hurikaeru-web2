@@ -462,19 +462,95 @@ function sortPortfolioRows_(rows) {
         return String(a.date || '').localeCompare(String(b.date || ''));
     });
 }
+function buildPortfolioAggregateDedupKey_(row) {
+    var responseId = String(row && row.responseId || '').trim();
+    if (responseId)
+        return "response:".concat(responseId);
+    var lessonId = String(row && row.lessonId || '').trim();
+    if (lessonId)
+        return "lesson:".concat(lessonId);
+    return "fallback:".concat(String(row && row.unitId || '').trim(), "::").concat(String(row && row.period || '').trim(), "::").concat(String(row && row.num || '').trim());
+}
+function getPortfolioAggregateRowTimestamp_(row) {
+    var candidates = [
+        row && row.updatedAt,
+        row && row.submittedAt,
+        row && row.createdAt,
+        row && row.timestamp,
+    ];
+    for (var i = 0; i < candidates.length; i++) {
+        var value = candidates[i];
+        if (value === null || value === undefined || value === '')
+            continue;
+        var numeric = Number(value);
+        if (isFinite(numeric) && numeric > 0)
+            return numeric;
+        var parsed = Date.parse(String(value));
+        if (isFinite(parsed) && parsed > 0)
+            return parsed;
+    }
+    return 0;
+}
+function getPortfolioAggregateRowRichness_(row) {
+    var score = 0;
+    ['review', 'comment', 'rank', 'medal', 'date', 'name', 'subject', 'unitName'].forEach(function (key) {
+        if (String(row && row[key] || '').trim())
+            score += 1;
+    });
+    if (Number(row && row.score || 0))
+        score += 1;
+    var answersMap = row && row.answersMap && typeof row.answersMap === 'object' ? row.answersMap : {};
+    Object.keys(answersMap).forEach(function (key) {
+        if (String(answersMap[key] || '').trim())
+            score += 2;
+    });
+    var fields = Array.isArray(row && row.fields) ? row.fields : [];
+    fields.forEach(function (field) {
+        if (field && field.enabled === false)
+            return;
+        score += 1;
+        if (String(field && field.label || '').trim())
+            score += 1;
+    });
+    return score;
+}
+function choosePreferredPortfolioAggregateRow_(currentRow, nextRow) {
+    var currentTs = getPortfolioAggregateRowTimestamp_(currentRow);
+    var nextTs = getPortfolioAggregateRowTimestamp_(nextRow);
+    if (currentTs || nextTs) {
+        if (nextTs !== currentTs)
+            return nextTs > currentTs ? nextRow : currentRow;
+    }
+    var currentRichness = getPortfolioAggregateRowRichness_(currentRow);
+    var nextRichness = getPortfolioAggregateRowRichness_(nextRow);
+    if (nextRichness !== currentRichness)
+        return nextRichness > currentRichness ? nextRow : currentRow;
+    return currentRow;
+}
+function dedupePortfolioAggregateRows_(rows) {
+    if (!Array.isArray(rows) || !rows.length)
+        return [];
+    return Array.from(rows.reduce(function (map, row) {
+        var key = buildPortfolioAggregateDedupKey_(row);
+        var current = map.get(key);
+        map.set(key, current ? choosePreferredPortfolioAggregateRow_(current, row) : row);
+        return map;
+    }, new Map()).values());
+}
 function buildPortfolioRowsFromAggregate_(rows, studentNumber, unitId) {
     var normalizedStudent = String(studentNumber || '').trim();
     var normalizedUnit = String(unitId || '').trim();
     if (!normalizedStudent || !Array.isArray(rows) || !rows.length)
         return [];
-    return sortPortfolioRows_(rows
+    var uniqueRows = dedupePortfolioAggregateRows_(rows
         .filter(function (row) {
         if (String(row && row.num || '').trim() !== normalizedStudent)
             return false;
         if (normalizedUnit && String(row && row.unitId || '').trim() !== normalizedUnit)
             return false;
         return true;
-    })
+    }));
+    return sortPortfolioRows_(uniqueRows
         .map(function (row) { return ({
         unitName: row && row.unitName || '',
         subject: row && row.subject || '',
@@ -896,11 +972,14 @@ function filterAgg() {
     var period = document.getElementById('aggPeriod').value;
     var preset = (document.getElementById('aggPreset') || {}).value || 'standard';
     var showComment = Boolean((document.getElementById('aggShowComment') || {}).checked);
-    var rows = allAggData.filter(function (r) {
+    var scopedRows = dedupePortfolioAggregateRows_(allAggData.filter(function (r) {
         if (subject && String(r.subject || '') !== String(subject))
             return false;
         if (unitId && String(r.unitId || '') !== String(unitId))
             return false;
+        return true;
+    }));
+    var rows = scopedRows.filter(function (r) {
         if (period && r.period != period)
             return false;
         return true;
@@ -910,9 +989,7 @@ function filterAgg() {
             return numDiff;
         return String(a.name || '').localeCompare(String(b.name || ''), 'ja');
     });
-    var periods = uniqueValues(allAggData
-        .filter(function (r) { return (!subject || String(r.subject || '') === String(subject)) && (!unitId || String(r.unitId || '') === String(unitId)); })
-        .map(function (r) { return r.period; })).sort(function (a, b) { return a - b; });
+    var periods = uniqueValues(scopedRows.map(function (r) { return r.period; })).sort(function (a, b) { return a - b; });
     var pSel = document.getElementById('aggPeriod');
     var pCur = pSel.value;
     pSel.innerHTML = '<option value="">全時間</option>' +
@@ -993,11 +1070,14 @@ function filterGrading() {
             onFailure: function () { },
         });
     }
-    var rows = allAggData.filter(function (r) {
+    var scopedRows = dedupePortfolioAggregateRows_(allAggData.filter(function (r) {
         if (subject && String(r.subject || '') !== String(subject))
             return false;
         if (mode !== 'subject' && unitId && String(r.unitId || '') !== String(unitId))
             return false;
+        return true;
+    }));
+    var rows = scopedRows.filter(function (r) {
         if (period && r.period != period)
             return false;
         return true;
@@ -1007,9 +1087,7 @@ function filterGrading() {
             return numDiff;
         return String(a.name || '').localeCompare(String(b.name || ''), 'ja');
     });
-    var periods = uniqueValues(allAggData
-        .filter(function (r) { return (!subject || String(r.subject || '') === String(subject)) && (!unitId || String(r.unitId || '') === String(unitId)); })
-        .map(function (r) { return r.period; })).sort(function (a, b) { return a - b; });
+    var periods = uniqueValues(scopedRows.map(function (r) { return r.period; })).sort(function (a, b) { return a - b; });
     var pSel = document.getElementById('gradePeriod');
     var pCur = pSel.value;
     pSel.innerHTML = '<option value="">全時間</option>' +
@@ -1020,8 +1098,8 @@ function filterGrading() {
             : '単元ごとの根拠を見ながら評定できます。';
     }
     if (mode === 'subject') {
-        renderGradingFieldChipsForSubject(subject, gradingCategory);
-        renderGradingSubjectMatrix(subject, gradingCategory);
+        renderGradingFieldChipsForSubject(subject, gradingCategory, scopedRows);
+        renderGradingSubjectMatrix(subject, gradingCategory, scopedRows);
         return;
     }
     renderAggFieldChips({ fields: [] }, '', 'grading', gradingCategory, rows);
@@ -1048,7 +1126,7 @@ function filterGrading() {
 function getGradingUnitsForSubject(subject) {
     return sortUnitsByLatestActivity(allUnits.filter(function (unit) { return subject && String(unit.subject || '') === String(subject); }));
 }
-function buildGradingSubjectRows(subject, category) {
+function buildGradingSubjectRows(subject, category, rows) {
     var units = getGradingUnitsForSubject(subject);
     var studentMap = new Map();
     rosterEntries.forEach(function (row) {
@@ -1061,10 +1139,9 @@ function buildGradingSubjectRows(subject, category) {
             units: {},
         });
     });
-    allAggData.forEach(function (row) {
+    var sourceRows = Array.isArray(rows) ? rows : dedupePortfolioAggregateRows_(allAggData.filter(function (row) { return String(row.subject || '') === String(subject); }));
+    sourceRows.forEach(function (row) {
         var _a, _b;
-        if (String(row.subject || '') !== String(subject))
-            return;
         var num = String(row.num || '').trim();
         if (!num)
             return;
@@ -1124,7 +1201,7 @@ function buildGradingSubjectRows(subject, category) {
             };
         }) })); });
 }
-function renderGradingFieldChipsForSubject(subject, gradingCategory) {
+function renderGradingFieldChipsForSubject(subject, gradingCategory, rows) {
     var box = document.getElementById('gradeFieldChips');
     if (!box)
         return;
@@ -1133,7 +1210,8 @@ function renderGradingFieldChipsForSubject(subject, gradingCategory) {
         box.textContent = '教科を選ぶと、その教科の単元を横並びで評定できます。';
         return;
     }
-    var labels = collectAggVisibleFields(allAggData.filter(function (row) { return String(row.subject || '') === String(subject); }))
+    var sourceRows = Array.isArray(rows) ? rows : dedupePortfolioAggregateRows_(allAggData.filter(function (row) { return String(row.subject || '') === String(subject); }));
+    var labels = collectAggVisibleFields(sourceRows)
         .filter(function (field) { return matchesAggPresetField(field, gradingCategory); })
         .map(function (field) { return field.label; });
     var unitLabels = getGradingUnitsForSubject(subject).map(function (unit) { return unit.name || ''; });
@@ -1143,7 +1221,7 @@ function renderGradingFieldChipsForSubject(subject, gradingCategory) {
         .concat(labels.slice(0, 6).map(function (label) { return "<span class=\"field-chip\">".concat(esc(label), "</span>"); }))
         .join('');
 }
-function renderGradingSubjectMatrix(subject, gradingCategory) {
+function renderGradingSubjectMatrix(subject, gradingCategory, rows) {
     var gradeBody = document.getElementById('gradeBody');
     var gradeCards = document.getElementById('gradeCards');
     var gradeHead = document.getElementById('gradeHead');
@@ -1165,18 +1243,18 @@ function renderGradingSubjectMatrix(subject, gradingCategory) {
             gradeDebug.textContent = "".concat(subject, " \u306E\u5358\u5143\u304C\u307E\u3060\u3042\u308A\u307E\u305B\u3093\u3002 / ").concat(getAggregateScopeDebugText_({ subject: subject }));
         return;
     }
-    var rows = buildGradingSubjectRows(subject, gradingCategory);
+    var gradingRows = buildGradingSubjectRows(subject, gradingCategory, rows);
     gradeHead.innerHTML = "<tr><th>#</th><th>\u306A\u307E\u3048</th>".concat(units.map(function (unit) { return "<th>".concat(esc(unit.name || ''), "</th>"); }).join(''), "</tr>");
     if (gradeDebug) {
         gradeDebug.textContent = "".concat(subject, " \u306E ").concat(units.length, " \u5358\u5143\u3092\u6A2A\u4E26\u3073\u8868\u793A\u3057\u3066\u3044\u307E\u3059\u3002").concat(FIELD_CATEGORY_LABELS[gradingCategory], " \u3092\u4E00\u89A7\u3067\u5165\u529B\u3067\u304D\u307E\u3059\u3002 / ").concat(getAggregateScopeDebugText_({ subject: subject }));
     }
-    if (!rows.length) {
+    if (!gradingRows.length) {
         gradeBody.innerHTML = "<tr><td colspan=\"".concat(2 + units.length, "\" style=\"text-align:center;color:#999;padding:14px;\">\u540D\u7C3F\u30C7\u30FC\u30BF\u304C\u3042\u308A\u307E\u305B\u3093</td></tr>");
         gradeCards.innerHTML = '<div class="portfolio-empty">名簿データがありません</div>';
         return;
     }
-    gradeBody.innerHTML = rows.map(function (row) { return "\n    <tr>\n      <td>".concat(row.num, "</td>\n      <td>").concat(esc(row.name), "</td>\n      ").concat(row.unitEntries.map(function (unitEntry) { return "<td class=\"grading-matrix-cell\">".concat(renderGradingMatrixCell(row, unitEntry, gradingCategory), "</td>"); }).join(''), "\n    </tr>\n  "); }).join('');
-    gradeCards.innerHTML = rows.map(function (row) { return "\n    <div class=\"agg-card\">\n      <div class=\"agg-card-top\">\n        <div>\n          <div class=\"agg-card-title\">".concat(row.num, " ").concat(esc(row.name || ''), "</div>\n          <div class=\"agg-card-meta\">").concat(esc(subject), " / ").concat(FIELD_CATEGORY_LABELS[gradingCategory], "</div>\n        </div>\n      </div>\n      <div class=\"grading-card-grid\">\n        ").concat(row.unitEntries.map(function (unitEntry) { return "\n          <div class=\"agg-card-block\">\n            <div class=\"agg-card-label\">".concat(esc(unitEntry.unitName || ''), "</div>\n            <div class=\"agg-card-text\">").concat(renderGradingMatrixCardCell(row, unitEntry, gradingCategory), "</div>\n          </div>\n        "); }).join(''), "\n      </div>\n    </div>\n  "); }).join('');
+    gradeBody.innerHTML = gradingRows.map(function (row) { return "\n    <tr>\n      <td>".concat(row.num, "</td>\n      <td>").concat(esc(row.name), "</td>\n      ").concat(row.unitEntries.map(function (unitEntry) { return "<td class=\"grading-matrix-cell\">".concat(renderGradingMatrixCell(row, unitEntry, gradingCategory), "</td>"); }).join(''), "\n    </tr>\n  "); }).join('');
+    gradeCards.innerHTML = gradingRows.map(function (row) { return "\n    <div class=\"agg-card\">\n      <div class=\"agg-card-top\">\n        <div>\n          <div class=\"agg-card-title\">".concat(row.num, " ").concat(esc(row.name || ''), "</div>\n          <div class=\"agg-card-meta\">").concat(esc(subject), " / ").concat(FIELD_CATEGORY_LABELS[gradingCategory], "</div>\n        </div>\n      </div>\n      <div class=\"grading-card-grid\">\n        ").concat(row.unitEntries.map(function (unitEntry) { return "\n          <div class=\"agg-card-block\">\n            <div class=\"agg-card-label\">".concat(esc(unitEntry.unitName || ''), "</div>\n            <div class=\"agg-card-text\">").concat(renderGradingMatrixCardCell(row, unitEntry, gradingCategory), "</div>\n          </div>\n        "); }).join(''), "\n      </div>\n    </div>\n  "); }).join('');
 }
 function renderGradingMatrixCell(row, unitEntry, category) {
     var evidence = buildGradingEvidenceHtml(unitEntry);
