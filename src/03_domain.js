@@ -2572,6 +2572,7 @@ function getOrCreateLesson_(unitId, period, lessonDate) {
   const lock = LockService.getDocumentLock();
   lock.waitLock(10000);
   try {
+    invalidateLessonRecordCaches_();
     const lockedExisting = getLessonRecordByUnitPeriod_(unitId, period);
     if (lockedExisting) return lockedExisting;
 
