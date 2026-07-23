@@ -41,8 +41,24 @@
             </div>
             <div class="status-density-buttons" id="statusDensityButtons" role="group" aria-label="回答一覧の列数"></div>
           </div>
+          <div class="status-presentation-control" role="group" aria-label="回答一覧の表示形式">
+            <span class="status-control-label">表示形式</span>
+            <div class="status-presentation-tabs">
+              <button class="status-presentation-tab active" id="statusPresentationTabCards" type="button" aria-pressed="true" onclick="switchStatusResponseMode('cards')">カード表示</button>
+              <button class="status-presentation-tab" id="statusPresentationTabTable" type="button" aria-pressed="false" onclick="switchStatusResponseMode('table')">一覧表</button>
+            </div>
+          </div>
         </div>
         <div id="statusCardGrid"><div class="status-grid-empty"><span class="spinner"></span></div></div>
+        <div class="status-table-view" id="statusTableView" hidden>
+          <div class="status-table-scroll" id="statusTableScroll">
+            <table class="status-compare-table" aria-label="児童の回答一覧表">
+              <colgroup id="statusTableColGroup"></colgroup>
+              <thead id="statusTableHead"></thead>
+              <tbody id="statusTableBody"></tbody>
+            </table>
+          </div>
+        </div>
       </div>
       <div class="status-view-pane" id="statusFeedbackPane" role="tabpanel" aria-labelledby="statusViewTabFeedback" hidden>
         <div class="status-feedback-block status-feedback-block-pane">
