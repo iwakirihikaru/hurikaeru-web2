@@ -996,7 +996,7 @@ function filterGrading() {
     var rows = allAggData.filter(function (r) {
         if (subject && String(r.subject || '') !== String(subject))
             return false;
-        if (unitId && String(r.unitId || '') !== String(unitId))
+        if (mode !== 'subject' && unitId && String(r.unitId || '') !== String(unitId))
             return false;
         if (period && r.period != period)
             return false;
