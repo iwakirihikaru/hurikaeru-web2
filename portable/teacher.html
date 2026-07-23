@@ -7259,6 +7259,20 @@ function purgeAiLogs() {
         .purgeAiLogsOlderThan(days);
 }
 function savePrompts() {
+    if (savePrompts._saving) {
+        return;
+    }
+    var saveButton = document.activeElement instanceof HTMLButtonElement ? document.activeElement : null;
+    savePrompts._saving = true;
+    if (saveButton) {
+        saveButton.disabled = true;
+    }
+    var finishSave = function () {
+        savePrompts._saving = false;
+        if (saveButton) {
+            saveButton.disabled = false;
+        }
+    };
     var nextPromptCache = {
         globalCfg: {
             medal_top: document.getElementById('pMedal').value,
@@ -7277,12 +7291,31 @@ function savePrompts() {
     };
     google.script.run
         .withSuccessHandler(function (res) {
-        var savedCfg = (res && res.globalCfg) || {};
-        nextPromptCache.globalCfg = __assign(__assign({}, nextPromptCache.globalCfg), savedCfg);
-        preloadCache.prompts = nextPromptCache;
-        persistTeacherPreloadCache_();
-        applyPromptData(preloadCache.prompts);
-        alert('プロンプトを保存しました！');
+        try {
+            var savedCfg = (res && res.globalCfg) || {};
+            nextPromptCache.globalCfg = __assign(__assign({}, nextPromptCache.globalCfg), savedCfg);
+            preloadCache.prompts = nextPromptCache;
+            try {
+                persistTeacherPreloadCache_();
+            }
+            catch (_a) { }
+            try {
+                applyPromptData(preloadCache.prompts);
+            }
+            catch (_b) { }
+            alert('プロンプトを保存しました！');
+        }
+        finally {
+            finishSave();
+        }
+    })
+        .withFailureHandler(function (err) {
+        try {
+            alert("プロンプトの保存に失敗しました: ".concat((err && err.message) || err || 'unknown_error'));
+        }
+        finally {
+            finishSave();
+        }
     })
         .saveGlobalSettings(document.getElementById('pMedal').value, document.getElementById('pComment').value, document.getElementById('pScore').value, document.getElementById('pPortfolio').value, document.getElementById('pUnitSummary').value, document.getElementById('pAssessment').value, document.getElementById('pApiKey').value, document.getElementById('pStudentAiAutoSubmit').checked);
 }
