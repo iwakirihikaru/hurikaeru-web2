@@ -52,7 +52,20 @@
 - 正式な deploy script が失敗する。
 - 単に本番操作であることだけを理由に停止しない。
 
+## Git / source commit / deploy
+- `source commit` は今回の変更を含む新規 commit のみを指す。作業開始時点の commit や、今回の変更を含まない commit を `source commit` として報告しない。
+- 調査のみで commit を作っていない場合は、`新規 source commit なし` と明記する。
+- 修正時は今回対象の差分だけを stage する。無関係な差分を含めて commit しない。
+- 無関係な差分は混ぜない。破棄もしない。必要なら分離方法を検討し、分離できない場合は停止条件を優先する。
+- 修正内容を commit する前に `git show --stat --name-only HEAD` または今回作成した commit に対する `git show` で変更ファイルを確認する。
+- 修正を伴う作業で commit / push / deploy が許可されている場合は、`test` → `commit` → `push` → `deploy` の順を守る。
+- 個別指示で `commit` や `deploy` が禁止されている場合は、その個別指示を優先する。
+- push 前の commit や未 push の HEAD を `source commit` として完了報告しない。`source commit` は push 済み commit のみとする。
+- deploy を行う場合は、deploy description と push 済み HEAD が同じ commit を指すことを照合してから完了報告する。
+- 未commit 差分が残った状態で、修正済み・反映済みとして完了報告しない。
+
 ## 完了報告
+- `修正元 commit` と書いている箇所は、今回の変更を含む push 済み新規 `source commit` を指す。作業開始 commit を使わない。
 - GAS のみ: 修正元 commit、push 先 branch、GAS production version、GAS deployment description、Pages 未更新の理由、未確認事項。
 - Pages のみ: 修正元 commit、push 先 branch、Pages workflow ID、Pages workflow 結果、`pages-release` commit、Cloudflare Production source commit、GAS 未更新の理由、未確認事項。
 - 両方: 修正元 commit、push 先 branch、GAS production version、GAS deployment description、Pages workflow ID、Pages workflow 結果、`pages-release` commit、Cloudflare Production source commit、各反映先が修正元 commit 由来であること、未確認事項。
