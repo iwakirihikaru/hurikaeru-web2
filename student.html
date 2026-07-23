@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta name="source-commit" content="753d1ea6f9dad3bdc71b27ad3c64ddc4bc2bd46c">
-<script src="./runtime-shim.js?v=3dc7b19e3b"></script>
+<meta name="source-commit" content="95649a5651d4fdc6c519346679c26ee2e3066ccd">
+<script src="./runtime-shim.js?v=be92b4379c"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>ふりカエル</title>
@@ -496,7 +496,6 @@ let autoSaveRetryAttempt = 0;
 let autoSaveQueuedAfterInFlight = false;
 let pendingAutoSaveValues = null;
 let pendingAutoSaveSignature = '';
-let manualSavePendingFeedback = false;
 let lastStudentSaveUiState = '';
 let studentDraftSaveTimer = null;
 let studentDraftDirty = false;
@@ -520,7 +519,7 @@ const STUDENT_ENTRY_CACHE_KEY = 'furikaeri:studentEntryOptions';
 const STUDENT_CLASS_SNAPSHOT_CACHE_KEY = 'furikaeri:studentClassSnapshot';
 let studentClassSnapshotPreloadBusy = false;
 let studentClassSnapshotPreloadScheduled = false;
-const STUDENT_CLIENT_BUILD = 'client-753d1ea6f9da';
+const STUDENT_CLIENT_BUILD = 'client-20260704-1035';
 const studentDiagnosticsEnabled = (() => {
   try{
     return new URLSearchParams(window.location.search || '').get('diagnostics') === '1';
@@ -815,9 +814,8 @@ function scheduleLocalDraftSave_(){
 }
 
 function markStudentSaveSynced_(values){
-  const savedSignature=getStudentDraftSignature_(values);
-  lastServerSavedSignature=savedSignature;
-  studentDraftDirty=getStudentDraftSignature_(getCustomValues())!==savedSignature;
+  lastServerSavedSignature=getStudentDraftSignature_(values);
+  studentDraftDirty=false;
 }
 
 function getStudentSaveButtonLabel_(){
@@ -1170,11 +1168,7 @@ function buildTimelineTransportMetrics_(timing){
 }
 
 function ensureStudentDebugFooter_(){
-  if(!studentDiagnosticsEnabled){
-    const existing=document.getElementById('studentApiDebug');
-    if(existing) existing.remove();
-    return null;
-  }
+  if(!studentDiagnosticsEnabled) return null;
   let el=document.getElementById('studentApiDebug');
   if(el) return el;
   el=document.createElement('div');
@@ -1236,7 +1230,6 @@ function resetStudentSessionForReentry_(message){
   autoSaveQueuedAfterInFlight=false;
   pendingAutoSaveValues=null;
   pendingAutoSaveSignature='';
-  manualSavePendingFeedback=false;
   lastStudentSaveUiState='';
   timelineRefreshPending=false;
   studentActiveReloading=false;
@@ -1663,7 +1656,6 @@ function loadMain(d){
   myPeriod  = d.period      || null;
   myFields  = d.fields      || [];
   submitted = d.submitted   || false;
-  manualSavePendingFeedback = false;
   focusField = getInitialStudentFocusField_(myFields);
   teacherTimelineFieldKey = d.teacherTimelineFieldKey || '';
   currentStudentUnitInfo = d.unit || currentStudentUnitInfo || null;
@@ -1690,7 +1682,7 @@ function loadMain(d){
   document.getElementById('studentHistoryScopes').style.display='none';
   document.getElementById('studentHistoryTabs').innerHTML='';
   document.getElementById('studentHistoryTabs').style.display='none';
-  document.getElementById('submitBtn').textContent=getStudentSaveButtonLabel_();
+  document.getElementById('submitBtn').textContent=getStudentShellLabel_('studentSubmitLabel', '🚀 ていしゅつ');
   document.getElementById('hdrUnit').textContent=
     currentStudentUnitInfo?`【${currentStudentUnitInfo.subject}】${currentStudentUnitInfo.name}・${d.period}じかんめ`:'';
   const identityLabel=formatStudentIdentity_(identity.num, identity.name);
@@ -2295,7 +2287,6 @@ function resetAutoSave(){
 function requestStudentSave_(options){
   const opts=options||{};
   if(submitted||submitInFlight) return;
-  if(opts.silent!==true) manualSavePendingFeedback=true;
   queueLatestStudentSave_();
   if(pendingAutoSaveSignature===lastServerSavedSignature){
     pendingAutoSaveValues=null;
@@ -2303,10 +2294,6 @@ function requestStudentSave_(options){
     autoSaveQueuedAfterInFlight=false;
     clearStudentAutoSaveRetry_();
     studentDraftDirty=false;
-    if(manualSavePendingFeedback){
-      manualSavePendingFeedback=false;
-      showToast('✅ ほぞんしたよ！');
-    }
     persistStudentDraftLocally_();
     updateStudentSaveUi_();
     return;
@@ -2327,19 +2314,15 @@ function requestStudentSave_(options){
     .withSuccessHandler(res=>{
       autoSaveInFlight=false;
       if(res && res.ok){
-        const savedLatestSnapshot=getStudentDraftSignature_(getCustomValues())===saveSignature;
         clearStudentAutoSaveRetry_();
-        if(savedLatestSnapshot){
+        if(getStudentDraftSignature_(getCustomValues())===saveSignature){
           markStudentSaveSynced_(values);
-          if(manualSavePendingFeedback){
-            manualSavePendingFeedback=false;
-            showToast('✅ ほぞんしたよ！');
-          }
         }else{
           studentDraftDirty=true;
           autoSaveQueuedAfterInFlight=true;
         }
         persistStudentDraftLocally_();
+        if(opts.silent!==true) showToast('✅ ほぞんしたよ！');
         updateStudentSaveUi_();
         if((studentDraftDirty||autoSaveQueuedAfterInFlight) && !submitted){
           requestStudentSave_({ silent:true, source:'followup' });
