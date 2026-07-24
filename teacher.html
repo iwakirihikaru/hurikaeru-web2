@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta name="x-source-commit" content="2737c9495ab1bc448c063e5cd5de359ef14e0fee">
-<script>window.__SOURCE_COMMIT__ = "2737c9495ab1bc448c063e5cd5de359ef14e0fee";</script>
+<meta name="x-source-commit" content="3abef5cc03169802b1cfe15eeee1fa4194e77661">
+<script>window.__SOURCE_COMMIT__ = "3abef5cc03169802b1cfe15eeee1fa4194e77661";</script>
 <script src="./runtime-shim.js?v=c8f329c57c"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -487,8 +487,8 @@ body{font-family:var(--font);background:var(--bg);color:#212121;}
 .status-feedback-detail-note{font-size:12px;color:var(--muted);margin:12px 0 10px;}
 .status-modal-open{overflow:hidden;}
 .status-card-modal{
-  width:min(94vw,1800px);max-width:1800px;height:min(calc(var(--status-modal-vh, 1vh) * 94),96vh);
-  max-height:min(calc(var(--status-modal-vh, 1vh) * 94),96vh);padding:18px 18px 16px;display:flex;flex-direction:column;
+  width:min(94vw,1800px);max-width:1800px;height:min(calc(var(--status-modal-vh, 1vh) * 94),94vh);
+  max-height:min(calc(var(--status-modal-vh, 1vh) * 94),94vh);padding:18px 18px 16px;display:flex;flex-direction:column;
 }
 .status-card-modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px;}
 .status-card-modal-titlegroup{min-width:0;flex:1 1 auto;}
@@ -496,7 +496,7 @@ body{font-family:var(--font);background:var(--bg);color:#212121;}
 .status-card-modal-student{font-size:20px;font-weight:bold;color:var(--navy);line-height:1.5;min-width:0;}
 .status-card-modal-number{font-size:14px;font-weight:bold;color:#607D8B;line-height:1.5;white-space:nowrap;}
 .status-card-modal-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px;}
-.status-card-modal-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;}
+.status-card-modal-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;flex:0 1 auto;}
 .status-card-modal-close{margin-top:0;min-width:96px;}
 .status-feedback-jump-btn{min-height:42px;white-space:nowrap;}
 .status-card-modal-main{
@@ -521,11 +521,15 @@ body{font-family:var(--font);background:var(--bg);color:#212121;}
 .status-card-modal-answer .status-card-text{
   font-size:17px;line-height:1.92;
 }
-.status-card-modal-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:space-between;margin-top:14px;}
-.status-card-modal-nav{flex:1;min-width:180px;min-height:44px;}
+.status-card-modal-nav{min-width:112px;min-height:42px;}
 .status-feedback-row{scroll-margin-top:88px;}
 .status-feedback-row.is-target{
   outline:3px solid rgba(67,160,71,.22);outline-offset:-2px;background:#F6FBF7;
+}
+@media(max-width:1180px){
+  .status-card-modal-head{flex-wrap:wrap;}
+  .status-card-modal-toolbar{width:100%;justify-content:flex-start;}
+  .status-feedback-jump-btn{flex:1 1 220px;}
 }
 @media(max-width:820px){
   .container{padding:10px;}
@@ -704,11 +708,8 @@ body{font-family:var(--font);background:var(--bg);color:#212121;}
   }
   .status-favorite-btn{min-width:34px;min-height:34px;font-size:16px;}
   .status-card-modal-head{flex-direction:column;}
-  .status-card-modal-toolbar{width:100%;flex-direction:column;align-items:stretch;}
-  .status-feedback-jump-btn,
-  .status-card-modal-close{width:100%;}
-  .status-card-modal-actions{flex-direction:column;}
-  .status-card-modal-nav{width:100%;}
+  .status-card-modal-toolbar{width:100%;justify-content:flex-start;}
+  .status-feedback-jump-btn{flex:1 1 auto;}
 }
 @media(max-width:520px){
   .status-density-buttons{grid-template-columns:repeat(2,minmax(0,1fr));}
@@ -1163,6 +1164,8 @@ button:not([disabled]):active,button.is-pressed{transform:translateY(1px);filter
           <div class="status-card-modal-meta" id="statusCardModalMeta"></div>
         </div>
         <div class="status-card-modal-toolbar">
+          <button class="btn-subtle status-card-modal-nav" id="statusCardModalPrevBtn" type="button" onclick="moveStatusCardModal(-1)">← 前の児童</button>
+          <button class="btn-subtle status-card-modal-nav" id="statusCardModalNextBtn" type="button" onclick="moveStatusCardModal(1)">次の児童 →</button>
           <button class="status-favorite-btn" id="statusCardModalFavoriteBtn" type="button" hidden onclick="toggleStatusFavorite(event,this.getAttribute('data-response-id')||'')" onkeydown="handleStatusFavoriteButtonKeydown(event,this.getAttribute('data-response-id')||'')">☆</button>
           <button class="btn-subtle status-feedback-jump-btn" id="statusFeedbackJumpBtn" type="button" onclick="openStatusFeedbackFromModal()">個別フィードバックへ</button>
           <button class="btn-cancel status-card-modal-close" type="button" onclick="closeStatusCardModal()">閉じる</button>
@@ -1172,10 +1175,6 @@ button:not([disabled]):active,button.is-pressed{transform:translateY(1px);filter
         <div class="status-card-modal-pane status-card-modal-answer">
           <div class="status-card-modal-body" id="statusCardModalBody"></div>
         </div>
-      </div>
-      <div class="status-card-modal-actions">
-        <button class="btn-subtle status-card-modal-nav" id="statusCardModalPrevBtn" type="button" onclick="moveStatusCardModal(-1)">← 前の児童</button>
-        <button class="btn-update status-card-modal-nav" id="statusCardModalNextBtn" type="button" onclick="moveStatusCardModal(1)">次の児童 →</button>
       </div>
     </div>
   </div>
