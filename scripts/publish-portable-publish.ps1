@@ -25,6 +25,17 @@ if (-not (Test-Path -LiteralPath $publishPath)) {
 
 Set-Location -LiteralPath $repoRoot
 
+$sourceCommit = (git rev-parse HEAD).Trim()
+if (-not $sourceCommit) {
+  throw "Failed to resolve source commit from repository HEAD"
+}
+$beforeCommit = ""
+try {
+  $beforeCommit = (git rev-parse "$sourceCommit^").Trim()
+} catch {
+  $beforeCommit = ""
+}
+
 Invoke-Step -Label "Validate source worktree" -Action {
   git diff --check
   if ($LASTEXITCODE -ne 0) { throw "git diff --check failed in source worktree" }
@@ -77,6 +88,11 @@ $syncArgs = @(".\scripts\sync-portable-publish.mjs")
 if ($Build) {
   $syncArgs += "--build"
 }
+Invoke-Step -Label "Guard pages publish inputs" -Action {
+  node .\scripts\guard-pages-publish.mjs --publish-dir $PublishDir --source-commit $sourceCommit --before $beforeCommit
+  if ($LASTEXITCODE -ne 0) { throw "pages publish guard failed" }
+}
+
 Invoke-Step -Label "Sync portable artifacts" -Action {
   node @syncArgs
   if ($LASTEXITCODE -ne 0) { throw "portable sync failed" }

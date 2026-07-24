@@ -1,0 +1,104 @@
+name: Publish Pages
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/publish-pages.yml'
+      - '_headers'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'portable-src/runtime-shim.js'
+      - 'scripts/build-static-port.mjs'
+      - 'scripts/guard-pages-publish.mjs'
+      - 'scripts/sync-portable-publish.mjs'
+      - 'src/index.html'
+      - 'src/teacher*.html'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-pages-pages-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      PAGES_BASE_URL: https://hurikaeru-web2.pages.dev
+      SOURCE_COMMIT: ${{ github.sha }}
+      SOURCE_BEFORE_SHA: ${{ github.event.before }}
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build portable artifacts
+        run: npm run build:portable
+
+      - name: Verify portable artifacts
+        run: node ./scripts/verify-portable-build.mjs
+
+      - name: Checkout pages-release
+        uses: actions/checkout@v5
+        with:
+          ref: pages-release
+          path: portable-publish
+          fetch-depth: 0
+
+      - name: Record pages-release base SHA
+        run: echo "PAGES_RELEASE_BASE_SHA=$(git -C portable-publish rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Guard pages publish inputs
+        run: node ./scripts/guard-pages-publish.mjs
+
+      - name: Sync pages-release artifacts
+        run: npm run sync:portable-publish
+
+      - name: Commit and push pages-release
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            _headers
+            README.md
+            index.html
+            runtime-shim.js
+            setup.html
+            student.html
+            teacher.html
+          )
+          git -C portable-publish config user.name "github-actions[bot]"
+          git -C portable-publish config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git -C portable-publish diff --quiet -- "${files[@]}" && git -C portable-publish diff --cached --quiet -- "${files[@]}"; then
+            echo "No pages-release artifact changes detected."
+            exit 0
+          fi
+          git -C portable-publish add -- "${files[@]}"
+          if git -C portable-publish diff --cached --quiet -- "${files[@]}"; then
+            echo "No staged pages-release artifact changes detected."
+            exit 0
+          fi
+          git -C portable-publish commit -m "Publish portable site from ${SOURCE_COMMIT}"
+          git -C portable-publish fetch origin pages-release
+          remote_head="$(git -C portable-publish rev-parse FETCH_HEAD)"
+          if [[ "${remote_head}" != "${PAGES_RELEASE_BASE_SHA}" ]]; then
+            echo "pages-release advanced from ${PAGES_RELEASE_BASE_SHA} to ${remote_head}. Stop without rebase or manual conflict resolution."
+            exit 1
+          fi
+          git -C portable-publish push origin HEAD:pages-release
+
+      - name: Verify Cloudflare production
+        run: node ./scripts/verify-pages-deploy.mjs
