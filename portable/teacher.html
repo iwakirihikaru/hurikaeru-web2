@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
+<meta name="x-source-commit" content="e4ae0f9bf0a1b79177c4330f84fd01ac108f5c66">
+<script>window.__SOURCE_COMMIT__ = "e4ae0f9bf0a1b79177c4330f84fd01ac108f5c66";</script>
 <script src="./runtime-shim.js?v=3dc7b19e3b"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -333,7 +335,7 @@ body{font-family:var(--font);background:var(--bg);color:#212121;}
 .status-card-head{display:flex;flex-direction:column;gap:4px;min-width:0;}
 .status-card-numberrow{display:none;min-width:0;}
 .status-card-mainrow{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;min-width:0;}
-.status-card-name{min-width:0;flex:1 1 auto;}
+.status-card-name{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1 1 auto;}
 .status-card-studentline{display:flex;align-items:baseline;gap:8px;min-width:0;white-space:nowrap;}
 .status-card-number{
   flex:0 0 auto;font-size:var(--status-card-meta-size);font-weight:bold;color:#5D7A67;line-height:1.35;
@@ -344,10 +346,8 @@ body{font-family:var(--font);background:var(--bg);color:#212121;}
 }
 .status-card-student.compact{font-size:calc(var(--status-card-student-size) - 1px);}
 .status-card-student.tight{font-size:calc(var(--status-card-student-size) - 2px);}
-.status-card-side,
-.status-card-sidebadges{
-  display:flex;align-items:center;justify-content:flex-end;gap:6px;flex:0 0 auto;white-space:nowrap;
-}
+.status-card-side{display:flex;align-items:flex-start;justify-content:flex-end;gap:6px;flex:0 0 auto;white-space:nowrap;}
+.status-card-sidebadges{display:flex;align-items:center;justify-content:flex-end;gap:6px;flex:0 0 auto;white-space:nowrap;}
 .status-favorite-btn{
   display:inline-flex;align-items:center;justify-content:center;min-width:38px;min-height:38px;
   padding:0 8px;border:1.5px solid #D8E6D9;border-radius:999px;background:#fff;color:#607D66;
@@ -357,7 +357,7 @@ body{font-family:var(--font);background:var(--bg);color:#212121;}
 .status-favorite-btn:focus-visible{outline:3px solid rgba(67,160,71,.24);outline-offset:2px;}
 .status-favorite-btn[disabled]{cursor:default;opacity:.6;}
 .status-favorite-btn.status-favorite-active{border-color:#F6C342;background:#FFF7D6;color:#C88700;}
-.status-favorite-btn.status-favorite-busy{color:#9AA6AC;}
+.status-favorite-btn.status-favorite-busy{color:inherit;opacity:.52;}
 .status-rank-chip{
   display:inline-flex;align-items:center;justify-content:center;min-height:20px;padding:2px 8px;border-radius:999px;
   font-size:11px;font-weight:bold;line-height:1;color:#fff;
@@ -424,21 +424,35 @@ body{font-family:var(--font);background:var(--bg);color:#212121;}
   --status-card-section-gap:7px;
   --status-card-block-gap:6px;
 }
+.status-card-grid.cols-3 .status-card-numberrow,
 .status-card-grid.cols-4 .status-card-numberrow,
 .status-card-grid.cols-5 .status-card-numberrow{display:block;}
+.status-card-grid.cols-3 .status-card-number-inline,
 .status-card-grid.cols-4 .status-card-number-inline,
 .status-card-grid.cols-5 .status-card-number-inline{display:none;}
+.status-card-grid.cols-3 .status-card-mainrow,
 .status-card-grid.cols-4 .status-card-mainrow,
-.status-card-grid.cols-5 .status-card-mainrow{gap:6px;}
+.status-card-grid.cols-5 .status-card-mainrow{
+  display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:6px;
+}
+.status-card-grid.cols-3 .status-card-studentline,
 .status-card-grid.cols-4 .status-card-studentline,
 .status-card-grid.cols-5 .status-card-studentline{display:block;min-width:0;white-space:normal;}
+.status-card-grid.cols-3 .status-card-student,
 .status-card-grid.cols-4 .status-card-student,
 .status-card-grid.cols-5 .status-card-student{
   display:block;overflow:hidden;text-overflow:ellipsis;white-space:normal;word-break:break-word;
   line-height:1.28;
 }
+.status-card-grid.cols-3 .status-card-side,
 .status-card-grid.cols-4 .status-card-side,
-.status-card-grid.cols-5 .status-card-side{align-self:flex-start;max-width:100%;overflow:hidden;}
+.status-card-grid.cols-5 .status-card-side{
+  display:grid;grid-template-columns:auto;grid-auto-rows:min-content;justify-items:end;align-items:start;
+  align-self:flex-start;justify-self:end;max-width:100%;overflow:visible;
+}
+.status-card-grid.cols-3 .status-card-sidebadges,
+.status-card-grid.cols-4 .status-card-sidebadges,
+.status-card-grid.cols-5 .status-card-sidebadges{flex-wrap:wrap;}
 .status-card-grid.cols-5 .status-card{
   --status-card-padding:11px;
   --status-card-text-size:12px;
@@ -1901,7 +1915,7 @@ var teacherEndingLesson = false;
 var teacherActiveDebug = '';
 var teacherUnitsReadMeta = null;
 var startPeriodManuallySelected = false;
-var TEACHER_CLIENT_BUILD = 'client-20260704-1035';
+var TEACHER_CLIENT_BUILD = 'client-20260724-0951';
 var teacherBootstrapApplied = false;
 var UI_STATE_KEY = 'jibun-matome-teacher-ui';
 var AGG_PRESET_LABELS = {
@@ -3788,6 +3802,8 @@ var statusCardColumnCount = 3;
 var statusViewScrollByTab = { responses: 0, feedback: 0 };
 var statusModalBodyLockY = 0;
 var statusFavoriteBusyMap = {};
+var statusFavoriteOverrideMap = {};
+var statusFeedbackRenderedLessonKey = '';
 function formatStatusTimingLine_(label, timing, keys) {
     if (!timing || typeof timing !== 'object' || !Array.isArray(keys) || !keys.length)
         return '';
@@ -3975,7 +3991,8 @@ function updateStatusDensityPreference_(value, save) {
     if (statusCardColumnCount !== nextCount) {
         statusCardColumnCount = nextCount;
         renderStatusCardGrid_();
-        syncStatusCardModal_();
+        if (statusModalStudentKey)
+            syncStatusCardModal_();
         restoreStatusViewportScroll_(scrollYBefore);
     }
     updateStatusDensityControls_();
@@ -4013,8 +4030,31 @@ function switchStatusViewTab(tabName) {
     statusViewScrollByTab[selectedStatusViewTab] = getStatusViewportScrollY_();
     selectedStatusViewTab = nextTab;
     applyStatusViewTabState_();
+    if (nextTab === 'feedback') {
+        ensureStatusFeedbackTableRendered_({ immediate: true });
+    }
     saveStatusViewPrefs_();
     restoreStatusViewportScroll_(statusViewScrollByTab[nextTab] || 0);
+}
+function shouldRenderStatusFeedbackTable_() {
+    return selectedStatusViewTab === 'feedback' || statusFeedbackRenderedLessonKey === latestStatusLessonKey;
+}
+function ensureStatusFeedbackTableRendered_(options) {
+    if (statusFeedbackRenderedLessonKey === latestStatusLessonKey)
+        return;
+    var opts = options && typeof options === 'object' ? options : {};
+    var render = function () {
+        try {
+            renderStatusFeedbackTable_();
+            statusFeedbackRenderedLessonKey = latestStatusLessonKey;
+        }
+        catch (_err) { }
+    };
+    if (opts.immediate === true || typeof requestAnimationFrame !== 'function') {
+        render();
+        return;
+    }
+    requestAnimationFrame(render);
 }
 function syncStatusModalViewportVar_() {
     if (typeof document === 'undefined')
@@ -4266,13 +4306,14 @@ function compareStatusNumericDesc_(left, right) {
     return 0;
 }
 function sortStatusViewRows_(rows, fields, mode) {
+    var needsTextLength = mode === 'text_length_asc' || mode === 'text_length_desc';
     var decorated = (Array.isArray(rows) ? rows : []).map(function (row) {
         return {
             row: row,
             favoriteScore: row && row.student && row.student.isFavorite === true ? 1 : 0,
             rankScore: getStatusRankSortValue_(row && row.student && row.student.rank || ''),
             numberScore: getStatusStudentNumberSortValue_(row && row.student || null),
-            textLength: measureStatusRowDisplayTextLength_(row, fields),
+            textLength: needsTextLength ? measureStatusRowDisplayTextLength_(row, fields) : 0,
             updatedAtScore: parseStatusSortTimestamp_(row && row.student && (row.student.responseUpdatedAt || row.student.submittedAt) || ''),
             stableIndex: Number(row && row.stableIndex) || 0,
         };
@@ -4318,8 +4359,13 @@ function refreshStatusSortedUi_(preserveScroll) {
     renderStatusSortControls_();
     renderStatusFieldTabs_();
     renderStatusCardGrid_();
-    renderStatusFeedbackTable_();
-    syncStatusCardModal_();
+    if (shouldRenderStatusFeedbackTable_()) {
+        renderStatusFeedbackTable_();
+        statusFeedbackRenderedLessonKey = latestStatusLessonKey;
+    }
+    if (statusModalStudentKey) {
+        syncStatusCardModal_();
+    }
     if (preserveScroll) {
         restoreStatusViewportScroll_(scrollYBefore);
     }
@@ -4382,10 +4428,15 @@ function getStatusFieldKeysFromSelection_(availableKeys) {
 function renderStatus(d) {
     var previousLessonKey = latestStatusLessonKey;
     var scrollYBefore = getStatusViewportScrollY_();
-    latestStatusRows = Array.isArray(d && d.students) ? d.students : [];
+    var incomingRows = Array.isArray(d && d.students) ? d.students : [];
     latestStatusMeta = d && d.meta || {};
+    reconcileStatusFavoriteOverrides_(incomingRows);
+    latestStatusRows = applyStatusFavoriteOverrides_(incomingRows);
     latestStatusLessonKey = getStatusLessonKey_(latestStatusMeta);
     var lessonChanged = previousLessonKey !== latestStatusLessonKey;
+    if (lessonChanged) {
+        statusFeedbackRenderedLessonKey = '';
+    }
     applyActiveFromStatusMeta_(latestStatusMeta);
     if (!latestStatusRows.length && !(latestStatusMeta && (latestStatusMeta.unitId || latestStatusMeta.lessonId))) {
         clearRenderedStatus_();
@@ -4398,7 +4449,6 @@ function renderStatus(d) {
     bindStatusCardEvents_();
     ensureStatusSelection_(lessonChanged);
     rebuildStatusViewRows_();
-    renderStatusPerfDebug_();
     var st = latestStatusRows;
     var aiReturnedCount = st.filter(function (s) { return String(s.comment || '').trim(); }).length;
     var draftCount = st.filter(function (s) { return hasTeacherDraft(s); }).length;
@@ -4407,17 +4457,44 @@ function renderStatus(d) {
     document.getElementById('statSubmitted').textContent = st.filter(function (s) { return s.submitted; }).length;
     document.getElementById('statAI').textContent = aiReturnedCount;
     syncTeacherFeedbackControls(st, draftCount);
-    renderStatusLessonSummary_();
-    renderStatusSortControls_();
-    renderStatusFieldTabs_();
     renderStatusCardGrid_();
-    renderStatusFeedbackTable_();
-    syncStatusCardModal_();
+    if (statusModalStudentKey) {
+        syncStatusCardModal_();
+    }
     if (lessonChanged) {
         scrollStatusGridToTop_();
     }
     else {
         restoreStatusViewportScroll_(scrollYBefore);
+    }
+    try {
+        renderStatusLessonSummary_();
+        renderStatusSortControls_();
+    }
+    catch (_err) { }
+    if (selectedStatusViewTab === 'responses') {
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(function () {
+                try {
+                    renderStatusFieldTabs_();
+                    renderStatusPerfDebug_();
+                }
+                catch (_err) { }
+            });
+        }
+        else {
+            try {
+                renderStatusFieldTabs_();
+                renderStatusPerfDebug_();
+            }
+            catch (_err) { }
+        }
+    }
+    else {
+        renderStatusFieldTabs_();
+        renderStatusFeedbackTable_();
+        statusFeedbackRenderedLessonKey = latestStatusLessonKey;
+        renderStatusPerfDebug_();
     }
 }
 function renderStatusLessonSummary_() {
@@ -4484,8 +4561,11 @@ function renderStatusCard_(row, fields) {
     var studentName = safeStudentName(student);
     var studentClass = studentName.length >= 13 ? 'status-card-student tight' : studentName.length >= 9 ? 'status-card-student compact' : 'status-card-student';
     var numberLabel = getStatusStudentNumberLabel_(student);
-    var badgesHtml = renderStatusHeaderBadgesHtml_(student) + renderStatusFavoriteButton_(student);
-    return "\n    <div class=\"status-card ".concat(variantClass, "\" role=\"button\" tabindex=\"0\" data-student-key=\"").concat(escAttr(row.key), "\" onclick=\"openStatusCardModal('").concat(escAttr(row.key), "')\" onkeydown=\"handleStatusCardKeydown(event,'").concat(escAttr(row.key), "')\">\n      <div class=\"status-card-head\">\n        <div class=\"status-card-numberrow\"><span class=\"status-card-number\">").concat(esc(numberLabel), "</span></div>\n        <div class=\"status-card-mainrow\">\n          <div class=\"status-card-name\">\n            <div class=\"status-card-studentline\">\n              <span class=\"status-card-number status-card-number-inline\">").concat(esc(numberLabel), "</span>\n              <span class=\"").concat(studentClass, "\">").concat(esc(studentName), "</span>\n            </div>\n          </div>\n          ").concat(badgesHtml ? "<div class=\"status-card-side\">".concat(badgesHtml, "</div>") : '', "\n        </div>\n      </div>\n      ").concat(content.html, "\n    </div>");
+    var sideParts = [
+        renderStatusFavoriteButton_(student),
+        renderStatusHeaderBadgesHtml_(student),
+    ].filter(Boolean);
+    return "\n    <div class=\"status-card ".concat(variantClass, "\" role=\"button\" tabindex=\"0\" data-student-key=\"").concat(escAttr(row.key), "\" onclick=\"openStatusCardModal('").concat(escAttr(row.key), "')\" onkeydown=\"handleStatusCardKeydown(event,'").concat(escAttr(row.key), "')\">\n      <div class=\"status-card-head\">\n        <div class=\"status-card-mainrow\">\n          <div class=\"status-card-name\">\n            <div class=\"status-card-numberrow\"><span class=\"status-card-number\">").concat(esc(numberLabel), "</span></div>\n            <div class=\"status-card-studentline\">\n              <span class=\"status-card-number status-card-number-inline\">").concat(esc(numberLabel), "</span>\n              <span class=\"").concat(studentClass, "\">").concat(esc(studentName), "</span>\n            </div>\n          </div>\n          ").concat(sideParts.length ? "<div class=\"status-card-side\">".concat(sideParts.join(''), "</div>") : '', "\n        </div>\n      </div>\n      ").concat(content.html, "\n    </div>");
 }
 function renderStatusFavoriteButton_(student) {
     var responseId = String(student && student.responseId || '').trim();
@@ -4495,7 +4575,7 @@ function renderStatusFavoriteButton_(student) {
     var isBusy = isStatusFavoriteBusy_(responseId);
     var label = isFavorite ? 'お気に入りを解除' : 'お気に入りに追加';
     var classes = 'status-favorite-btn' + (isFavorite ? ' status-favorite-active' : '') + (isBusy ? ' status-favorite-busy' : '');
-    return "<button class=\"".concat(classes, "\" type=\"button\" data-response-id=\"").concat(escAttr(responseId), "\" aria-pressed=\"").concat(isFavorite ? 'true' : 'false', "\" aria-label=\"").concat(escAttr(label), "\" title=\"").concat(escAttr(label), "\"").concat(isBusy ? ' disabled' : '', " onclick=\"toggleStatusFavorite(event,'").concat(escAttr(responseId), "')\" onkeydown=\"handleStatusFavoriteButtonKeydown(event,'").concat(escAttr(responseId), "')\">").concat(isBusy ? '…' : (isFavorite ? '★' : '☆'), "</button>");
+    return "<button class=\"".concat(classes, "\" type=\"button\" data-response-id=\"").concat(escAttr(responseId), "\" aria-pressed=\"").concat(isFavorite ? 'true' : 'false', "\" aria-busy=\"").concat(isBusy ? 'true' : 'false', "\" aria-label=\"").concat(escAttr(label), "\" title=\"").concat(escAttr(label), "\"").concat(isBusy ? ' disabled' : '', " onclick=\"toggleStatusFavorite(event,'").concat(escAttr(responseId), "')\" onkeydown=\"handleStatusFavoriteButtonKeydown(event,'").concat(escAttr(responseId), "')\">").concat(isFavorite ? '★' : '☆', "</button>");
 }
 function handleStatusCardKeydown(event, studentKey) {
     var key = String(event && event.key || '');
@@ -4754,6 +4834,46 @@ function findStatusStudentByResponseId_(responseId) {
     }
     return null;
 }
+function getStatusFavoriteOverride_(responseId) {
+    var normalized = String(responseId || '').trim();
+    return normalized ? statusFavoriteOverrideMap[normalized] || null : null;
+}
+function setStatusFavoriteOverride_(responseId, isFavorite, pending) {
+    var normalized = String(responseId || '').trim();
+    if (!normalized)
+        return;
+    statusFavoriteOverrideMap[normalized] = {
+        isFavorite: isFavorite === true,
+        pending: pending === true,
+        updatedAt: Date.now(),
+    };
+}
+function clearStatusFavoriteOverride_(responseId) {
+    var normalized = String(responseId || '').trim();
+    if (!normalized)
+        return;
+    delete statusFavoriteOverrideMap[normalized];
+}
+function applyStatusFavoriteOverrides_(rows) {
+    return (Array.isArray(rows) ? rows : []).map(function (student) {
+        var responseId = String(student && student.responseId || '').trim();
+        var override = getStatusFavoriteOverride_(responseId);
+        if (!override)
+            return student;
+        return __assign(__assign({}, student), { isFavorite: override.isFavorite === true });
+    });
+}
+function reconcileStatusFavoriteOverrides_(rows) {
+    (Array.isArray(rows) ? rows : []).forEach(function (student) {
+        var responseId = String(student && student.responseId || '').trim();
+        var override = getStatusFavoriteOverride_(responseId);
+        if (!override || override.pending === true)
+            return;
+        if ((student && student.isFavorite === true) === (override.isFavorite === true)) {
+            clearStatusFavoriteOverride_(responseId);
+        }
+    });
+}
 function isStatusFavoriteBusy_(responseId) {
     return Boolean(statusFavoriteBusyMap[String(responseId || '').trim()]);
 }
@@ -4771,10 +4891,11 @@ function refreshStatusFavoriteButtons_(responseId) {
         button.classList.toggle('status-favorite-active', isFavorite);
         button.classList.toggle('status-favorite-busy', isBusy);
         button.setAttribute('aria-pressed', isFavorite ? 'true' : 'false');
+        button.setAttribute('aria-busy', isBusy ? 'true' : 'false');
         button.setAttribute('aria-label', label);
         button.setAttribute('title', label);
         button.disabled = isBusy;
-        button.textContent = isBusy ? '…' : (isFavorite ? '★' : '☆');
+        button.textContent = isFavorite ? '★' : '☆';
     });
 }
 function setStatusFavoriteBusy_(responseId, isBusy) {
@@ -4789,12 +4910,13 @@ function setStatusFavoriteBusy_(responseId, isBusy) {
     }
     refreshStatusFavoriteButtons_(normalized);
 }
-function patchStatusFavoriteState_(responseId, isFavorite) {
+function patchStatusFavoriteState_(responseId, isFavorite, options) {
     var student = findStatusStudentByResponseId_(responseId);
     if (!student)
         return;
+    var opts = options && typeof options === 'object' ? options : {};
     student.isFavorite = isFavorite === true;
-    if (statusSortMode === 'recommended') {
+    if (statusSortMode === 'recommended' && opts.deferResort !== true) {
         refreshStatusSortedUi_(true);
         return;
     }
@@ -4824,21 +4946,31 @@ function toggleStatusFavorite(event, responseId) {
     var student = findStatusStudentByResponseId_(normalized);
     if (!normalized || !student || isStatusFavoriteBusy_(normalized))
         return;
+    var previousFavorite = student.isFavorite === true;
+    var nextFavorite = !previousFavorite;
+    setStatusFavoriteOverride_(normalized, nextFavorite, true);
+    patchStatusFavoriteState_(normalized, nextFavorite, { deferResort: true });
     setStatusFavoriteBusy_(normalized, true);
     google.script.run
         .withSuccessHandler(function (res) {
-        setStatusFavoriteBusy_(normalized, false);
         if (!(res && res.ok)) {
+            clearStatusFavoriteOverride_(normalized);
+            patchStatusFavoriteState_(normalized, previousFavorite, { deferResort: true });
+            setStatusFavoriteBusy_(normalized, false);
             showToast(res && res.error || 'お気に入り更新に失敗しました');
             return;
         }
+        setStatusFavoriteOverride_(normalized, Boolean(res.isFavorite), false);
         patchStatusFavoriteState_(normalized, Boolean(res.isFavorite));
+        setStatusFavoriteBusy_(normalized, false);
     })
         .withFailureHandler(function (err) {
+        clearStatusFavoriteOverride_(normalized);
+        patchStatusFavoriteState_(normalized, previousFavorite, { deferResort: true });
         setStatusFavoriteBusy_(normalized, false);
         showToast(formatTeacherRpcError_(err, 'お気に入り更新に失敗しました', 'お気に入り'), { tone: 'error', duration: 5200 });
     })
-        .setTeacherResponseFavorite(normalized, !(student.isFavorite === true), {
+        .setTeacherResponseFavorite(normalized, nextFavorite, {
         lessonId: String(latestStatusMeta && latestStatusMeta.lessonId || '').trim(),
         unitId: String(activeUnitId || latestStatusMeta && latestStatusMeta.unitId || '').trim(),
         period: Number(activePeriod || latestStatusMeta && latestStatusMeta.period || 0) || 0,
@@ -7559,19 +7691,95 @@ function sortPortfolioRows_(rows) {
         return String(a.date || '').localeCompare(String(b.date || ''));
     });
 }
+function buildPortfolioAggregateDedupKey_(row) {
+    var responseId = String(row && row.responseId || '').trim();
+    if (responseId)
+        return "response:".concat(responseId);
+    var lessonId = String(row && row.lessonId || '').trim();
+    if (lessonId)
+        return "lesson:".concat(lessonId);
+    return "fallback:".concat(String(row && row.unitId || '').trim(), "::").concat(String(row && row.period || '').trim(), "::").concat(String(row && row.num || '').trim());
+}
+function getPortfolioAggregateRowTimestamp_(row) {
+    var candidates = [
+        row && row.updatedAt,
+        row && row.submittedAt,
+        row && row.createdAt,
+        row && row.timestamp,
+    ];
+    for (var i = 0; i < candidates.length; i++) {
+        var value = candidates[i];
+        if (value === null || value === undefined || value === '')
+            continue;
+        var numeric = Number(value);
+        if (isFinite(numeric) && numeric > 0)
+            return numeric;
+        var parsed = Date.parse(String(value));
+        if (isFinite(parsed) && parsed > 0)
+            return parsed;
+    }
+    return 0;
+}
+function getPortfolioAggregateRowRichness_(row) {
+    var score = 0;
+    ['review', 'comment', 'rank', 'medal', 'date', 'name', 'subject', 'unitName'].forEach(function (key) {
+        if (String(row && row[key] || '').trim())
+            score += 1;
+    });
+    if (Number(row && row.score || 0))
+        score += 1;
+    var answersMap = row && row.answersMap && typeof row.answersMap === 'object' ? row.answersMap : {};
+    Object.keys(answersMap).forEach(function (key) {
+        if (String(answersMap[key] || '').trim())
+            score += 2;
+    });
+    var fields = Array.isArray(row && row.fields) ? row.fields : [];
+    fields.forEach(function (field) {
+        if (field && field.enabled === false)
+            return;
+        score += 1;
+        if (String(field && field.label || '').trim())
+            score += 1;
+    });
+    return score;
+}
+function choosePreferredPortfolioAggregateRow_(currentRow, nextRow) {
+    var currentTs = getPortfolioAggregateRowTimestamp_(currentRow);
+    var nextTs = getPortfolioAggregateRowTimestamp_(nextRow);
+    if (currentTs || nextTs) {
+        if (nextTs !== currentTs)
+            return nextTs > currentTs ? nextRow : currentRow;
+    }
+    var currentRichness = getPortfolioAggregateRowRichness_(currentRow);
+    var nextRichness = getPortfolioAggregateRowRichness_(nextRow);
+    if (nextRichness !== currentRichness)
+        return nextRichness > currentRichness ? nextRow : currentRow;
+    return currentRow;
+}
+function dedupePortfolioAggregateRows_(rows) {
+    if (!Array.isArray(rows) || !rows.length)
+        return [];
+    return Array.from(rows.reduce(function (map, row) {
+        var key = buildPortfolioAggregateDedupKey_(row);
+        var current = map.get(key);
+        map.set(key, current ? choosePreferredPortfolioAggregateRow_(current, row) : row);
+        return map;
+    }, new Map()).values());
+}
 function buildPortfolioRowsFromAggregate_(rows, studentNumber, unitId) {
     var normalizedStudent = String(studentNumber || '').trim();
     var normalizedUnit = String(unitId || '').trim();
     if (!normalizedStudent || !Array.isArray(rows) || !rows.length)
         return [];
-    return sortPortfolioRows_(rows
+    var uniqueRows = dedupePortfolioAggregateRows_(rows
         .filter(function (row) {
         if (String(row && row.num || '').trim() !== normalizedStudent)
             return false;
         if (normalizedUnit && String(row && row.unitId || '').trim() !== normalizedUnit)
             return false;
         return true;
-    })
+    }));
+    return sortPortfolioRows_(uniqueRows
         .map(function (row) { return ({
         unitName: row && row.unitName || '',
         subject: row && row.subject || '',
@@ -7993,11 +8201,14 @@ function filterAgg() {
     var period = document.getElementById('aggPeriod').value;
     var preset = (document.getElementById('aggPreset') || {}).value || 'standard';
     var showComment = Boolean((document.getElementById('aggShowComment') || {}).checked);
-    var rows = allAggData.filter(function (r) {
+    var scopedRows = dedupePortfolioAggregateRows_(allAggData.filter(function (r) {
         if (subject && String(r.subject || '') !== String(subject))
             return false;
         if (unitId && String(r.unitId || '') !== String(unitId))
             return false;
+        return true;
+    }));
+    var rows = scopedRows.filter(function (r) {
         if (period && r.period != period)
             return false;
         return true;
@@ -8007,9 +8218,7 @@ function filterAgg() {
             return numDiff;
         return String(a.name || '').localeCompare(String(b.name || ''), 'ja');
     });
-    var periods = uniqueValues(allAggData
-        .filter(function (r) { return (!subject || String(r.subject || '') === String(subject)) && (!unitId || String(r.unitId || '') === String(unitId)); })
-        .map(function (r) { return r.period; })).sort(function (a, b) { return a - b; });
+    var periods = uniqueValues(scopedRows.map(function (r) { return r.period; })).sort(function (a, b) { return a - b; });
     var pSel = document.getElementById('aggPeriod');
     var pCur = pSel.value;
     pSel.innerHTML = '<option value="">全時間</option>' +
@@ -8090,11 +8299,14 @@ function filterGrading() {
             onFailure: function () { },
         });
     }
-    var rows = allAggData.filter(function (r) {
+    var scopedRows = dedupePortfolioAggregateRows_(allAggData.filter(function (r) {
         if (subject && String(r.subject || '') !== String(subject))
             return false;
-        if (unitId && String(r.unitId || '') !== String(unitId))
+        if (mode !== 'subject' && unitId && String(r.unitId || '') !== String(unitId))
             return false;
+        return true;
+    }));
+    var rows = scopedRows.filter(function (r) {
         if (period && r.period != period)
             return false;
         return true;
@@ -8104,9 +8316,7 @@ function filterGrading() {
             return numDiff;
         return String(a.name || '').localeCompare(String(b.name || ''), 'ja');
     });
-    var periods = uniqueValues(allAggData
-        .filter(function (r) { return (!subject || String(r.subject || '') === String(subject)) && (!unitId || String(r.unitId || '') === String(unitId)); })
-        .map(function (r) { return r.period; })).sort(function (a, b) { return a - b; });
+    var periods = uniqueValues(scopedRows.map(function (r) { return r.period; })).sort(function (a, b) { return a - b; });
     var pSel = document.getElementById('gradePeriod');
     var pCur = pSel.value;
     pSel.innerHTML = '<option value="">全時間</option>' +
@@ -8117,8 +8327,8 @@ function filterGrading() {
             : '単元ごとの根拠を見ながら評定できます。';
     }
     if (mode === 'subject') {
-        renderGradingFieldChipsForSubject(subject, gradingCategory);
-        renderGradingSubjectMatrix(subject, gradingCategory);
+        renderGradingFieldChipsForSubject(subject, gradingCategory, scopedRows);
+        renderGradingSubjectMatrix(subject, gradingCategory, scopedRows);
         return;
     }
     renderAggFieldChips({ fields: [] }, '', 'grading', gradingCategory, rows);
@@ -8145,7 +8355,7 @@ function filterGrading() {
 function getGradingUnitsForSubject(subject) {
     return sortUnitsByLatestActivity(allUnits.filter(function (unit) { return subject && String(unit.subject || '') === String(subject); }));
 }
-function buildGradingSubjectRows(subject, category) {
+function buildGradingSubjectRows(subject, category, rows) {
     var units = getGradingUnitsForSubject(subject);
     var studentMap = new Map();
     rosterEntries.forEach(function (row) {
@@ -8158,10 +8368,9 @@ function buildGradingSubjectRows(subject, category) {
             units: {},
         });
     });
-    allAggData.forEach(function (row) {
+    var sourceRows = Array.isArray(rows) ? rows : dedupePortfolioAggregateRows_(allAggData.filter(function (row) { return String(row.subject || '') === String(subject); }));
+    sourceRows.forEach(function (row) {
         var _a, _b;
-        if (String(row.subject || '') !== String(subject))
-            return;
         var num = String(row.num || '').trim();
         if (!num)
             return;
@@ -8221,7 +8430,7 @@ function buildGradingSubjectRows(subject, category) {
             };
         }) })); });
 }
-function renderGradingFieldChipsForSubject(subject, gradingCategory) {
+function renderGradingFieldChipsForSubject(subject, gradingCategory, rows) {
     var box = document.getElementById('gradeFieldChips');
     if (!box)
         return;
@@ -8230,7 +8439,8 @@ function renderGradingFieldChipsForSubject(subject, gradingCategory) {
         box.textContent = '教科を選ぶと、その教科の単元を横並びで評定できます。';
         return;
     }
-    var labels = collectAggVisibleFields(allAggData.filter(function (row) { return String(row.subject || '') === String(subject); }))
+    var sourceRows = Array.isArray(rows) ? rows : dedupePortfolioAggregateRows_(allAggData.filter(function (row) { return String(row.subject || '') === String(subject); }));
+    var labels = collectAggVisibleFields(sourceRows)
         .filter(function (field) { return matchesAggPresetField(field, gradingCategory); })
         .map(function (field) { return field.label; });
     var unitLabels = getGradingUnitsForSubject(subject).map(function (unit) { return unit.name || ''; });
@@ -8240,7 +8450,7 @@ function renderGradingFieldChipsForSubject(subject, gradingCategory) {
         .concat(labels.slice(0, 6).map(function (label) { return "<span class=\"field-chip\">".concat(esc(label), "</span>"); }))
         .join('');
 }
-function renderGradingSubjectMatrix(subject, gradingCategory) {
+function renderGradingSubjectMatrix(subject, gradingCategory, rows) {
     var gradeBody = document.getElementById('gradeBody');
     var gradeCards = document.getElementById('gradeCards');
     var gradeHead = document.getElementById('gradeHead');
@@ -8262,18 +8472,18 @@ function renderGradingSubjectMatrix(subject, gradingCategory) {
             gradeDebug.textContent = "".concat(subject, " \u306E\u5358\u5143\u304C\u307E\u3060\u3042\u308A\u307E\u305B\u3093\u3002 / ").concat(getAggregateScopeDebugText_({ subject: subject }));
         return;
     }
-    var rows = buildGradingSubjectRows(subject, gradingCategory);
+    var gradingRows = buildGradingSubjectRows(subject, gradingCategory, rows);
     gradeHead.innerHTML = "<tr><th>#</th><th>\u306A\u307E\u3048</th>".concat(units.map(function (unit) { return "<th>".concat(esc(unit.name || ''), "</th>"); }).join(''), "</tr>");
     if (gradeDebug) {
         gradeDebug.textContent = "".concat(subject, " \u306E ").concat(units.length, " \u5358\u5143\u3092\u6A2A\u4E26\u3073\u8868\u793A\u3057\u3066\u3044\u307E\u3059\u3002").concat(FIELD_CATEGORY_LABELS[gradingCategory], " \u3092\u4E00\u89A7\u3067\u5165\u529B\u3067\u304D\u307E\u3059\u3002 / ").concat(getAggregateScopeDebugText_({ subject: subject }));
     }
-    if (!rows.length) {
+    if (!gradingRows.length) {
         gradeBody.innerHTML = "<tr><td colspan=\"".concat(2 + units.length, "\" style=\"text-align:center;color:#999;padding:14px;\">\u540D\u7C3F\u30C7\u30FC\u30BF\u304C\u3042\u308A\u307E\u305B\u3093</td></tr>");
         gradeCards.innerHTML = '<div class="portfolio-empty">名簿データがありません</div>';
         return;
     }
-    gradeBody.innerHTML = rows.map(function (row) { return "\n    <tr>\n      <td>".concat(row.num, "</td>\n      <td>").concat(esc(row.name), "</td>\n      ").concat(row.unitEntries.map(function (unitEntry) { return "<td class=\"grading-matrix-cell\">".concat(renderGradingMatrixCell(row, unitEntry, gradingCategory), "</td>"); }).join(''), "\n    </tr>\n  "); }).join('');
-    gradeCards.innerHTML = rows.map(function (row) { return "\n    <div class=\"agg-card\">\n      <div class=\"agg-card-top\">\n        <div>\n          <div class=\"agg-card-title\">".concat(row.num, " ").concat(esc(row.name || ''), "</div>\n          <div class=\"agg-card-meta\">").concat(esc(subject), " / ").concat(FIELD_CATEGORY_LABELS[gradingCategory], "</div>\n        </div>\n      </div>\n      <div class=\"grading-card-grid\">\n        ").concat(row.unitEntries.map(function (unitEntry) { return "\n          <div class=\"agg-card-block\">\n            <div class=\"agg-card-label\">".concat(esc(unitEntry.unitName || ''), "</div>\n            <div class=\"agg-card-text\">").concat(renderGradingMatrixCardCell(row, unitEntry, gradingCategory), "</div>\n          </div>\n        "); }).join(''), "\n      </div>\n    </div>\n  "); }).join('');
+    gradeBody.innerHTML = gradingRows.map(function (row) { return "\n    <tr>\n      <td>".concat(row.num, "</td>\n      <td>").concat(esc(row.name), "</td>\n      ").concat(row.unitEntries.map(function (unitEntry) { return "<td class=\"grading-matrix-cell\">".concat(renderGradingMatrixCell(row, unitEntry, gradingCategory), "</td>"); }).join(''), "\n    </tr>\n  "); }).join('');
+    gradeCards.innerHTML = gradingRows.map(function (row) { return "\n    <div class=\"agg-card\">\n      <div class=\"agg-card-top\">\n        <div>\n          <div class=\"agg-card-title\">".concat(row.num, " ").concat(esc(row.name || ''), "</div>\n          <div class=\"agg-card-meta\">").concat(esc(subject), " / ").concat(FIELD_CATEGORY_LABELS[gradingCategory], "</div>\n        </div>\n      </div>\n      <div class=\"grading-card-grid\">\n        ").concat(row.unitEntries.map(function (unitEntry) { return "\n          <div class=\"agg-card-block\">\n            <div class=\"agg-card-label\">".concat(esc(unitEntry.unitName || ''), "</div>\n            <div class=\"agg-card-text\">").concat(renderGradingMatrixCardCell(row, unitEntry, gradingCategory), "</div>\n          </div>\n        "); }).join(''), "\n      </div>\n    </div>\n  "); }).join('');
 }
 function renderGradingMatrixCell(row, unitEntry, category) {
     var evidence = buildGradingEvidenceHtml(unitEntry);
