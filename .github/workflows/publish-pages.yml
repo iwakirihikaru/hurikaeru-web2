@@ -61,11 +61,11 @@ jobs:
       - name: Record pages-release base SHA
         run: echo "PAGES_RELEASE_BASE_SHA=$(git -C portable-publish rev-parse HEAD)" >> "$GITHUB_ENV"
 
-      - name: Sync pages-release artifacts
-        run: npm run sync:portable-publish
-
       - name: Guard pages publish inputs
         run: node ./scripts/guard-pages-publish.mjs
+
+      - name: Sync pages-release artifacts
+        run: npm run sync:portable-publish
 
       - name: Commit and push pages-release
         shell: bash

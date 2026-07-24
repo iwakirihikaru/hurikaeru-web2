@@ -71,6 +71,33 @@ result = execGuard({
 assert.notEqual(result.status, 0, 'guard should fail when student body changes');
 assert.match(result.stderr || result.stdout, /modified portable\/student\.html beyond source commit markers/i);
 
+write(path.join(tempRoot, 'portable-publish', 'student.html'), '<head>\n<meta name="x-source-commit" content="newer">\n<script>window.__SOURCE_COMMIT__ = "newer";</script>\n<body>changed</body>\n');
+result = execGuard({
+  PAGES_REPO_ROOT: tempRoot,
+  SOURCE_COMMIT: teacherOnlyCommit,
+  SOURCE_BEFORE_SHA: teacherOnlyBefore,
+});
+assert.equal(result.status, 0, result.stderr || result.stdout);
+assert.match(result.stdout, /teacher-only student diff check passed/i);
+
+write(path.join(tempRoot, 'portable', 'student.html'), '<head>\n<meta name="x-source-commit" content="rollback">\n<script>window.__SOURCE_COMMIT__ = "rollback";</script>\n<body>rolled back</body>\n');
+write(path.join(tempRoot, 'portable-publish', 'student.html'), '<head>\n<meta name="x-source-commit" content="rollback">\n<script>window.__SOURCE_COMMIT__ = "rollback";</script>\n<body>rolled back</body>\n');
+result = execGuard({
+  PAGES_REPO_ROOT: tempRoot,
+  SOURCE_COMMIT: teacherOnlyCommit,
+  SOURCE_BEFORE_SHA: teacherOnlyBefore,
+});
+assert.equal(result.status, 0, result.stderr || result.stdout, 'post-sync identical files would bypass the guard');
+
+write(path.join(tempRoot, 'portable-publish', 'student.html'), '<head>\n<meta name="x-source-commit" content="newer">\n<script>window.__SOURCE_COMMIT__ = "newer";</script>\n<body>changed</body>\n');
+result = execGuard({
+  PAGES_REPO_ROOT: tempRoot,
+  SOURCE_COMMIT: teacherOnlyCommit,
+  SOURCE_BEFORE_SHA: teacherOnlyBefore,
+});
+assert.notEqual(result.status, 0, 'guard must compare against the pre-sync published student.html');
+assert.match(result.stderr || result.stdout, /modified portable\/student\.html beyond source commit markers/i);
+
 write(path.join(tempRoot, 'portable', 'student.html'), '<head>\n<meta name="x-source-commit" content="newest">\n<script>window.__SOURCE_COMMIT__ = "newest";</script>\n<body>changed</body>\n');
 write(path.join(tempRoot, 'src', 'index.html'), '<div>student source changed</div>\n');
 run('git', ['add', 'src/index.html'], tempRoot);
