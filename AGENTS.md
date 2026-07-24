@@ -7,6 +7,8 @@
 - 必要な確認だけ行い、未確認事項は報告する。
 - レビューは P1 / P2 のみ確認し、P3 は追わない。
 - clean worktree で npm script を実行する前に `node_modules` の有無を確認する。
+- `origin/main` へ再適用する作業は、dirty な既存 worktree を使わず専用の clean worktree で行う。
+- 専用 worktree には今回対象の差分だけを持ち込み、途中確認もその worktree を基準に行う。
 - `node_modules` が無く `package-lock.json` がある場合のみ `npm ci` を許可する。
 - `package-lock.json` が無い場合は `npm install` に勝手に切り替えず停止する。
 - `clasp` はローカル `node_modules` を使い、`npx` やグローバル `clasp` で別 version を取得しない。
