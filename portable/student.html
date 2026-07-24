@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta name="x-source-commit" content="e4ae0f9bf0a1b79177c4330f84fd01ac108f5c66">
-<script>window.__SOURCE_COMMIT__ = "e4ae0f9bf0a1b79177c4330f84fd01ac108f5c66";</script>
+<meta name="x-source-commit" content="72d7557c1ac6ca1627bb69470fa638a237b4e97b">
+<script>window.__SOURCE_COMMIT__ = "72d7557c1ac6ca1627bb69470fa638a237b4e97b";</script>
 <script src="./runtime-shim.js?v=3dc7b19e3b"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
@@ -473,7 +473,6 @@ textarea.f{min-height:70px;}
   </div>
 </div>
 
-<div id="studentApiDebug" class="student-api-debug">Pages client-20260724-0951 / API waiting</div>
 <div id="toast"></div>
 
 <script>
@@ -521,18 +520,24 @@ let currentStudentStateKey = '';
 let studentActiveReloading = false;
 let myLessonId = '';
 let myActiveRevision = 0;
+let studentSessionToken = '';
 let currentStudentInitRequestId = 0;
 let currentTimelineRequestId = 0;
 let autoSaveInFlight = false;
 let studentDraftSaveTimer = null;
 let studentDraftDirty = false;
 let lastServerSavedSignature = '';
+let lastTimelinePayloadSignature = '';
+let timelineAiWaitCycleCount = 0;
 const AUTO_SAVE_BASE_MS = 28000;
 const AUTO_SAVE_JITTER_MS = 8000;
 const LOCAL_DRAFT_SAVE_MS = 1000;
 const POLL_IDLE_MS = 4000;
 const POLL_WAITING_AI_MS = 2500;
+const POLL_WAITING_AI_LONG_MS = 4000;
+const POLL_WAITING_AI_MAX_MS = 6000;
 const POLL_DONE_MS = 6000;
+const POLL_JITTER_MS = 700;
 const STUDENT_CACHE_TTL_MS = 5 * 60 * 1000;
 const STUDENT_ENTRY_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const STUDENT_CLASS_SNAPSHOT_CACHE_TTL_MS = 60 * 1000;
@@ -541,7 +546,14 @@ const STUDENT_ENTRY_CACHE_KEY = 'furikaeri:studentEntryOptions';
 const STUDENT_CLASS_SNAPSHOT_CACHE_KEY = 'furikaeri:studentClassSnapshot';
 let studentClassSnapshotPreloadBusy = false;
 let studentClassSnapshotPreloadScheduled = false;
-const STUDENT_CLIENT_BUILD = 'client-20260724-0951';
+const STUDENT_CLIENT_BUILD = 'client-20260704-1035';
+const studentDiagnosticsEnabled = (() => {
+  try{
+    return new URLSearchParams(window.location.search || '').get('diagnostics') === '1';
+  }catch(_err){
+    return false;
+  }
+})();
 const studentClientPerfState = {
   pageStartedAt:(typeof performance!=='undefined' && performance && typeof performance.now==='function') ? performance.now() : Date.now(),
   initCalls:0,
@@ -554,6 +566,10 @@ const studentDebugFooterState = {
   apiText:'API waiting',
   clientText:'CLIENT waiting',
   isError:false,
+};
+const studentSessionRecoveryState = {
+  attemptedKey:'',
+  inFlight:false,
 };
 
 function studentNowMs_(){
@@ -595,6 +611,35 @@ function afterNextPaint_(callback){
     return;
   }
   setTimeout(()=>{ try{ callback(); }catch(_err){} },0);
+}
+
+function afterNextAnimationFrame_(callback){
+  if(typeof window.requestAnimationFrame==='function'){
+    window.requestAnimationFrame(()=>{ try{ callback(); }catch(_err){} });
+    return;
+  }
+  setTimeout(()=>{ try{ callback(); }catch(_err){} },0);
+}
+
+function getTimelinePayloadSignature_(payload){
+  const rows=Array.isArray(payload?.rows)?payload.rows:[];
+  const myState=payload&&typeof payload==='object'&&payload.myState&&typeof payload.myState==='object'
+    ? payload.myState
+    : null;
+  return JSON.stringify({
+    lessonId:String(payload?.lessonId||'').trim(),
+    activeRevision:Number(payload?.activeRevision||0),
+    teacherTimelineFieldKey:String(payload?.teacherTimelineFieldKey||'').trim(),
+    studentAiEnabled:Boolean(payload?.studentAiEnabled),
+    studentAiAutoSubmitEnabled:Boolean(payload?.studentAiAutoSubmitEnabled),
+    fields:Array.isArray(payload?.fields)?payload.fields:[],
+    rows,
+    myState,
+  });
+}
+
+function shouldPersistTimelinePayload_(payload){
+  return getTimelinePayloadSignature_(payload)!==lastTimelinePayloadSignature;
 }
 
 function startStudentInitPerfSession_(studentNumber){
@@ -776,6 +821,7 @@ function buildCurrentStudentDraftCache_(){
     medal:'',
     medalColor:'',
     aiStatus:lastKnownAiStatus||'',
+    studentSessionToken:studentSessionToken||'',
     teacherTimelineFieldKey:teacherTimelineFieldKey||'',
     studentAiEnabled:studentAiEnabled,
     studentAiAutoSubmitEnabled:studentAiAutoSubmitEnabled,
@@ -1048,8 +1094,20 @@ function logStudentApiTiming_(label,payload){
   console.info('[student-api]', label, timing);
 }
 
+function ensureStudentDebugFooter_(){
+  if(!studentDiagnosticsEnabled) return null;
+  let el=document.getElementById('studentApiDebug');
+  if(el) return el;
+  el=document.createElement('div');
+  el.id='studentApiDebug';
+  el.className='student-api-debug';
+  el.textContent=`Pages ${STUDENT_CLIENT_BUILD}\n${studentDebugFooterState.apiText}\n${studentDebugFooterState.clientText}`;
+  document.body.appendChild(el);
+  return el;
+}
+
 function updateStudentDebugFooter_(){
-  const el=document.getElementById('studentApiDebug');
+  const el=ensureStudentDebugFooter_();
   if(!el) return;
   el.textContent=`Pages ${STUDENT_CLIENT_BUILD}\n${studentDebugFooterState.apiText}\n${studentDebugFooterState.clientText}`;
   el.classList.toggle('error', Boolean(studentDebugFooterState.isError));
@@ -1079,6 +1137,102 @@ function logStudentApiFailure_(label, err){
   if(typeof console!=='undefined' && typeof console.warn==='function'){
     console.warn('[student-api]', label, message || 'failed');
   }
+}
+
+updateStudentDebugFooter_();
+
+function isStudentSessionError_(error){
+  const message=String(error && error.message ? error.message : (error || '')).trim();
+  return /student_session_required|student_session_mismatch|student_session_expired/i.test(message);
+}
+
+function clearStudentSessionRecoveryState_(options){
+  const opts=options||{};
+  if(opts.keepAttemptedKey===true){
+    studentSessionRecoveryState.inFlight=false;
+    return;
+  }
+  studentSessionRecoveryState.attemptedKey='';
+  studentSessionRecoveryState.inFlight=false;
+}
+
+function getStudentSessionRecoveryKey_(){
+  return [String(myNum||''), String(myLessonId||'').trim(), Number(myActiveRevision||0)].join('@');
+}
+
+function resetStudentSessionForReentry_(message){
+  stopPolling();
+  clearInterval(autoTimer);
+  initBusy=false;
+  pollBusy=false;
+  submitInFlight=false;
+  autoSaveInFlight=false;
+  timelineRefreshPending=false;
+  studentActiveReloading=false;
+  studentStateReady=false;
+  currentStudentInitRequestId+=1;
+  currentTimelineRequestId+=1;
+  myNum=null;
+  myLessonId='';
+  myActiveRevision=0;
+  currentStudentName='';
+  currentStudentCustoms=[];
+  currentStudentStateKey='';
+  myUnitId=null;
+  myPeriod=null;
+  studentSessionToken='';
+  lastTimelinePayloadSignature='';
+  submitted=false;
+  clearStudentSessionRecoveryState_();
+  forgetRememberedStudent_();
+  const submitNote=document.getElementById('submitNote');
+  if(submitNote) submitNote.textContent='';
+  document.querySelectorAll('.num-btn').forEach(btn=>btn.disabled=false);
+  document.getElementById('changeStudentBtn').style.display='none';
+  showScreen('screen-select');
+  showToast(message||'もういちど番号をえらんで入りなおしてね。');
+}
+
+function recoverStudentSessionOnce_(label){
+  const recoveryKey=getStudentSessionRecoveryKey_();
+  if(!String(myNum||'').trim() || !String(myLessonId||'').trim() || Number(myActiveRevision||0)<=0){
+    resetStudentSessionForReentry_('もういちど番号をえらんで入りなおしてね。');
+    return;
+  }
+  if(studentSessionRecoveryState.inFlight || studentSessionRecoveryState.attemptedKey===recoveryKey){
+    resetStudentSessionForReentry_('授業がかわったので、もういちど番号をえらんで入りなおしてね。');
+    return;
+  }
+  studentSessionRecoveryState.attemptedKey=recoveryKey;
+  studentSessionRecoveryState.inFlight=true;
+  stopPolling();
+  pollBusy=false;
+  timelineRefreshPending=false;
+  studentSessionToken='';
+  const submitNote=document.getElementById('submitNote');
+  if(submitNote) submitNote.textContent='接続を更新しています…';
+  google.script.run
+    .withSuccessHandler(d=>{
+      clearStudentSessionRecoveryState_({ keepAttemptedKey:true });
+      if(!(d && d.studentSessionToken)){
+        resetStudentSessionForReentry_('接続を更新できなかったので、もういちど番号をえらんで入りなおしてね。');
+        return;
+      }
+      loadMain(d);
+      showToast('接続を更新しました');
+    })
+    .withFailureHandler(err=>{
+      logStudentApiFailure_(`${label}:reinit`, err);
+      resetStudentSessionForReentry_('接続を更新できなかったので、もういちど番号をえらんで入りなおしてね。');
+    })
+    .studentInit(myNum,0);
+}
+
+function handleStudentSessionFailure_(label, error){
+  if(!isStudentSessionError_(error)) return false;
+  logStudentApiFailure_(label, error);
+  recoverStudentSessionOnce_(label);
+  return true;
 }
 
 function getInitialStudentOptions_(){
@@ -1351,8 +1505,8 @@ function selectNumber(num, options){
   myNum=num;
   setNumberSelectionBusy_(num,true);
   markStudentStartIndicatorShown_(perfSession);
+  clearStudentSessionRecoveryState_();
   if(opts.remember!==false) rememberStudentNumber_(num);
-  showCachedStudentLanding_(findRecentStudentStateCache_(num));
   google.script.run
     .withSuccessHandler(d=>{
       if(requestId!==currentStudentInitRequestId) return;
@@ -1466,8 +1620,14 @@ function loadMain(d){
   stopPolling();
   pollBusy=false;
   timelineRefreshPending=false;
+  if(getStudentSessionRecoveryKey_()!==studentSessionRecoveryState.attemptedKey){
+    clearStudentSessionRecoveryState_();
+  }else{
+    studentSessionRecoveryState.inFlight=false;
+  }
   const identity=normalizeStudentIdentity_(d);
   rememberStudentNumber_(identity.num);
+  studentSessionToken=String((d && Object.prototype.hasOwnProperty.call(d,'studentSessionToken')) ? (d.studentSessionToken || '') : '').trim();
   myLessonId = String(d && d.lessonId || '').trim();
   myActiveRevision = Number(d && d.activeRevision || 0);
   myUnitId  = d.unit?.id   || null;
@@ -1515,6 +1675,8 @@ function loadMain(d){
   studentHistoryIndex=0;
   studentHistoryLoaded=false;
   studentHistoryLoading=false;
+  lastTimelinePayloadSignature='';
+  timelineAiWaitCycleCount=0;
   if(studentHistoryPreloadTimer){
     clearTimeout(studentHistoryPreloadTimer);
     studentHistoryPreloadTimer=null;
@@ -1582,6 +1744,7 @@ function loadStudentState(options){
     .withFailureHandler(err=>{
       if(expectedRequestId!==currentStudentInitRequestId
         || !isCurrentStudentContext_(expectedStudentNumber, expectedLessonId, expectedActiveRevision)) return;
+      if(handleStudentSessionFailure_('studentLoadState', err)) return;
       logStudentApiFailure_('studentLoadState', err);
       studentStateReady=true;
       if(submitted){
@@ -1592,7 +1755,7 @@ function loadStudentState(options){
         document.getElementById('submitNote').textContent='';
       }
     })
-    .studentLoadState(myUnitId,myPeriod,myNum);
+    .studentLoadState(myUnitId,myPeriod,myNum,studentSessionToken);
 }
 
 function loadStudentSupplemental(options){
@@ -1651,9 +1814,10 @@ function loadPreviousReview(){
     .withFailureHandler(err=>{
       if(expectedRequestId!==currentStudentInitRequestId
         || !isCurrentStudentContext_(expectedStudentNumber, expectedLessonId, expectedActiveRevision)) return;
+      if(handleStudentSessionFailure_('getStudentPreviousReview', err)) return;
       logStudentApiFailure_('getStudentPreviousReview', err);
     })
-    .getStudentPreviousReview(myUnitId,myPeriod,myNum);
+    .getStudentPreviousReview(myUnitId,myPeriod,myNum,studentSessionToken);
 }
 
 function renderPreviousNextGoal_(text){
@@ -2110,10 +2274,11 @@ function doSave(silent){
         if(!silent) showToast('✅ ほぞんしたよ！');
       }
     })
-    .withFailureHandler(()=>{
+    .withFailureHandler(err=>{
       autoSaveInFlight=false;
+      if(handleStudentSessionFailure_('autoSave', err)) return;
     })
-    .autoSave(myUnitId,myPeriod,myNum,values);
+    .autoSave(myUnitId,myPeriod,myNum,values,studentSessionToken);
 }
 
 // =====================================
@@ -2163,13 +2328,14 @@ function runStudentSubmit_(values, submitOptions, attempt){
       refreshTimeline({ force:true });
     })
     .withFailureHandler(e=>{
+      if(handleStudentSessionFailure_('submitReview', e)) return;
       if(attempt<1 && isRetriableSubmitError_(e)){
         setTimeout(()=>runStudentSubmit_(values, submitOptions, attempt+1), 700);
         return;
       }
       handleSubmitUnknownFailure_(e);
     })
-    .submitReview(myUnitId,myPeriod,myNum,values,submitOptions||{});
+    .submitReview(myUnitId,myPeriod,myNum,values,submitOptions||{},studentSessionToken);
 }
 
 function isRetriableSubmitError_(error){
@@ -2289,6 +2455,17 @@ function refreshTimeline(options){
     .withSuccessHandler(payload=>{
       if(!isTimelineResponseCurrent_(requestId, requestContext, payload)) return;
       logStudentApiTiming_('getTimelineSnapshot', payload);
+      const responseReceivedAt=studentNowMs_();
+      const payloadSignature=getTimelinePayloadSignature_(payload);
+      const shouldPersist=payloadSignature!==lastTimelinePayloadSignature;
+      const storageStartedAt=studentNowMs_();
+      if(shouldPersist){
+        writeStudentCache_('timeline',cacheKey,Object.assign({}, payload||{}, {
+          lessonId:requestContext.lessonId,
+          activeRevision:requestContext.activeRevision,
+        }));
+      }
+      const storageFinishedAt=studentNowMs_();
       logStudentClientPerf_('timeline_response', {
         totalMs:Math.max(0, studentNowMs_()-startedAt),
         sincePageLoadMs:Math.max(0, studentNowMs_()-studentClientPerfState.pageStartedAt),
@@ -2296,13 +2473,20 @@ function refreshTimeline(options){
         rowCount:Array.isArray(payload&&payload.rows)?payload.rows.length:0,
         lessonId:String(payload&&payload.lessonId||''),
         activeRevision:Number(payload&&payload.activeRevision||0),
+        rpcToSuccessMs:Math.max(0, responseReceivedAt-startedAt),
+        localStorageWriteMs:Math.max(0, storageFinishedAt-storageStartedAt),
+        persisted:Boolean(shouldPersist),
         timing:payload&&payload.timing||null,
       });
-      writeStudentCache_('timeline',cacheKey,Object.assign({}, payload||{}, {
-        lessonId:requestContext.lessonId,
-        activeRevision:requestContext.activeRevision,
-      }));
-      const me=applyTimelinePayload(payload);
+      const applyStartedAt=studentNowMs_();
+      const applyResult=applyTimelinePayload(payload, { signature:payloadSignature });
+      const applyFinishedAt=studentNowMs_();
+      const me=applyResult && typeof applyResult==='object' ? applyResult.me : null;
+      const renderMetrics=applyResult && typeof applyResult==='object' ? (applyResult.renderMetrics||{}) : {};
+      let raf1At=0;
+      afterNextAnimationFrame_(()=>{
+        raf1At=studentNowMs_();
+      });
       afterNextPaint_(()=>{
         if(perfSession.loggedRender || !isCurrentStudentContext_(requestContext.studentNumber, requestContext.lessonId, requestContext.activeRevision)) return;
         perfSession.loggedRender=true;
@@ -2312,6 +2496,15 @@ function refreshTimeline(options){
           lessonId:requestContext.lessonId,
           activeRevision:requestContext.activeRevision,
           rowCount:Array.isArray(payload&&payload.rows)?payload.rows.length:0,
+          rpcToSuccessMs:Math.max(0, responseReceivedAt-startedAt),
+          localStorageWriteMs:Math.max(0, storageFinishedAt-storageStartedAt),
+          applyTimelinePayloadMs:Math.max(0, applyFinishedAt-applyStartedAt),
+          applyStartedAfterRpcMs:Math.max(0, applyStartedAt-responseReceivedAt),
+          renderTlMs:Number(renderMetrics.totalMs||0),
+          innerHTMLMs:Number(renderMetrics.innerHTMLMs||0),
+          skippedRender:Boolean(renderMetrics.skipped),
+          firstRafMs:raf1At ? Math.max(0, raf1At-responseReceivedAt) : 0,
+          secondRafMs:Math.max(0, studentNowMs_()-responseReceivedAt),
         });
       });
       pollBusy=false;
@@ -2323,6 +2516,7 @@ function refreshTimeline(options){
     })
     .withFailureHandler(err=>{
       if(requestId!==currentTimelineRequestId || !isCurrentStudentContext_(requestContext.studentNumber, requestContext.lessonId, requestContext.activeRevision)) return;
+      if(handleStudentSessionFailure_('getTimelineSnapshot', err)) return;
       logStudentApiFailure_('getTimelineSnapshot', err);
       logStudentClientPerf_('timeline_error', {
         totalMs:Math.max(0, studentNowMs_()-startedAt),
@@ -2339,10 +2533,11 @@ function refreshTimeline(options){
       }
       scheduleNextPoll(POLL_IDLE_MS);
     })
-    .getTimelineSnapshot(myLessonId,myActiveRevision,myNum);
+    .getTimelineSnapshot(myLessonId,myActiveRevision,myNum,studentSessionToken);
 }
 
-function applyTimelinePayload(payload){
+function applyTimelinePayload(payload, options){
+  const opts=options||{};
   if(handleStudentActiveLessonChange_(payload)) return null;
   const rows=Array.isArray(payload)?payload:(payload?.rows||[]);
   const myState=payload && typeof payload==='object' ? (payload.myState || null) : null;
@@ -2351,8 +2546,13 @@ function applyTimelinePayload(payload){
   if(typeof payload?.studentAiEnabled!=='undefined') studentAiEnabled=Boolean(payload.studentAiEnabled);
   if(typeof payload?.studentAiAutoSubmitEnabled!=='undefined') studentAiAutoSubmitEnabled=Boolean(payload.studentAiAutoSubmitEnabled);
   applyStudentShellState_(payload?.shell||{});
-  window._lastTl=rows;
-  renderTl(rows);
+  const signature=String(opts.signature||getTimelinePayloadSignature_(payload));
+  let renderMetrics={ skipped:true, totalMs:0, innerHTMLMs:0, rowCount:Array.isArray(rows)?rows.length:0 };
+  if(signature!==lastTimelinePayloadSignature){
+    window._lastTl=rows;
+    renderMetrics=renderTl(rows, { signature });
+    lastTimelinePayloadSignature=signature;
+  }
   const me=myState && typeof myState==='object'
     ? Object.assign({}, myState)
     : (rows.find(r=>String(r.num)===String(myNum)) || null);
@@ -2387,7 +2587,7 @@ function applyTimelinePayload(payload){
     document.getElementById('aiBox').style.display='none';
   }
   syncStudentTabState_();
-  return me;
+  return { me, renderMetrics };
 }
 
 function handleStudentActiveLessonChange_(payload){
@@ -2400,6 +2600,8 @@ function handleStudentActiveLessonChange_(payload){
   if(!nextUnitId || nextPeriod<=0){
     studentActiveReloading=true;
     stopPolling();
+    studentSessionToken='';
+    clearStudentSessionRecoveryState_();
     const note=document.getElementById('submitNote');
     if(note) note.textContent='先生が授業を終了しました。画面を更新しています…';
     google.script.run
@@ -2420,6 +2622,8 @@ function handleStudentActiveLessonChange_(payload){
   if(!nextLessonId && String(myUnitId||'')===nextUnitId && Number(myPeriod||0)===nextPeriod) return false;
   studentActiveReloading=true;
   stopPolling();
+  studentSessionToken='';
+  clearStudentSessionRecoveryState_();
   const note=document.getElementById('submitNote');
   if(note) note.textContent='先生が新しい授業を開始しました。画面を更新しています…';
   google.script.run
@@ -2496,14 +2700,15 @@ function loadStudentPastRecords_(options){
         renderStudentPastRecords_(res||{groups:[]});
       }
     })
-    .withFailureHandler(()=>{
+    .withFailureHandler(err=>{
       studentHistoryLoading=false;
+      if(handleStudentSessionFailure_('getStudentPastRecords', err)) return;
       studentHistoryLoaded=!opts.background || activeStudentTab==='history';
       if(!opts.background || activeStudentTab==='history'){
         renderStudentPastRecords_({groups:[]});
       }
     })
-    .getStudentPastRecords(myNum,myUnitId,6);
+    .getStudentPastRecords(myNum,myUnitId,6,studentSessionToken);
 }
 
 function renderStudentPastRecords_(payload){
@@ -2609,7 +2814,13 @@ function resolvePollDelay(me){
   const aiStatus=String(me.aiStatus||'');
   const aiDone=aiStatus==='done';
   const aiError=aiStatus==='error';
-  if(me.submitted && (aiStatus==='pending' || aiStatus==='processing')) return POLL_WAITING_AI_MS;
+  if(me.submitted && (aiStatus==='pending' || aiStatus==='processing')){
+    timelineAiWaitCycleCount += 1;
+    if(timelineAiWaitCycleCount>=5) return POLL_WAITING_AI_MAX_MS;
+    if(timelineAiWaitCycleCount>=3) return POLL_WAITING_AI_LONG_MS;
+    return POLL_WAITING_AI_MS;
+  }
+  timelineAiWaitCycleCount=0;
   if(me.submitted && aiDone && me.comment) return POLL_DONE_MS;
   if(me.submitted && aiError) return POLL_DONE_MS;
   return POLL_IDLE_MS;
@@ -2617,7 +2828,9 @@ function resolvePollDelay(me){
 
 function scheduleNextPoll(ms){
   stopPolling();
-  pollTimer=setTimeout(refreshTimeline, ms);
+  const baseDelay=Math.max(300, Number(ms||0));
+  const jitter=Math.floor(Math.random()*POLL_JITTER_MS);
+  pollTimer=setTimeout(refreshTimeline, baseDelay + jitter);
 }
 
 function stopPolling(){
@@ -2641,14 +2854,20 @@ function changeStudentNumber_(){
   currentStudentStateKey='';
   myUnitId=null;
   myPeriod=null;
+  studentSessionToken='';
+  lastTimelinePayloadSignature='';
+  timelineAiWaitCycleCount=0;
   submitted=false;
+  clearStudentSessionRecoveryState_();
   document.querySelectorAll('.num-btn').forEach(btn=>btn.disabled=false);
   forgetRememberedStudent_();
   document.getElementById('changeStudentBtn').style.display='none';
   showScreen('screen-select');
 }
 
-function renderTl(rows){
+function renderTl(rows, options){
+  const opts=options||{};
+  const startedAt=studentNowMs_();
   const list=document.getElementById('tlList');
   const reviewField=getReviewFieldDef_();
   const reviewIdx=myFields.findIndex(field=>field&&field.type==='review');
@@ -2662,11 +2881,18 @@ function renderTl(rows){
     .sort(compareTimelineRows_);
 
   if(!posted.length){
+    const innerHtmlStartedAt=studentNowMs_();
     list.innerHTML='<div class="tl-empty">まだだれもかいていないよ✨</div>';
-    return;
+    return {
+      skipped:false,
+      signature:String(opts.signature||''),
+      rowCount:0,
+      totalMs:Math.max(0, studentNowMs_()-startedAt),
+      innerHTMLMs:Math.max(0, studentNowMs_()-innerHtmlStartedAt),
+    };
   }
 
-  list.innerHTML=posted.map(r=>{
+  const html=posted.map(r=>{
     const fieldEntries=myFields
       .map((f,i)=>({
         idx:i,
@@ -2698,6 +2924,15 @@ function renderTl(rows){
       `).join('')}</div>
     </div>`;
   }).join('');
+  const innerHtmlStartedAt=studentNowMs_();
+  list.innerHTML=html;
+  return {
+    skipped:false,
+    signature:String(opts.signature||''),
+    rowCount:posted.length,
+    totalMs:Math.max(0, studentNowMs_()-startedAt),
+    innerHTMLMs:Math.max(0, studentNowMs_()-innerHtmlStartedAt),
+  };
 }
 
 function getRowReviewLength_(row, reviewField, reviewIdx){
