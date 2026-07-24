@@ -84,17 +84,20 @@ Invoke-Step -Label "Confirm pages-release is current" -Action {
   }
 }
 
-$syncArgs = @(".\scripts\sync-portable-publish.mjs")
 if ($Build) {
-  $syncArgs += "--build"
+  Invoke-Step -Label "Build portable artifacts" -Action {
+    node .\scripts\build-static-port.mjs
+    if ($LASTEXITCODE -ne 0) { throw "portable build failed" }
+  }
 }
+
 Invoke-Step -Label "Guard pages publish inputs" -Action {
   node .\scripts\guard-pages-publish.mjs --publish-dir $PublishDir --source-commit $sourceCommit --before $beforeCommit
   if ($LASTEXITCODE -ne 0) { throw "pages publish guard failed" }
 }
 
 Invoke-Step -Label "Sync portable artifacts" -Action {
-  node @syncArgs
+  node .\scripts\sync-portable-publish.mjs
   if ($LASTEXITCODE -ne 0) { throw "portable sync failed" }
 }
 

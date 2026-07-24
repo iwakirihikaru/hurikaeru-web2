@@ -37,6 +37,13 @@ function execGuard(env) {
   });
 }
 
+function writeCmdWrapper(filePath, targetScript) {
+  write(
+    filePath,
+    `@echo off\r\n"${process.execPath}" "${targetScript}" %*\r\n`
+  );
+}
+
 run('git', ['init'], tempRoot);
 run('git', ['config', 'user.name', 'Codex Test'], tempRoot);
 run('git', ['config', 'user.email', 'codex@example.com'], tempRoot);
@@ -112,5 +119,146 @@ result = execGuard({
 assert.equal(result.status, 0, result.stderr || result.stdout);
 assert.match(result.stdout, /check skipped/i);
 
+const publishTempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'pages-publish-'));
+const binDir = path.join(publishTempRoot, 'bin');
+const scriptsDir = path.join(publishTempRoot, 'scripts');
+const publishDir = path.join(publishTempRoot, 'portable-publish');
+const gitDir = path.join(publishTempRoot, '.git-publish');
+const callLogPath = path.join(publishTempRoot, 'call-log.txt');
+
+fs.mkdirSync(binDir, { recursive: true });
+fs.mkdirSync(scriptsDir, { recursive: true });
+fs.mkdirSync(publishDir, { recursive: true });
+fs.mkdirSync(gitDir, { recursive: true });
+write(path.join(publishDir, 'student.html'), '<body>published</body>\n');
+write(path.join(scriptsDir, 'publish-portable-publish.ps1'), fs.readFileSync(path.join(repoRoot, 'scripts', 'publish-portable-publish.ps1'), 'utf8'));
+
+const gitStubPath = path.join(binDir, 'git-stub.js');
+write(
+  gitStubPath,
+  `const fs = require('node:fs');
+const path = require('node:path');
+const args = process.argv.slice(2);
+const logPath = process.env.CALL_LOG_PATH;
+fs.appendFileSync(logPath, \`git \${args.join(' ')}\\n\`);
+function out(value) {
+  process.stdout.write(String(value));
+}
+const publishDir = process.env.PUBLISH_DIR;
+const gitDir = process.env.PUBLISH_GIT_DIR;
+if (args[0] === 'rev-parse' && args[1] === 'HEAD') {
+  out('source-head\\n');
+  process.exit(0);
+}
+if (args[0] === 'rev-parse' && args[1] === 'source-head^') {
+  out('before-head\\n');
+  process.exit(0);
+}
+if (args[0] === 'diff' && args[1] === '--check') {
+  process.exit(0);
+}
+if (args[0] === '-C' && args[1] === publishDir && args[2] === 'rev-parse' && args[3] === '--show-toplevel') {
+  out(\`\${publishDir}\\n\`);
+  process.exit(0);
+}
+if (args[0] === '-C' && args[1] === publishDir && args[2] === 'rev-parse' && args[3] === '--abbrev-ref' && args[4] === 'HEAD') {
+  out('pages-release\\n');
+  process.exit(0);
+}
+if (args[0] === '-C' && args[1] === publishDir && args[2] === 'rev-parse' && args[3] === '--path-format=absolute' && args[4] === '--git-dir') {
+  out(\`\${gitDir}\\n\`);
+  process.exit(0);
+}
+if (args[0] === '-C' && args[1] === publishDir && args[2] === 'status' && args[3] === '--porcelain') {
+  process.exit(0);
+}
+if (args[0] === '-C' && args[1] === publishDir && args[2] === 'fetch') {
+  process.exit(0);
+}
+if (args[0] === '-C' && args[1] === publishDir && args[2] === 'rev-parse' && args[3] === 'HEAD') {
+  out('publish-head\\n');
+  process.exit(0);
+}
+if (args[0] === '-C' && args[1] === publishDir && args[2] === 'rev-parse' && args[3] === 'refs/remotes/origin/pages-release') {
+  out('publish-head\\n');
+  process.exit(0);
+}
+if (args[0] === '-C' && args[1] === publishDir && args[2] === 'diff' && args[3] === '--check') {
+  process.exit(0);
+}
+if (
+  args[0] === '-C' &&
+  args[1] === publishDir &&
+  args[2] === 'status' &&
+  args[3] === '--porcelain' &&
+  args[4] === '--'
+) {
+  process.exit(0);
+}
+process.stderr.write(\`Unexpected git args: \${args.join(' ')}\\n\`);
+process.exit(1);
+`
+);
+
+const nodeStubPath = path.join(binDir, 'node-stub.js');
+write(
+  nodeStubPath,
+  `const fs = require('node:fs');
+const args = process.argv.slice(2);
+fs.appendFileSync(process.env.CALL_LOG_PATH, \`node \${args.join(' ')}\\n\`);
+process.exit(0);
+`
+);
+
+writeCmdWrapper(path.join(binDir, 'git.cmd'), gitStubPath);
+writeCmdWrapper(path.join(binDir, 'node.cmd'), nodeStubPath);
+
+result = spawnSync(
+  'powershell',
+  [
+    '-ExecutionPolicy',
+    'Bypass',
+    '-File',
+    path.join(scriptsDir, 'publish-portable-publish.ps1'),
+    '-PublishDir',
+    'portable-publish',
+    '-Build',
+  ],
+  {
+    cwd: publishTempRoot,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      PATH: `${binDir};${process.env.PATH || ''}`,
+      CALL_LOG_PATH: callLogPath,
+      PUBLISH_DIR: publishDir,
+      PUBLISH_GIT_DIR: gitDir,
+    },
+  }
+);
+assert.equal(result.status, 0, result.stderr || result.stdout);
+const logLines = fs.readFileSync(callLogPath, 'utf8').trim().split(/\r?\n/);
+assert.deepEqual(
+  logLines.filter(line => line.startsWith('node ')),
+  [
+    'node .\\scripts\\build-static-port.mjs',
+    'node .\\scripts\\guard-pages-publish.mjs --publish-dir portable-publish --source-commit source-head --before',
+    'node .\\scripts\\sync-portable-publish.mjs',
+  ]
+);
+assert.ok(
+  !logLines.some(line => line === 'node .\\scripts\\sync-portable-publish.mjs --build'),
+  'sync step must not trigger a second build'
+);
+assert.deepEqual(
+  logLines.filter(line => line.startsWith('node ')).map(line => line.split(' ')[1]),
+  [
+    '.\\scripts\\build-static-port.mjs',
+    '.\\scripts\\guard-pages-publish.mjs',
+    '.\\scripts\\sync-portable-publish.mjs',
+  ]
+);
+
 fs.rmSync(tempRoot, { recursive: true, force: true });
+fs.rmSync(publishTempRoot, { recursive: true, force: true });
 console.log('Pages publish guard tests passed');
